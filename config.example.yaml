@@ -1,0 +1,65 @@
+# gameWE - collector configuration: the UDP address for game-server logs
+# and the database connection.
+#
+# Installed as /etc/gamewe/collector/config.yaml. It contains a password,
+# so keep it readable for root and the gamewe group only:
+#   chown root:gamewe config.yaml && chmod 640 config.yaml
+# Validate with:  gamewe check
+#
+# Everything else is read from the database and can be changed in the web
+# admin without restarting the collector (reloaded every 60 seconds):
+#   game servers         hlstats_Servers (address, port, game, rcon_password)
+#   points and settings  hlstats_Options (gamewe_* keys), hlstats_Actions,
+#                        hlstats_Weapons
+# See /opt/gamewe/collector/doc/CONFIG.md.
+
+# Where the game servers send their logs (logaddress_add <ip>:<port>).
+# Both keys are optional.
+listen:
+  address: 0.0.0.0        # IP to listen on (0.0.0.0 = all IPv4, :: = all)
+  port: 41337             # UDP port
+  # The address the game servers send their logs to (registered with
+  # logaddress_add, see features.log_address). Default: the collector's
+  # address of the RCON connection to the server, with port. Set it when the
+  # game servers reach the collector at another address (NAT).
+  # public_address: 203.0.113.4:41337
+
+database:
+  type: mariadb           # mariadb (= mysql) or postgres
+  host: db.example.org
+  # port: 3306            # default: 3306 (mariadb / mysql), 5432 (postgres)
+  user: gamewe
+  password: "change-me"
+  # password_file: /etc/gamewe/collector/db-password   # alternative to password
+  name: gamewe
+  max_open_conns: 8
+  connect_timeout: 10     # seconds
+  tls:
+    # disable     plaintext (only for a database on localhost)
+    # require     encrypted, server certificate not checked
+    # verify-ca   encrypted, certificate must be signed by ca_file (or a system CA)
+    # verify-full verify-ca + certificate must match host (or server_name)
+    # With any mode other than disable there is never a plaintext fallback.
+    mode: disable           # default; use verify-full for a database on another host
+    # ca_file: /etc/gamewe/collector/db-ca.pem
+    # cert_file: /etc/gamewe/collector/client.pem   # client certificate (optional)
+    # key_file: /etc/gamewe/collector/client.key
+    # server_name: db.internal                      # name expected in the certificate
+
+# Player and server locations: the DB-IP City Lite database (CC BY 4.0) is
+# shipped at path; auto_update replaces it there monthly. For MaxMind
+# GeoLite2 set path to its file and auto_update: false.
+geoip:
+  path: /var/lib/gamewe/collector/dbip-city-lite.mmdb
+  auto_update: true
+
+# Optional jobs of the collector, all on by default.
+features:
+  rcon_status:         # RCON "status" of every server: players and bots, map, max players (DB-SEMANTICS.md)
+    enabled: true
+    interval: 10s      # how often (at least 2s)
+  log_address: true    # every minute logaddress_list; logaddress_add + "log on" if the collector is missing
+  daily_awards:        # the daily awards of the previous day (by hand: gamewe awards -date ...)
+    enabled: true
+    timezone: UTC      # IANA time zone of the day and the time, e.g. Europe/Berlin
+    time: "00:00"      # HH:MM in that time zone

@@ -1,0 +1,14 @@
+dbip-city-lite.mmdb - IP to City Lite database by DB-IP
+
+IP Geolocation by DB-IP: https://db-ip.com
+
+This database is licensed under the Creative Commons Attribution 4.0
+International License (CC BY 4.0): https://creativecommons.org/licenses/by/4.0/
+It is shipped unchanged as downloaded from
+https://download.db-ip.com/free/dbip-city-lite-YYYY-MM.mmdb.gz
+(the month is in the file's build date) as
+/var/lib/gamewe/collector/dbip-city-lite.mmdb. The gameWE collector replaces
+it there monthly (config.yaml geoip.auto_update).
+
+Pages that show locations from this database must credit DB-IP, for example
+with a link "IP Geolocation by DB-IP" to https://db-ip.com.

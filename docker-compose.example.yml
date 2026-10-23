@@ -1,0 +1,74 @@
+# gameWE - collector with Docker Compose.
+#   cp docker-compose.example.yml docker-compose.yml
+#   mkdir -p config && cp config.example.yaml config/config.yaml   # edit it
+#   docker compose up -d && docker compose logs -f
+#
+# network_mode: host keeps the real source IP:port of the game servers' log
+# packets. The collector identifies servers by that address
+# (hlstats_Servers), so do not rely on published ports (-p) unless you have
+# checked that the source address is kept (see README, Docker).
+#
+# Optional: a database in the same Compose project, either MariaDB or
+# PostgreSQL (choose one with --profile; set the root password in .env as
+# DB_ROOT_PASSWORD). It listens on 127.0.0.1 only, which the collector reaches
+# through the host network (database.host: 127.0.0.1). Create the gameWE
+# database once it is up, with the init script from the repository or the
+# package (/opt/gamewe/collector/doc/schema/...):
+#
+#   MariaDB:     docker compose --profile mariadb up -d
+#                cd schema/init && MYSQL='docker compose exec -T mariadb mariadb' \
+#                  COLLECTOR_PASSWORD=... WEB_PASSWORD=... WEB_ADMIN_PASSWORD=... ./init-db.sh -uroot -p"$DB_ROOT_PASSWORD"
+#                config: type: mariadb, port: 3306
+#
+#   PostgreSQL:  docker compose --profile postgres up -d
+#                cd schema/postgres/init && PSQL='docker compose exec -T postgres psql' \
+#                  COLLECTOR_PASSWORD=... WEB_PASSWORD=... WEB_ADMIN_PASSWORD=... ./init-db.sh -U postgres
+#                config: type: postgres, port: 5432
+#
+# (Run the init commands from the directory of docker-compose.yml, or add
+# -f /path/to/docker-compose.yml to "docker compose".) TLS is not needed for a
+# database on 127.0.0.1: tls.mode: disable (the default).
+services:
+  collector:
+    image: ghcr.io/dennispohlmann/gamewe-collector:latest
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./config/config.yaml:/etc/gamewe/collector/config.yaml:ro
+      # - ./config/db-ca.pem:/etc/gamewe/collector/db-ca.pem:ro   # for tls verify-ca / verify-full
+      - gamewe-data:/var/lib/gamewe   # GeoIP database and its monthly update (README, GeoIP)
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"   # every received log line is logged (gamewe_log_lines)
+        max-file: "5"
+
+  mariadb:
+    profiles: [mariadb]
+    image: mariadb:12.3   # LTS; 11.4 works as well
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-}   # required: set it in .env
+      MARIADB_AUTO_UPGRADE: "1"                      # an existing 11.x volume is upgraded at start
+    ports: ["127.0.0.1:3306:3306"]
+    volumes:
+      - mariadb:/var/lib/mysql
+
+  postgres:
+    profiles: [postgres]
+    # PostgreSQL 18 keeps its data in /var/lib/postgresql/18/docker, so the
+    # volume is mounted at /var/lib/postgresql. A volume of postgres:17
+    # (mounted at /var/lib/postgresql/data) needs pg_upgrade or a dump and
+    # restore; until then keep image postgres:17 and the old mount (README, Docker).
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${DB_ROOT_PASSWORD:-}   # required: set it in .env
+    ports: ["127.0.0.1:5432:5432"]
+    volumes:
+      - postgres:/var/lib/postgresql
+
+volumes:
+  gamewe-data:
+  mariadb:
+  postgres:

@@ -1,0 +1,42 @@
+# Arch Linux package of the gameWE collector release archive.
+# Download the release archive gamewe-collector-$pkgver-linux-amd64.tar.gz
+# from the GitHub release, copy it next to this file, then: makepkg -si
+# See docs/INSTALL-ARCH.md.
+
+pkgname=gamewe-collector-bin
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='gameWE collector: Source game server statistics into an HLstatsX database'
+arch=('x86_64')
+url='https://github.com/DennisPohlmann/gameWE-collector'
+license=('GPL-3.0-or-later')
+provides=('gamewe-collector')
+conflicts=('gamewe-collector')
+optdepends=('mariadb: database on this host'
+            'postgresql: database on this host')
+license+=('CC-BY-4.0')   # the bundled DB-IP City Lite database (/var/lib/gamewe/collector)
+backup=('etc/gamewe/collector/config.yaml')
+options=('!strip' '!debug')
+source=("gamewe-collector-$pkgver-linux-amd64.tar.gz"
+        'gamewe-collector.sysusers'
+        'gamewe-collector.tmpfiles')
+sha256sums=('708f02dbd237e01e355e5e3fcbed99b97c41b80cc4a823c960ad3d95e684c9b5'
+            'da6163da6527897632c5af51ba527109f5f2dd72c9f76de3183857449e76a469'
+            '59c8de9815d6b21c989d57342cb44052eb3c012d10dba270eef89ea94a79e127')
+
+package() {
+  # The archive is a tree for /: etc, opt, var.
+  cp -a opt "$pkgdir/"
+  install -d "$pkgdir/var/lib/gamewe"
+  cp -a var/lib/gamewe/collector "$pkgdir/var/lib/gamewe/"
+  install -Dm640 etc/gamewe/collector/config.example.yaml "$pkgdir/etc/gamewe/collector/config.yaml"
+  install -Dm644 etc/gamewe/collector/config.example.yaml "$pkgdir/etc/gamewe/collector/config.example.yaml"
+  for u in etc/systemd/system/*; do
+    install -Dm644 "$u" "$pkgdir/usr/lib/systemd/system/${u##*/}"
+  done
+  install -Dm644 gamewe-collector.sysusers "$pkgdir/usr/lib/sysusers.d/gamewe-collector.conf"
+  install -Dm644 gamewe-collector.tmpfiles "$pkgdir/usr/lib/tmpfiles.d/gamewe-collector.conf"
+  install -Dm644 opt/gamewe/collector/doc/LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -d "$pkgdir/usr/bin"
+  ln -s /opt/gamewe/collector/bin/gamewe "$pkgdir/usr/bin/gamewe"
+}

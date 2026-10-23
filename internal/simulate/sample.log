@@ -1,0 +1,43 @@
+Loading map "de_dust2"
+Started map "de_dust2" (CRC "-1162343117")
+"Alice<2><STEAM_1:0:9000001><>" connected, address "192.0.2.10:27005"
+"Alice<2><STEAM_1:0:9000001><>" entered the game
+"Bob<3><STEAM_1:1:9000002><>" connected, address "192.0.2.11:27005"
+"Bob<3><STEAM_1:1:9000002><>" entered the game
+"Carol<4><STEAM_1:0:9000003><>" connected, address "192.0.2.12:27005"
+"Carol<4><STEAM_1:0:9000003><>" entered the game
+"Dave<5><STEAM_1:1:9000004><>" connected, address "192.0.2.13:27005"
+"Dave<5><STEAM_1:1:9000004><>" entered the game
+"Alice<2><STEAM_1:0:9000001><Unassigned>" joined team "CT"
+"Bob<3><STEAM_1:1:9000002><Unassigned>" joined team "TERRORIST"
+"Carol<4><STEAM_1:0:9000003><Unassigned>" joined team "CT"
+"Dave<5><STEAM_1:1:9000004><Unassigned>" joined team "TERRORIST"
+World triggered "Round_Start"
+"Alice<2><STEAM_1:0:9000001><CT>" killed "Bob<3><STEAM_1:1:9000002><TERRORIST>" with "ak47" (headshot)
+"Dave<5><STEAM_1:1:9000004><TERRORIST>" killed "Carol<4><STEAM_1:0:9000003><CT>" with "deagle"
+"Alice<2><STEAM_1:0:9000001><CT>" [120 -340 64] killed "Dave<5><STEAM_1:1:9000004><TERRORIST>" [80 -300 64] with "m4a1"
+Team "CT" triggered "CTs_Win" (CT "1") (T "0")
+Team "CT" scored "1" with "2" players
+Team "TERRORIST" scored "0" with "2" players
+World triggered "Round_End"
+"Alice<2><STEAM_1:0:9000001><CT>" triggered "weaponstats" (weapon "ak47") (shots "14") (hits "6") (kills "1") (headshots "1") (tks "0") (damage "412") (deaths "0")
+"Alice<2><STEAM_1:0:9000001><CT>" triggered "weaponstats2" (weapon "ak47") (head "1") (chest "3") (stomach "1") (leftarm "0") (rightarm "1") (leftleg "0") (rightleg "0")
+"Dave<5><STEAM_1:1:9000004><TERRORIST>" triggered "weaponstats" (weapon "deagle") (shots "5") (hits "2") (kills "1") (headshots "0") (tks "0") (damage "118") (deaths "1")
+World triggered "Round_Start"
+"Bob<3><STEAM_1:1:9000002><TERRORIST>" killed "Alice<2><STEAM_1:0:9000001><CT>" with "awp" (headshot)
+"Carol<4><STEAM_1:0:9000003><CT>" killed "Alice<2><STEAM_1:0:9000001><CT>" with "glock"
+"Dave<5><STEAM_1:1:9000004><TERRORIST>" committed suicide with "world"
+"Bob<3><STEAM_1:1:9000002><TERRORIST>" killed "Carol<4><STEAM_1:0:9000003><CT>" with "usp"
+Team "TERRORIST" triggered "Terrorists_Win" (CT "1") (T "1")
+Team "CT" scored "1" with "2" players
+Team "TERRORIST" scored "1" with "2" players
+World triggered "Round_End"
+"Bob<3><STEAM_1:1:9000002><TERRORIST>" triggered "Planted_The_Bomb"
+"Alice<2><STEAM_1:0:9000001><CT>" changed name to "Alicia"
+"Bob<3><STEAM_1:1:9000002><TERRORIST>" say "!rank"
+"Alicia<2><STEAM_1:0:9000001><CT>" say "!status"
+"Carol<4><STEAM_1:0:9000003><CT>" say "!statsme"
+"Bob<3><STEAM_1:1:9000002><TERRORIST>" say "/next"
+"Bob<3><STEAM_1:1:9000002><TERRORIST>" say "/help"
+"Dave<5><STEAM_1:1:9000004><TERRORIST>" say "!top10"
+"Dave<5><STEAM_1:1:9000004><TERRORIST>" disconnected (reason "Disconnect by user.")

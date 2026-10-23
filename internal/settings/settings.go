@@ -1,0 +1,224 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+// Package settings holds the collector's statistics and command settings.
+// They are read from hlstats_Options (keys starting with gamewe_), so they
+// can be changed in the web admin; missing or invalid keys use the
+// built-in defaults.
+package settings
+
+import (
+	"fmt"
+	"sort"
+	"strconv"
+	"strings"
+	"sync/atomic"
+)
+
+// Command prefixes of the plugin's server commands (gamewe_psay, ...): the
+// gameWE plugin knows both, the original gameME plugin only gameme.
+const (
+	PrefixGameWE = "gamewe"
+	PrefixGameME = "gameme"
+
+	// gamewe_command_display
+	DisplayPanel = "panel"
+	DisplayChat  = "chat"
+	DisplayBoth  = "both"
+)
+
+type Settings struct {
+	StartSkill      int      // gamewe_start_skill
+	KillPoints      int      // gamewe_kill_points
+	HeadshotBonus   int      // gamewe_headshot_bonus
+	SuicidePenalty  int      // gamewe_suicide_penalty
+	TeamkillPenalty int      // gamewe_teamkill_penalty
+	StorePlayerIP   bool     // gamewe_store_player_ip
+	StoreChat       bool     // gamewe_store_chat
+	WinTriggers     []string // gamewe_win_triggers (comma separated)
+	Commands        bool     // gamewe_commands
+	MenuTime        int      // gamewe_menu_time (seconds)
+	RconTimeout     int      // gamewe_rcon_timeout (seconds)
+	LogLines        bool     // gamewe_log_lines
+	IdleTimeout     int      // gamewe_idle_timeout (seconds, 0 = off)
+	CommandPrefix   string   // gamewe_command_prefix (gamewe or gameme)
+	CommandDisplay  string   // gamewe_command_display (panel, chat or both)
+	RawMessages     bool     // gamewe_raw_messages
+	StoreLocations  bool     // gamewe_store_locations
+	RankBots        bool     // gamewe_rank_bots
+	GeoIPDB         string   // gamewe_geoip_db (path of a MaxMind-format city database)
+	ServerLoad      bool     // gamewe_server_load
+}
+
+// DefaultGeoIPDB is where the collector looks for the GeoIP city database.
+const DefaultGeoIPDB = "/var/lib/gamewe/GeoLite2-City.mmdb"
+
+// Defaults are used for every key that is missing in hlstats_Options.
+func Defaults() Settings {
+	return Settings{
+		StartSkill: 1000, KillPoints: 5, HeadshotBonus: 0, SuicidePenalty: 5, TeamkillPenalty: 10,
+		WinTriggers: []string{
+			"CTs_Win", "Terrorists_Win", "Target_Bombed", "Target_Saved", "Bomb_Defused",
+			"All_Hostages_Rescued", "Hostages_Not_Rescued", "VIP_Escaped", "VIP_Assassinated",
+			"VIP_Not_Escaped", "Round_Win",
+		},
+		StorePlayerIP: true, StoreChat: true, Commands: true, MenuTime: 15, RconTimeout: 5, LogLines: true, IdleTimeout: 300,
+		CommandPrefix: PrefixGameWE, CommandDisplay: DisplayPanel, StoreLocations: true, GeoIPDB: DefaultGeoIPDB, ServerLoad: true,
+	}
+}
+
+// Key describes one hlstats_Options key.
+type Key struct {
+	Name, Default, Meaning string
+}
+
+// Keys lists all hlstats_Options keys the collector reads (for docs and
+// `gamewe check`).
+func Keys() []Key {
+	d := Defaults()
+	b := func(v bool) string {
+		if v {
+			return "1"
+		}
+		return "0"
+	}
+	return []Key{
+		{"gamewe_start_skill", strconv.Itoa(d.StartSkill), "skill of a new player"},
+		{"gamewe_kill_points", strconv.Itoa(d.KillPoints), "base skill per kill (scaled by victim/killer skill and weapon modifier, at least 1)"},
+		{"gamewe_headshot_bonus", strconv.Itoa(d.HeadshotBonus), "extra skill per headshot on top of the hlstats_Actions headshot action (default 0: the action rewards it)"},
+		{"gamewe_suicide_penalty", strconv.Itoa(d.SuicidePenalty), "skill lost per suicide"},
+		{"gamewe_teamkill_penalty", strconv.Itoa(d.TeamkillPenalty), "skill lost per teamkill"},
+		{"gamewe_rank_bots", b(d.RankBots), "bots are always recorded (live view, stats); 1 = bots are also ranked and kills with bots change skill; 0 = bots are hidden from the rankings and awards (hideranking 1) and never change anybody's skill"},
+		{"gamewe_store_player_ip", b(d.StorePlayerIP), "1 = store IPv4 addresses in hlstats_Events_Connects.ipAddress (personal data; only the web admin user can read it)"},
+		{"gamewe_store_chat", b(d.StoreChat), "1 = store chat in hlstats_Events_Chat (personal data; only the web admin user can read it)"},
+		{"gamewe_win_triggers", strings.Join(d.WinTriggers, ","), "log triggers that end a round with a winner (comma separated)"},
+		{"gamewe_commands", b(d.Commands), "1 = answer !rank, !top10, ... in game"},
+		{"gamewe_menu_time", strconv.Itoa(d.MenuTime), "seconds the panels (!top10, !rank, ...) stay open"},
+		{"gamewe_rcon_timeout", strconv.Itoa(d.RconTimeout), "seconds for RCON connect, send and receive"},
+		{"gamewe_log_lines", b(d.LogLines), "1 = write every received game-server log line to the collector's log (journal)"},
+		{"gamewe_idle_timeout", strconv.Itoa(d.IdleTimeout), "seconds without any log line of a player after which the visit ends (lost disconnect); 0 = never"},
+		{"gamewe_command_display", d.CommandDisplay, "how !rank, !statsme, !session, !status and !next are answered: panel (menu on the left, as gameME), chat, or both"},
+		{"gamewe_command_prefix", d.CommandPrefix, "prefix of the plugin's server commands: gamewe, or gameme for servers with the original gameME plugin"},
+		{"gamewe_raw_messages", b(d.RawMessages), "1 = answer !rank, !session, !top10 and !next with gamewe_raw_message for a message plugin instead of chat text"},
+		{"gamewe_store_locations", b(d.StoreLocations), "1 = store kill and death positions (plugin location lines) in hlstats_Events_Locations"},
+		{"gamewe_geoip_db", d.GeoIPDB, "MaxMind-format city database (GeoLite2-City or DB-IP Lite City .mmdb) for player and server locations; skipped if missing"},
+		{"gamewe_server_load", b(d.ServerLoad), "1 = write hlstats_server_load every 10 minutes per server"},
+	}
+}
+
+// FromOptions builds settings from hlstats_Options rows. Invalid values
+// keep the default and are reported in the returned warnings.
+func FromOptions(opts map[string]string) (Settings, []string) {
+	s := Defaults()
+	var warn []string
+	num := func(key string, dst *int, minVal int) {
+		v, ok := opts[key]
+		if !ok {
+			return
+		}
+		n, err := strconv.Atoi(strings.TrimSpace(v))
+		if err != nil || n < minVal {
+			warn = append(warn, fmt.Sprintf("hlstats_Options %s = %q is invalid (must be a number >= %d), using %d", key, v, minVal, *dst))
+			return
+		}
+		*dst = n
+	}
+	flag := func(key string, dst *bool) {
+		v, ok := opts[key]
+		if !ok {
+			return
+		}
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "1", "true", "yes", "on":
+			*dst = true
+		case "0", "false", "no", "off", "":
+			*dst = false
+		default:
+			warn = append(warn, fmt.Sprintf("hlstats_Options %s = %q is invalid (must be 0 or 1)", key, v))
+		}
+	}
+	num("gamewe_start_skill", &s.StartSkill, 0)
+	num("gamewe_kill_points", &s.KillPoints, 1)
+	num("gamewe_headshot_bonus", &s.HeadshotBonus, 0)
+	num("gamewe_suicide_penalty", &s.SuicidePenalty, 0)
+	num("gamewe_teamkill_penalty", &s.TeamkillPenalty, 0)
+	flag("gamewe_store_player_ip", &s.StorePlayerIP)
+	flag("gamewe_store_chat", &s.StoreChat)
+	flag("gamewe_commands", &s.Commands)
+	flag("gamewe_log_lines", &s.LogLines)
+	num("gamewe_menu_time", &s.MenuTime, 1)
+	num("gamewe_rcon_timeout", &s.RconTimeout, 1)
+	num("gamewe_idle_timeout", &s.IdleTimeout, 0)
+	flag("gamewe_raw_messages", &s.RawMessages)
+	flag("gamewe_store_locations", &s.StoreLocations)
+	flag("gamewe_rank_bots", &s.RankBots)
+	// The legacy gamewe_ignore_bots dropped bots completely. Bots are now
+	// always recorded; a stored 1 still keeps them out of the rankings.
+	if _, ok := opts["gamewe_ignore_bots"]; ok {
+		var ignore bool
+		flag("gamewe_ignore_bots", &ignore)
+		if ignore {
+			s.RankBots = false
+		}
+		warn = append(warn, "hlstats_Options gamewe_ignore_bots is obsolete: bots are always recorded, only gamewe_rank_bots decides the rankings (1 is read as gamewe_rank_bots = 0); delete the row")
+	}
+	flag("gamewe_server_load", &s.ServerLoad)
+	if v, ok := opts["gamewe_geoip_db"]; ok {
+		s.GeoIPDB = strings.TrimSpace(v)
+	}
+	if v, ok := opts["gamewe_command_prefix"]; ok {
+		switch p := strings.ToLower(strings.TrimSpace(v)); p {
+		case PrefixGameWE, PrefixGameME:
+			s.CommandPrefix = p
+		default:
+			warn = append(warn, fmt.Sprintf("hlstats_Options gamewe_command_prefix = %q is invalid (gamewe or gameme), using %s", v, s.CommandPrefix))
+		}
+	}
+	if v, ok := opts["gamewe_command_display"]; ok {
+		switch d := strings.ToLower(strings.TrimSpace(v)); d {
+		case DisplayPanel, DisplayChat, DisplayBoth:
+			s.CommandDisplay = d
+		default:
+			warn = append(warn, fmt.Sprintf("hlstats_Options gamewe_command_display = %q is invalid (panel, chat or both), using %s", v, s.CommandDisplay))
+		}
+	}
+	if v, ok := opts["gamewe_win_triggers"]; ok {
+		var t []string
+		for _, p := range strings.Split(v, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				t = append(t, p)
+			}
+		}
+		s.WinTriggers = t
+	}
+	known := map[string]bool{}
+	for _, k := range Keys() {
+		known[k.Name] = true
+	}
+	var unknown []string
+	for k := range opts {
+		if !known[k] && strings.HasPrefix(k, "gamewe_") && k != "gamewe_default_game" && k != "gamewe_page_size" &&
+			k != "gamewe_daily_awards" /* 1.4.x; now features.daily_awards in the config file */ && k != "gamewe_ignore_bots" &&
+			k != "gamewe_heartbeat" /* written by the collector */ {
+			unknown = append(unknown, k)
+		}
+	}
+	sort.Strings(unknown)
+	for _, k := range unknown {
+		warn = append(warn, fmt.Sprintf("hlstats_Options %s is not a collector setting (typo?)", k))
+	}
+	return s, warn
+}
+
+// Live holds the current settings; it is replaced on every reload and is
+// safe for concurrent use.
+type Live struct{ p atomic.Pointer[Settings] }
+
+// NewLive starts with s.
+func NewLive(s Settings) *Live {
+	l := &Live{}
+	l.Set(s)
+	return l
+}
+
+func (l *Live) Get() Settings  { return *l.p.Load() }
+func (l *Live) Set(s Settings) { l.p.Store(&s) }

@@ -1,0 +1,10 @@
+.git
+.github
+build
+dist
+*.tar.gz
+*.tar.gz.sha256
+/gamewe
+/config.yaml
+*.pem
+*.key

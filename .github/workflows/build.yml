@@ -1,0 +1,222 @@
+name: build
+
+# Every push to main runs the tests, builds the package (workflow artifact)
+# and publishes the image as ghcr.io/dennispohlmann/gamewe-collector:edge.
+# semantic-release then reads the Conventional Commits since the last tag:
+# for a feat, fix or breaking change it bumps the version files, writes
+# CHANGELOG.md, commits that as "chore(release): vX.Y.Z [skip ci]", tags
+# vX.Y.Z and creates the GitHub release. package and docker then build the
+# tag: the archive goes into the release, the image gets the tags <version>,
+# <major>.<minor> and latest. A manual run (workflow_dispatch) tests and
+# builds without pushing an image or making a release.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: go vet
+        run: go vet ./...
+      - name: go test
+        run: go test ./...
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+      - name: actionlint
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+
+  # Both databases, created from scratch with the init scripts: gamewe for
+  # the collector tests (they delete all rows), gamewe_init stays as created.
+  # Two LTS lines of MariaDB and the two newest PostgreSQL versions.
+  integration:
+    needs: test
+    runs-on: ubuntu-26.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {mariadb: '11.4', postgres: '17'}
+          - {mariadb: '12.3', postgres: '18'}
+    name: integration (MariaDB ${{ matrix.mariadb }}, PostgreSQL ${{ matrix.postgres }})
+    services:
+      mariadb:
+        image: mariadb:${{ matrix.mariadb }}
+        env:
+          MARIADB_ROOT_PASSWORD: root
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      postgres:
+        image: postgres:${{ matrix.postgres }}
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      COLLECTOR_PASSWORD: colpw
+      WEB_PASSWORD: webpw
+      WEB_ADMIN_PASSWORD: admpw
+      GAMEWE_TEST_DB_HOST: 127.0.0.1
+      GAMEWE_TEST_DB_USER: gamewe
+      GAMEWE_TEST_DB_PASSWORD: colpw
+      GAMEWE_TEST_DB_NAME: gamewe
+      GAMEWE_TEST_DB_WIPE: 'yes'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: init databases
+        env: # the job context is not available in the job-level env
+          MYSQL: docker exec -i ${{ job.services.mariadb.id }} mariadb -uroot -proot
+          PSQL: docker exec -i ${{ job.services.postgres.id }} psql -U postgres
+        run: |
+          for db in gamewe gamewe_init; do
+            DB_NAME=$db schema/init/init-db.sh
+            DB_NAME=$db schema/postgres/init/init-db.sh
+          done
+      - name: init scripts, grants, schema parity
+        env:
+          GAMEWE_TEST_INIT_MYSQL: 127.0.0.1:3306/gamewe_init
+          GAMEWE_TEST_INIT_PG: 127.0.0.1:5432/gamewe_init
+          GAMEWE_TEST_WEB_PASSWORD: webpw
+          GAMEWE_TEST_WEB_ADMIN_PASSWORD: admpw
+        run: go test -count=1 -tags integration -run Init -v ./internal/database/
+      - name: collector (MariaDB)
+        env:
+          GAMEWE_TEST_DB_TYPE: mysql
+          GAMEWE_TEST_DB_PORT: 3306
+        run: go test -count=1 -race -p 1 -tags integration ./internal/collector/ ./internal/admin/
+      - name: collector (PostgreSQL)
+        env:
+          GAMEWE_TEST_DB_TYPE: postgres
+          GAMEWE_TEST_DB_PORT: 5432
+        run: go test -count=1 -race -p 1 -tags integration ./internal/collector/ ./internal/admin/
+
+  release:
+    needs: [test, integration]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # all tags and commits since the last release
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: semantic-release
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: >-
+          npx --yes
+          -p semantic-release@25.0.9
+          -p @semantic-release/changelog@7.0.0
+          -p @semantic-release/exec@7.1.0
+          -p @semantic-release/git@11.0.1
+          -p conventional-changelog-conventionalcommits@9.3.1
+          semantic-release
+
+  # Runs after the release job (or without it on a manual run) and builds the
+  # new tag if there was a release, otherwise the pushed commit.
+  package:
+    needs: [test, integration, release]
+    if: ${{ !cancelled() && needs.test.result == 'success' && needs.integration.result == 'success' && needs.release.result != 'failure' }}
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+    env:
+      RELEASE: ${{ needs.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release.outputs.version != '' && format('v{0}', needs.release.outputs.version) || github.sha }}
+          fetch-depth: 0 # tags, for the version
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: make package
+        run: make package
+      - uses: actions/upload-artifact@v7
+        with:
+          name: gamewe-collector-linux-amd64
+          path: |
+            dist/*.tar.gz
+            dist/*.tar.gz.sha256
+          if-no-files-found: error
+      - name: add the archive to the release
+        if: env.RELEASE != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "v$RELEASE" dist/*.tar.gz dist/*.tar.gz.sha256 --repo "$GITHUB_REPOSITORY"
+
+  docker:
+    needs: [test, integration, release]
+    if: ${{ !cancelled() && needs.test.result == 'success' && needs.integration.result == 'success' && needs.release.result != 'failure' }}
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      packages: write
+    env:
+      RELEASE: ${{ needs.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release.outputs.version != '' && format('v{0}', needs.release.outputs.version) || github.sha }}
+          fetch-depth: 0 # tags, for the version
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: GeoIP database (DB-IP City Lite, CC BY 4.0)
+        run: make geoip
+      - name: version
+        id: version
+        run: |
+          v=$(make -s version)
+          if [ -z "$RELEASE" ]; then v="$v-edge+${GITHUB_SHA::7}"; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        if: github.event_name == 'push'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/dennispohlmann/gamewe-collector
+          tags: |
+            type=raw,value=edge,enable=${{ github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}},value=v${{ env.RELEASE }},enable=${{ env.RELEASE != '' }}
+            type=semver,pattern={{major}}.{{minor}},value=v${{ env.RELEASE }},enable=${{ env.RELEASE != '' }}
+            type=raw,value=latest,enable=${{ env.RELEASE != '' }}
+          flavor: latest=false
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: ${{ github.event_name == 'push' }}
+          build-args: VERSION=${{ steps.version.outputs.version }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
