@@ -332,6 +332,13 @@ sudo -u gamewe /opt/gamewe/collector/bin/gamewe check         # schema: ok
 actions, weapons, awards, ranks, ribbons, settings); it never changes
 existing rows or rankings of your own (such as `css1`).
 
+### Coming from HLstatsX:CE or gameME
+
+Create a new database as above, then copy the old statistics into it:
+[MIGRATION-HLSTATSX.md](MIGRATION-HLSTATSX.md) converts an HLstatsX:CE
+database, [MIGRATION-GAMEME.md](MIGRATION-GAMEME.md) imports the gameME data
+export (ZIP).
+
 ### GeoIP
 
 Nothing to do: the DB-IP City Lite database comes with the archive and the

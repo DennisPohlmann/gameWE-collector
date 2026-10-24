@@ -71,6 +71,8 @@ Every step in detail: [docs/INSTALLATION.md](docs/INSTALLATION.md).
 | [docs/DATABASE.md](docs/DATABASE.md) | database users, rights, TLS, incomplete schemas |
 | [docs/DB-SEMANTICS.md](docs/DB-SEMANTICS.md) | what the collector writes into which table (for the web frontend) |
 | [docs/GAMES.md](docs/GAMES.md) | games, engines, log formats |
+| [docs/MIGRATION-HLSTATSX.md](docs/MIGRATION-HLSTATSX.md) | moving from HLstatsX:CE: converting its database into a new gameWE database |
+| [docs/MIGRATION-GAMEME.md](docs/MIGRATION-GAMEME.md) | moving from gameME: importing the gameME data export (ZIP) |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | building, tests, CI and releases |
 | [CHANGELOG.md](CHANGELOG.md) | changes per version |
 | [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) | third-party components and their licenses |

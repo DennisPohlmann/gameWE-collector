@@ -138,8 +138,10 @@ root; the table is rebuilt):
 `ALTER TABLE hlstats_Events_Frags ADD COLUMN server_id smallint(5) unsigned NOT NULL DEFAULT 0 AFTER game_id, ADD KEY server_id (server_id, timestamp_id);`
 and the same for the other eight tables.
 
-Existing HLstatsX or HLstatsX:CE databases (often latin1) are not converted;
-create a new gameWE database.
+Existing HLstatsX:CE or gameME databases are not upgraded in place: create a
+new gameWE database and copy the data into it, as described in
+[MIGRATION-HLSTATSX.md](MIGRATION-HLSTATSX.md) and
+[MIGRATION-GAMEME.md](MIGRATION-GAMEME.md).
 
 The read-only web user `gamewe_web` cannot read `rcon_password` (column rights,
 `03_grants.sql`): `SELECT *` on `hlstats_Servers` fails for it,
