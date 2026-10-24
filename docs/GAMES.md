@@ -73,8 +73,8 @@ css adds 3 and 8, one cloned from dod 2 and 35.
 | Source | UDP to `listen.port` | `\xff\xff\xff\xffRL 10/23/2026 - 12:00:00: <event>` |
 | GoldSrc | UDP to `listen.port` | `\xff\xff\xff\xfflog L 10/23/2026 - 12:00:00: <event>` |
 
-UDP packets are accepted only from servers in `hlstats_Servers` (source
-ip:port, or the IP alone when only one server has it).
+UDP packets are accepted only from servers in `hlstats_Servers` (exactly the
+source ip:port).
 
 ## Log formats
 

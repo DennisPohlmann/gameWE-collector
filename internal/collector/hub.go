@@ -20,7 +20,11 @@ import (
 
 var (
 	ErrUnknownSource = errors.New("log packet from a source that is not in hlstats_Servers")
-	ErrQueueFull     = errors.New("queue full, log line dropped")
+	// ErrUnknownPort: the IP has a server in hlstats_Servers, but not on
+	// this port (e.g. a second game server on the same host that has no
+	// row yet). Rejected, never attributed to the server on the other port.
+	ErrUnknownPort = errors.New("log packet from a known server IP but a port that is not in hlstats_Servers")
+	ErrQueueFull   = errors.New("queue full, log line dropped")
 )
 
 // QueueSize is the number of lines buffered per server while the database
@@ -333,17 +337,10 @@ func (h *Hub) run(w *worker, addr string) {
 	cancel()
 }
 
-// resolve finds the server for a packet source: the exact ip:port, or the
-// IP alone if exactly one server has that IP. h.mu must be held.
+// resolve finds the server for a packet source: only the exact ip:port.
+// h.mu must be held.
 func (h *Hub) resolve(src netip.AddrPort) *worker {
-	src = netip.AddrPortFrom(src.Addr().Unmap(), src.Port())
-	if w := h.exact[src]; w != nil {
-		return w
-	}
-	if ws := h.byIP[src.Addr()]; len(ws) == 1 {
-		return ws[0]
-	}
-	return nil
+	return h.exact[netip.AddrPortFrom(src.Addr().Unmap(), src.Port())]
 }
 
 // Known reports whether src (ip:port) is a server of hlstats_Servers.
@@ -398,6 +395,9 @@ func (h *Hub) Dispatch(src netip.AddrPort, payload []byte, now time.Time) error 
 	defer h.mu.RUnlock()
 	w := h.resolve(src)
 	if w == nil {
+		if len(h.byIP[src.Addr().Unmap()]) > 0 {
+			return ErrUnknownPort
+		}
 		return ErrUnknownSource
 	}
 	line, err := logparse.ParsePacket(payload, "")

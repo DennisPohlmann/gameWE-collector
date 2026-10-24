@@ -161,10 +161,11 @@ func TestHubRejects(t *testing.T) {
 		src  string
 		want error
 	}{
-		{"203.0.113.9:27015", ErrUnknownSource},  // unknown IP
-		{"198.51.100.1:27099", ErrUnknownSource}, // IP has two servers: ambiguous
+		{"203.0.113.9:27015", ErrUnknownSource}, // unknown IP
+		{"198.51.100.1:27099", ErrUnknownPort},  // known IP, port without a row
 		{"198.51.100.1:27016", nil},
-		{"198.51.100.3:40000", nil},          // single server on that IP: port may differ
+		{"198.51.100.3:40000", ErrUnknownPort}, // single server on that IP: still only its port
+		{"[::ffff:198.51.100.3]:40000", ErrUnknownPort},
 		{"[::ffff:198.51.100.1]:27016", nil}, // IPv4-mapped source
 	}
 	for _, c := range cases {
@@ -174,6 +175,56 @@ func TestHubRejects(t *testing.T) {
 	}
 	if err := hub.Dispatch(netip.MustParseAddrPort("198.51.100.1:27015"), []byte("\xff\xff\xff\xffTSource Engine Query"), now); err != logparse.ErrNotLog {
 		t.Errorf("non-log packet: %v", err)
+	}
+}
+
+// Regression: with only the first server of a host in hlstats_Servers,
+// the logs of the other game servers on that host (other ports) were
+// attributed to it, so their maps and kills ended up in its ranking.
+// They must be rejected until they have their own row.
+func TestHubKeepsOtherPortsOfTheSameHostOut(t *testing.T) {
+	assault, gungame := "198.51.100.1:27015", "198.51.100.1:27016"
+	st, rec := newMemStore(), &recorder{}
+	hub := newTestHub(st, rec, []string{assault}, nil)
+	foreign := append([]string{`Loading map "gg_simpsons_v2"`, `Started map "gg_simpsons_v2" (CRC "1")`}, gameLines(2)...)
+	now := time.Now().UTC()
+	for _, line := range foreign {
+		for _, src := range []string{gungame, "198.51.100.1:27017"} {
+			if err := hub.Dispatch(netip.MustParseAddrPort(src), pkt(line), now); err != ErrUnknownPort {
+				t.Fatalf("Dispatch(%s) = %v, want %v", src, err, ErrUnknownPort)
+			}
+		}
+	}
+	for _, line := range append([]string{`Started map "cs_assault" (CRC "1")`}, gameLines(1)...) {
+		if err := hub.Dispatch(netip.MustParseAddrPort(assault), pkt(line), now); err != nil {
+			t.Fatalf("Dispatch(%s): %v", assault, err)
+		}
+	}
+	// Once the second server has its row, its lines go to it.
+	st.addServers([]string{gungame}, nil)
+	if err := hub.Reload(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range gameLines(2) {
+		if err := hub.Dispatch(netip.MustParseAddrPort(gungame), pkt(line), now); err != nil {
+			t.Fatalf("Dispatch(%s) after reload: %v", gungame, err)
+		}
+	}
+	hub.Close(context.Background())
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	maps := strings.Join(st.maps, ",")
+	if maps != "cs_assault" {
+		t.Errorf("maps %q, want only cs_assault", maps)
+	}
+	ids := map[int64]int{st.servers[assault].ID: 1, st.servers[gungame].ID: 2}
+	if len(st.kills) != 4 {
+		t.Fatalf("got %d kills, want 2 per server", len(st.kills))
+	}
+	for _, k := range st.kills {
+		if n := ids[k.server]; k.weapon != fmt.Sprintf("weapon%d", n) {
+			t.Errorf("server %d got foreign kill %+v", n, k)
+		}
 	}
 }
 

@@ -157,10 +157,11 @@ game restarts the worker. A changed name or RCON password is applied directly.
 
 ### How packets are attributed to a server
 
-1. The source `IP:port` of the packet must equal a row's `address` and `port`.
-2. Otherwise, if exactly one row has that IP, the packet belongs to it. This
-   covers servers that send from a different port. If two rows share the IP,
-   the packet is rejected as ambiguous.
+The source `IP:port` of the packet must equal a row's `address` and `port`.
+There is no match by IP alone: several game servers on one host send from the
+same IP, and a server without its own row must not end up in the ranking of
+another server on that host. Such packets are rejected with `known server IP
+but a port that is not in hlstats_Servers`; add the server in the web admin.
 
 Anything else is rejected and logged: the first time per source, then every
 1000th time. There are no log secrets (`sv_logsecret`). Use a firewall on the

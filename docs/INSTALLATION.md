@@ -444,7 +444,7 @@ drop it (`DROP DATABASE gamewe;` and the three users).
 | `config key "servers" is no longer used` | An old-style config: keep only `listen:`, `database:`, `geoip:` and `features:`, register the servers in the web admin. |
 | `hlstats_Servers serverId N is ignored: ...` | The row's address is not an IP, the port is invalid, or its game is not in `hlstats_Games`. Fix it in the web admin. |
 | No `game server active` in the log | Check `logaddress_add` and the firewall (UDP port). |
-| `rejected log packet ... not in hlstats_Servers` | Register the shown source `IP:port` in the web admin. |
+| `rejected log packet ... not in hlstats_Servers` | Register the shown source `IP:port` in the web admin. With `known server IP but a port ...` another game server on the same host sends logs: add it with its own port (logs are never attributed by IP alone). |
 | Commands get no answer | `rcon_password` is empty or wrong (`rcon authentication failed`), the plugin is missing, or the RCON port is blocked (TCP). `gamewe check` shows servers without a password. |
 | Service does not start, `status=31/SYS` | A hardening option in the unit blocks something on your system. See `journalctl -u gamewe-collector` and relax `SystemCallFilter` with `systemctl edit gamewe-collector`. |
 
