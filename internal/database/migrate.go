@@ -654,9 +654,11 @@ func runScript(ctx context.Context, q querier, dialect, script string) error {
 
 // RunGrants runs the grants script of the dialect statement by statement
 // and returns the statements that failed (as warnings: missing rights of the
-// web users do not stop the collector). The block for the optional user
-// gamewe_admin reads mysql.user, which the collector user may not: its
-// failure is not reported.
+// web users do not stop the collector). A user that may not grant at all
+// (MariaDB without GRANT OPTION, PostgreSQL not the owner) gets one warning
+// and the rest is skipped. The block for the optional user gamewe_admin
+// reads mysql.user, which the collector user may not: its failure is not
+// reported.
 func RunGrants(ctx context.Context, q querier, dialect string) []string {
 	var warn []string
 	for _, st := range schema.Split(dialect, schema.Grants(dialect)) {
@@ -666,10 +668,15 @@ func RunGrants(ctx context.Context, q querier, dialect string) []string {
 		} else {
 			_, err = q.ExecContext(ctx, st.SQL)
 		}
-		if err != nil && !strings.Contains(st.SQL, "mysql.user") {
-			first := strings.SplitN(st.SQL, "\n", 2)[0]
-			warn = append(warn, fmt.Sprintf("%.100s: %v", first, err))
+		if err == nil || strings.Contains(st.SQL, "mysql.user") {
+			continue
 		}
+		if isDenied(err) {
+			return append(warn, fmt.Sprintf("the database user may not grant rights (MariaDB: no GRANT OPTION; PostgreSQL: not the owner of the tables), "+
+				"the web users' table rights were not changed (%v)", err))
+		}
+		first := strings.SplitN(st.SQL, "\n", 2)[0]
+		warn = append(warn, fmt.Sprintf("%.100s: %v", first, err))
 	}
 	return warn
 }

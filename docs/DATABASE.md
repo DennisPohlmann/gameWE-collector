@@ -122,13 +122,20 @@ What it does:
   Ctrl-C) is simply run again. Two runs at the same time are serialized by a
   database lock (`GET_LOCK`, `pg_advisory_lock`); the second waits, then
   finds nothing to do.
-- Before the first change it checks the rights of the database user. Missing
-  ones stop it with the statement to run as a database admin, e.g.
+- Before the first change it checks the rights of the database user by
+  trying them (MariaDB: it creates and alters its version table;
+  PostgreSQL: CREATE on the schema and the owner of the `hlstats_*` tables).
+  A user with `ALL PRIVILEGES ON gamewe.*`, or on PostgreSQL the owner of the
+  database and of its tables, passes without a message. MariaDB has no
+  database owner: only the user's GRANTs count (`SHOW GRANTS;`). Missing
+  rights stop it with the statement to run as a database admin, e.g.
   `GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX ON `gamewe`.* TO 'gamewe'@'%' WITH GRANT OPTION;`
   (databases created with the init script before this version have only
   SELECT, INSERT, UPDATE, DELETE).
-- Afterwards it grants the web users their table rights again; a failure
-  there is a warning (the schema is up to date anyway), fix it with
+- Afterwards it grants the web users their table rights again. That needs
+  `WITH GRANT OPTION` on MariaDB (PostgreSQL: the table owner may grant); a
+  user without it gets one warning and the step is skipped (the schema is up
+  to date anyway). Grant them then as a database admin:
   `gamewe db grants -print | mariadb -u root -p gamewe`.
 
 | Version | Name | What |

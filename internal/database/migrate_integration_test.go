@@ -418,3 +418,52 @@ func TestMigrateLock(t *testing.T) {
 	}
 	unlock()
 }
+
+// A user with all rights on its database gets no rights error: MariaDB
+// ALL PRIVILEGES ON db.* (without GRANT OPTION: the web users' rights are
+// skipped with one warning), PostgreSQL the owner of the database and of
+// its tables (the owner may grant: no warning).
+func TestMigrateOwnerRights(t *testing.T) {
+	migrateTest(t)
+	ctx := context.Background()
+	name := "mig_owner"
+	db := newTestDB(t, name, true)
+	admin := adminIn(t, name)
+	if db.Postgres() {
+		server := adminIn(t, "")
+		if _, err := server.Exec(`ALTER DATABASE ` + name + ` OWNER TO gamewe`); err != nil {
+			t.Fatal(err)
+		}
+		// The old install, run as the owner: the tables belong to gamewe.
+		owner := openAs(t, name, "gamewe")
+		for _, s := range []string{schema.Schema(db.Type), schema.Seed(db.Type)} {
+			if err := RunTestScript(ctx, owner, s); err != nil {
+				t.Fatal(err)
+			}
+		}
+	} else {
+		if _, err := admin.Exec("GRANT ALL PRIVILEGES ON `" + name + "`.* TO 'gamewe'@'%'"); err != nil {
+			t.Fatal(err)
+		}
+		for _, f := range []string{"internal/database/testdata/hlstatsx-old.sql", "internal/database/testdata/hlstatsx-old-data.sql"} {
+			if err := LoadTestFile(ctx, admin, f); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	db = openAs(t, name, "gamewe")
+	var out strings.Builder
+	res, err := Migrate(ctx, db, MigrateOptions{Out: &out})
+	t.Logf("migrate output:\n%s", out.String())
+	if err != nil {
+		t.Fatalf("all rights, but: %v", err)
+	}
+	switch {
+	case db.Postgres() && len(res.Warnings) != 0:
+		t.Errorf("owner: warnings %v", res.Warnings)
+	case !db.Postgres() && (len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], "may not grant rights")):
+		t.Errorf("ALL without GRANT OPTION: warnings %v (want one)", res.Warnings)
+	}
+	t.Logf("warnings: %v", res.Warnings)
+	upToDate(t, db)
+}
