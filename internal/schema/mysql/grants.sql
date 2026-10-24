@@ -10,8 +10,9 @@
 --
 -- gamewe_web (public web pages): SELECT on every table, except
 -- hlstats_Users (web admin logins), hlstats_Events_Rcon (RCON commands
--- and passwords) and hlstats_Events_Chat (chat, personal data), and without hlstats_Servers.rcon_password and
--- hlstats_Events_Connects.ipAddress (column rights). If a table is added to
+-- and passwords) and hlstats_Events_Chat (chat, personal data), and without hlstats_Servers.rcon_password,
+-- log_secret and log_secret_changed and hlstats_Events_Connects.ipAddress
+-- (column rights). If a table is added to
 -- the schema, grant it here too (a test in internal/database checks this file).
 -- MariaDB keeps table rights when a database is dropped: on a database
 -- created again under the same name the web user would get old rights back.

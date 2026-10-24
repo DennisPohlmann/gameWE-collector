@@ -154,7 +154,7 @@ func TestMonitorPolls(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		monitor(ctx, func() stats.Server { return srv }, cfg, func(st Status, _ time.Time) { got <- st },
+		monitor(ctx, func() stats.Server { return srv }, cfg, nil, func(st Status, _ time.Time) { got <- st },
 			func() time.Duration { return 2 * time.Second }, log)
 		close(done)
 	}()
@@ -186,7 +186,7 @@ func TestMonitorLogInterval(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		monitor(ctx, func() stats.Server { return srv }, cfg, func(Status, time.Time) {},
+		monitor(ctx, func() stats.Server { return srv }, cfg, nil, func(Status, time.Time) {},
 			func() time.Duration { return 2 * time.Second }, log)
 		close(done)
 	}()
@@ -248,7 +248,7 @@ func TestMonitorGoldSrc(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		monitor(ctx, func() stats.Server { return srv }, MonitorConfig{Status: true, StatusInterval: 50 * time.Millisecond, LogAddress: true, ListenPort: 41337},
+		monitor(ctx, func() stats.Server { return srv }, MonitorConfig{Status: true, StatusInterval: 50 * time.Millisecond, LogAddress: true, ListenPort: 41337}, nil,
 			func(st Status, _ time.Time) { got <- st }, func() time.Duration { return time.Second }, slog.New(slog.NewTextHandler(io.Discard, nil)))
 		close(done)
 	}()

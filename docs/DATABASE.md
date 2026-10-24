@@ -50,7 +50,7 @@ host.
 | User | Rights | For |
 |------|--------|-----|
 | `gamewe` | SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX on the database, WITH GRANT OPTION | the collector, and `gamewe db migrate` |
-| `gamewe_web` | SELECT on all tables except `hlstats_Users`, `hlstats_Events_Rcon` and `hlstats_Events_Chat`; on `hlstats_Servers` not on `rcon_password`, on `hlstats_Events_Connects` not on `ipAddress` | the public web pages |
+| `gamewe_web` | SELECT on all tables except `hlstats_Users`, `hlstats_Events_Rcon` and `hlstats_Events_Chat`; on `hlstats_Servers` not on `rcon_password`, `log_secret`, `log_secret_changed`, on `hlstats_Events_Connects` not on `ipAddress` | the public web pages |
 | `gamewe_web_admin` | SELECT on all tables (including `rcon_password`, to manage servers); INSERT, UPDATE, DELETE on `hlstats_Options`, `_Games`, `_Servers`, `_Clans`, `_Weapons`, `_Actions`, `_Teams`, `_Roles`, `_Awards`, `_Definition_Ranks_Ribbons`, `_Users`; on `hlstats_Players` only UPDATE of `skill`, `hideranking`, `clan`; INSERT on `hlstats_gamewe_jobs` | the web admin pages |
 
 The collector itself only reads and writes rows (`DELETE` is needed for
@@ -143,6 +143,7 @@ What it does:
 | 1 | `baseline` | a new database: all tables and the reference data; an existing one is recorded as it is |
 | 2 | `gamewe-0.2.1` | tables `hlstats_Events_Latency`, `hlstats_gamewe_jobs`; columns `hlstats_Servers.rcon_password`, `hlstats_Games.realgame`, `server_id` on the nine event tables, kill positions on `hlstats_Events_Frags`; indexes `server_id` on the event tables, `map`, `killer_time`, `victim_time` on Frags (they replace `killerId`, `victimId`), `date` and `award_id` on `hlstats_Awards_History`; missing reference data |
 | 3 | `awards-indexes` | indexes for the awards page: `time_player` on `hlstats_Events_Latency` (timestamp_id, playerId, ping), `time_action` on `hlstats_Events_PlayerActions` (timestamp_id, actionId, playerId) |
+| 4 | `log-secret` | columns `hlstats_Servers.log_secret` (varchar(64), `''` = none) and `log_secret_changed` (Unix time the secret was set) for `features.log_secret`; `gamewe_web` cannot read them |
 
 The SQL files of older packages (`/opt/gamewe/collector/doc/schema/hlstatsx.sql`,
 `init/01_schema.sql`, `02_seed.sql`, `03_grants.sql` and the PostgreSQL
@@ -168,10 +169,17 @@ copy the data into it, as described in
 [MIGRATION-HLSTATSX.md](MIGRATION-HLSTATSX.md) and
 [MIGRATION-GAMEME.md](MIGRATION-GAMEME.md).
 
-The read-only web user `gamewe_web` cannot read `rcon_password` (column rights,
-`grants.sql`): `SELECT *` on `hlstats_Servers` fails for it,
-so the public web pages must name the columns. The collector and
-`gamewe_web_admin` can read the passwords.
+The read-only web user `gamewe_web` cannot read `rcon_password`, `log_secret`
+and `log_secret_changed` (column rights, `grants.sql`): `SELECT *` on
+`hlstats_Servers` fails for it, so the public web pages must name the columns.
+The collector and `gamewe_web_admin` can read (and the web admin write) them.
+
+`log_secret` is the server's `sv_logsecret` (a number 1..2147483647, `''` =
+packets not checked), `log_secret_changed` the Unix time it was set (by the
+collector with `features.log_secret: auto`, by `gamewe server set
+-logsecret`; 0 = unknown, then `auto` sets a new one right away). Whoever
+changes `log_secret` should set `log_secret_changed` to the current time,
+otherwise `auto` replaces the value at its next check.
 
 ## PostgreSQL
 
@@ -201,7 +209,7 @@ rights:
 | Role | Rights |
 |------|--------|
 | `gamewe` | owner of the tables; CREATE on the schema `public` |
-| `gamewe_web` | SELECT on all tables except `hlstats_Users`, `hlstats_Events_Rcon` and `hlstats_Events_Chat`; on `hlstats_Servers` not on `rcon_password`, on `hlstats_Events_Connects` not on `ipAddress` (column rights: name the columns, `SELECT *` fails) |
+| `gamewe_web` | SELECT on all tables except `hlstats_Users`, `hlstats_Events_Rcon` and `hlstats_Events_Chat`; on `hlstats_Servers` not on `rcon_password`, `log_secret`, `log_secret_changed`, on `hlstats_Events_Connects` not on `ipAddress` (column rights: name the columns, `SELECT *` fails) |
 | `gamewe_web_admin` | SELECT on all tables and USAGE on all sequences; INSERT, UPDATE, DELETE on the same tables as on MariaDB; on `hlstats_Players` only UPDATE of `skill`, `hideranking`, `clan` |
 
 A database created with the init scripts before this version belongs to

@@ -262,7 +262,7 @@ database users:
 | User | For | Rights |
 |------|-----|--------|
 | `gamewe` | the collector (`config.yaml`) and `gamewe db migrate` | read and write rows; create and alter tables (never drop); grant the web users their table rights |
-| `gamewe_web` | the public web pages | SELECT, without users, RCON events, chat, `hlstats_Servers.rcon_password`, `hlstats_Events_Connects.ipAddress` |
+| `gamewe_web` | the public web pages | SELECT, without users, RCON events, chat, `hlstats_Servers.rcon_password` and `log_secret`, `hlstats_Events_Connects.ipAddress` |
 | `gamewe_web_admin` | the web admin pages | SELECT on all; writes settings, games, servers, definitions, admin users; queues ranking resets |
 
 ### A new database
@@ -361,7 +361,11 @@ rcon_password "change-me"            // the same as in hlstats_Servers
 
 With the RCON password the collector also registers itself (`logaddress_add`,
 `log on`) when a server restarted without it, every minute
-(`features.log_address.interval`). Install the
+(`features.log_address.interval`), and gives the server a log secret
+(`sv_logsecret`, `features.log_secret: auto`): nothing to put in `server.cfg`
+for it. With `features.log_secret: true` add `sv_logsecret <n>` (a number
+1..2147483647) to `server.cfg` and store the same number with
+`gamewe server set <id> -logsecret <n>` (CONFIG.md, "Log secret"). Install the
 [gameWE SourceMod plugin](https://github.com/DennisPohlmann/gameWE-plugin-sourcemod)
 for the in-game replies (`!rank`, `!top10`, menus) and the extra statistics
 (weapon accuracy, positions, roles).
@@ -409,6 +413,16 @@ docker compose up -d
 
 `config.yaml` is never in the archive, so it is kept.
 
+**Log secret (schema version 4):** `features.log_secret` is `auto` by default.
+After the update the collector sets `sv_logsecret` on every Source server with
+an `rcon_password` (within a `features.log_address.interval`), stores it in
+`hlstats_Servers.log_secret` and from then on accepts only log packets with
+it; it renews the secret every 24 hours. Servers without RCON and GoldSrc
+servers stay unchecked (`gamewe check` lists them). A `sv_logsecret` in a
+`server.cfg` is overwritten at runtime; remove it there. To keep the old
+behaviour, set `features.log_secret: false` in `config.yaml` before starting
+the new version.
+
 ## F. Uninstall
 
 ```bash
@@ -435,6 +449,7 @@ drop it (`DROP DATABASE gamewe;` and the three users).
 | `hlstats_Servers serverId N is ignored: ...` | The row's address is not an IP, the port is invalid, or its game is not in `hlstats_Games`. Fix it in the web admin. |
 | No `game server active` in the log | Check `logaddress_add` and the firewall (UDP port). |
 | `rejected log packet ... not in hlstats_Servers` | Register the shown source `IP:port` in the web admin. With `known server IP but a port ...` another game server on the same host sends logs: add it with its own port (logs are never attributed by IP alone). |
+| `rejected log packet ... missing or wrong log secret` | `features.log_secret: true` and the game server sends no or another `sv_logsecret` than `hlstats_Servers.log_secret`: set the same number in `server.cfg` and with `gamewe server set <id> -logsecret <n>`, or use `auto`. With `auto`, `log packets without the right log secret dropped` means the server still had its secret (forged packets) or did not answer over RCON in time. |
 | Commands get no answer | `rcon_password` is empty or wrong (`rcon authentication failed`), the plugin is missing, or the RCON port is blocked (TCP). `gamewe check` shows servers without a password. |
 | Service does not start, `status=31/SYS` | A hardening option in the unit blocks something on your system. See `journalctl -u gamewe-collector` and relax `SystemCallFilter` with `systemctl edit gamewe-collector`. |
 

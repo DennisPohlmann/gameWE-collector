@@ -4,6 +4,7 @@ package logparse
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -20,6 +21,12 @@ func TestParsePacket(t *testing.T) {
 		{ff + "S999L 10/22/2026 - 12:00:00: x", "12345", "", ErrBadSecret},
 		{ff + "RL 10/22/2026 - 12:00:00: x", "12345", "", ErrBadSecret},
 		{"L 10/22/2026 - 12:00:00: x", "", ts + "x", nil},
+		{ff + "S12345L 10/22/2026 - 12:00:00: x", "", ts + "x", nil},        // no check: the secret is cut off
+		{ff + "S1234L 10/22/2026 - 12:00:00: x", "12345", "", ErrBadSecret}, // prefix of the secret
+		{ff + "S123456L 10/22/2026 - 12:00:00: x", "12345", "", ErrBadSecret},
+		{ff + "SL 10/22/2026 - 12:00:00: x", "12345", "", ErrBadSecret},
+		{ff + "log L 10/22/2026 - 12:00:00: x", "12345", "", ErrBadSecret}, // GoldSrc without secret
+		{ff + "S12345 no log line", "12345", "", ErrNotLog},
 		{ff + "TSource Engine Query", "", "", ErrNotLog},
 	}
 	for _, c := range cases {
@@ -27,6 +34,13 @@ func TestParsePacket(t *testing.T) {
 		if err != c.err || got != c.want {
 			t.Errorf("ParsePacket(%q) = %q, %v; want %q, %v", c.pkt, got, err, c.want, c.err)
 		}
+	}
+	line, sec, has, err := SplitPacket([]byte(ff + "S42L 10/22/2026 - 12:00:00: x\n\x00"))
+	if err != nil || line != ts+"x" || sec != "42" || !has {
+		t.Errorf("SplitPacket = %q %q %v %v", line, sec, has, err)
+	}
+	if _, sec, has, err = SplitPacket([]byte(ff + "RL 10/22/2026 - 12:00:00: x")); err != nil || has || sec != "" {
+		t.Errorf("SplitPacket R = %q %v %v", sec, has, err)
 	}
 }
 
@@ -115,5 +129,18 @@ func TestPlayerKey(t *testing.T) {
 	}
 	if (Player{SteamID: "STEAM_ID_PENDING", UserID: 2}).Trackable() {
 		t.Error("pending id must not be tracked")
+	}
+}
+
+func TestCheckSecret(t *testing.T) {
+	for _, ok := range []string{"", "1", "42", "2147483647"} {
+		if err := CheckSecret(ok); err != nil {
+			t.Errorf("CheckSecret(%q) = %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"0", "007", "2147483648", "-5", "+5", "12a", "1 2", "1;quit", "\"1\"", "１２", strings.Repeat("9", 65)} {
+		if err := CheckSecret(bad); err == nil {
+			t.Errorf("CheckSecret(%q) accepted", bad)
+		}
 	}
 }

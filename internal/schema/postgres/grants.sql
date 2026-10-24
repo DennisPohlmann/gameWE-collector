@@ -15,8 +15,8 @@ GRANT SELECT ON ALL TABLES IN SCHEMA public TO gamewe_web_admin;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO gamewe_web_admin;
 
 -- gamewe_web (public web pages): SELECT on every table, except hlstats_Users
--- and hlstats_Events_Rcon, and without hlstats_Servers.rcon_password and
--- hlstats_Events_Connects.ipAddress.
+-- and hlstats_Events_Rcon, and without hlstats_Servers.rcon_password,
+-- log_secret and log_secret_changed and hlstats_Events_Connects.ipAddress.
 GRANT SELECT ON hlstats_Actions TO gamewe_web;
 GRANT SELECT ON hlstats_Awards TO gamewe_web;
 GRANT SELECT ON hlstats_Awards_History TO gamewe_web;

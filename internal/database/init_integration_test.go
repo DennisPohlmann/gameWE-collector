@@ -117,7 +117,7 @@ func TestInitWebAdminInsertsWithoutID(t *testing.T) {
 }
 
 // gamewe_web reads everything except hlstats_Servers.rcon_password and
-// writes nothing.
+// log_secret and writes nothing.
 func TestInitWebGrants(t *testing.T) {
 	eachType(t, func(t *testing.T, typ string) {
 		db := initDB(t, typ, "gamewe_web", os.Getenv("GAMEWE_TEST_WEB_PASSWORD"))
@@ -137,6 +137,7 @@ func TestInitWebGrants(t *testing.T) {
 			t.Error("gamewe_web can read hlstats_Servers.rcon_password")
 		}
 		for _, q := range []string{`SELECT username FROM hlstats_Users`, `SELECT command FROM hlstats_Events_Rcon`,
+			`SELECT log_secret FROM hlstats_Servers`, `SELECT log_secret_changed FROM hlstats_Servers`,
 			`SELECT ipAddress FROM hlstats_Events_Connects`, `SELECT * FROM hlstats_Events_Connects`, `SELECT message FROM hlstats_Events_Chat`} {
 			if _, err := db.ExecContext(ctx, q); err == nil {
 				t.Errorf("gamewe_web may: %s", q)

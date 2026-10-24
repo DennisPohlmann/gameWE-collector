@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"sort"
 	"sync"
+	"time"
 
 	"gamewe-collector/internal/games"
 	"gamewe-collector/internal/settings"
@@ -20,6 +21,7 @@ type memStore struct {
 	mu           sync.Mutex
 	cfg          settings.Settings
 	servers      map[string]stats.Server
+	secretErr    error                    // SetLogSecret fails with it
 	players      map[[2]string]*memPlayer // game, unique id
 	byID         map[int64]*memPlayer
 	joins        []memEvent
@@ -96,6 +98,21 @@ func (m *memStore) Servers(context.Context) ([]stats.Server, error) {
 		out = append(out, s)
 	}
 	return out, nil
+}
+
+func (m *memStore) SetLogSecret(_ context.Context, serverID int64, secret string, changed time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.secretErr != nil {
+		return m.secretErr
+	}
+	for k, s := range m.servers {
+		if s.ID == serverID {
+			s.LogSecret, s.LogSecretChanged = secret, changed
+			m.servers[k] = s
+		}
+	}
+	return nil
 }
 
 func (m *memStore) Options(context.Context) (map[string]string, error) {

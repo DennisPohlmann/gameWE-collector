@@ -82,9 +82,16 @@ the audit summary of `security-privacy-audit`.
 - Every SQL statement uses placeholders (`?`, rebound for Postgres in
   `internal/database/rebind.go`). Table/column names in `fmt.Sprintf` SQL
   only from constants or a fixed allowlist, never from log or RCON data.
-- Log packets are accepted only from addresses in `hlstats_Servers`
-  (no log secret support): treat every field of a log line (player names,
-  chat, weapons, map, team, SteamIDs) as attacker-controlled input.
+- Log packets are accepted only from addresses in `hlstats_Servers` and,
+  with `features.log_secret` true / auto (default auto), only with the
+  server's `hlstats_Servers.log_secret` (`internal/collector/logsecret.go`;
+  servers without a secret, without RCON or GoldSrc are not checked). The
+  secret travels in plain text and only stops spoofed senders: treat every
+  field of a log line (player names, chat, weapons, map, team, SteamIDs) as
+  attacker-controlled input. Never log a log secret or an RCON answer that
+  contains one; `log_secret` is hidden from `gamewe_web` like
+  `rcon_password`; the quarantine for packets without the secret is bounded
+  (lines, bytes, time).
 - Text going back to a game server over RCON passes `Sanitize`
   (`internal/collector/commands.go`) or `quoted` (`rawmessage.go`):
   no `"`, `;`, control characters, bounded length.
@@ -94,7 +101,8 @@ the audit summary of `security-privacy-audit`.
 - Never log passwords, RCON passwords, the DB DSN or full config.
 - DB users: the collector user writes, `gamewe_web` gets SELECT only and
   no `hlstats_Users`, `hlstats_Events_Rcon`, `hlstats_Events_Chat`,
-  `hlstats_Servers.rcon_password`, `hlstats_Events_Connects.ipAddress`
+  `hlstats_Servers.rcon_password`, `log_secret`, `log_secret_changed`,
+  `hlstats_Events_Connects.ipAddress`
   (`internal/schema/mysql/grants.sql` and the generated Postgres file). A
   new table needs a grant decision there (a test checks this).
 - The schema is compiled in (`internal/schema`, go:embed); the collector

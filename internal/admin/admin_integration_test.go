@@ -140,14 +140,33 @@ func TestAdmin(t *testing.T) {
 	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Servers WHERE address = '198.51.100.99' AND game = 'zz_tpl' AND rcon_password = 's3cret' AND name = 'Test'`); n != 1 {
 		t.Error("server set changed the wrong fields")
 	}
+	secret := "1234567"
+	if err := a.SetServer(ctx, "198.51.100.99:27015", ServerFields{LogSecret: &secret}); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Servers WHERE address = '198.51.100.99' AND log_secret = '1234567' AND log_secret_changed > 0 AND rcon_password = 's3cret'`); n != 1 {
+		t.Error("server set -logsecret not stored")
+	}
+	for _, bad := range []string{"0", "12 3", "1;quit", "abc", "99999999999"} {
+		if err := a.SetServer(ctx, "198.51.100.99:27015", ServerFields{LogSecret: &bad}); err == nil {
+			t.Errorf("log secret %q accepted", bad)
+		}
+	}
 	if err := a.DeleteGame(ctx, "zz_tpl"); err == nil {
 		t.Error("game with a server deleted")
 	}
 	if err := a.ListServers(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(out.String(), "s3cret") {
-		t.Error("RCON password printed")
+	if strings.Contains(out.String(), "s3cret") || strings.Contains(out.String(), "1234567") {
+		t.Error("RCON password or log secret printed")
+	}
+	empty := ""
+	if err := a.SetServer(ctx, "198.51.100.99:27015", ServerFields{LogSecret: &empty}); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Servers WHERE address = '198.51.100.99' AND log_secret = ''`); n != 1 {
+		t.Error("server set -logsecret '' did not remove the secret")
 	}
 	if err := a.RemoveServer(ctx, "198.51.100.99:27015"); err != nil {
 		t.Fatal(err)

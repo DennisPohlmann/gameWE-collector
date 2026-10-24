@@ -49,6 +49,8 @@ config file (changing them needs a restart); the old key `gamewe_daily_awards` o
 | `rcon_status.interval` | `10s` | how often, a duration (`10s`, `1m`) or seconds; at least `2s`. While a server does not answer, the wait doubles up to one minute. |
 | `log_address.enabled` | `true` | RCON `logaddress_list` to each server every `interval`; if the collector's address (`listen.public_address` or automatic) is missing, `logaddress_add <ip:port>` and `log on`, logged once. Also `log on` if the server stopped logging. Addresses of other tools are left alone. The old form `log_address: true` / `false` still works and means `enabled`. |
 | `log_address.interval` | `1m` | how often, a duration (`30s`, `5m`) or seconds; at least `10s`. Only `logaddress_list` is sent each time (`logaddress_add` only when the address is missing), so a game server that restarted without the collector in its `server.cfg` sends logs again within this time. A shorter interval loses fewer log lines after such a restart, a longer one sends fewer RCON commands. |
+| `log_secret.enabled` | `auto` | the log secret (`sv_logsecret`) in the log packets, see "Log secret" below. `false`: not checked (a secret in the packet is cut off). `true`: a server with `hlstats_Servers.log_secret` set must send exactly that secret, other packets are rejected; you set `sv_logsecret` on the game server yourself. `auto`: as `true`, and the collector sets and rotates `sv_logsecret` itself over RCON (Source servers with an `rcon_password`). The short form `log_secret: auto` (or `true` / `false`) works too. |
+| `log_secret.interval` | `24h` | `auto`: a new secret this often, a duration (`12h`, `30m`) or seconds; at least `1m` |
 | `daily_awards.enabled` | `true` | decide the daily awards of the previous day (DB-SEMANTICS.md) every day at `time`; `gamewe awards -date YYYY-MM-DD` works also when it is off. The old form `daily_awards: true` / `false` still works and means `enabled`. |
 | `daily_awards.timezone` | `UTC` | IANA time zone (`UTC`, `Europe/Berlin`, ...) of `time` and of the day: the awards of a day count from 00:00 to 24:00 in this zone (23 or 25 hours on daylight saving days) |
 | `daily_awards.time` | `"00:00"` | when the previous day is decided, `HH:MM` in `timezone` (on the day summer time starts, a time that does not exist runs an hour later) |
@@ -164,8 +166,67 @@ another server on that host. Such packets are rejected with `known server IP
 but a port that is not in hlstats_Servers`; add the server in the web admin.
 
 Anything else is rejected and logged: the first time per source, then every
-1000th time. There are no log secrets (`sv_logsecret`). Use a firewall on the
-UDP port to keep strangers from spoofing packets.
+1000th time. Use a firewall on the UDP port to keep strangers from spoofing
+packets; the log secret (next section) also stops packets with a forged
+source address.
+
+### Log secret
+
+With `sv_logsecret <n>` a Source game server sends its log packets as
+`0x53` (`S<n>L ...`) instead of `0x52` (`RL ...`), see INTERFACE.md. With
+`features.log_secret.enabled` `true` or `auto` the collector compares that
+secret with `hlstats_Servers.log_secret` of the server the packet's address
+belongs to (constant time; the secret is never logged):
+
+- **No secret stored** (`log_secret` empty): the server's packets are not
+  checked. Logged once, and `gamewe check` warns (`log_secret enabled, server
+  X has no secret`); in `auto` only for servers without `rcon_password`
+  (the others get one within a `log_address.interval`).
+- **GoldSrc servers** (cstrike, valve, dod, tfc, ns, ... by the game's engine,
+  GAMES.md) are never checked and never sent `sv_logsecret`; logged once as a
+  note. (Assumption: HLDS has no `sv_logsecret`; the collector also stops
+  managing a Source server whose answer to `sv_logsecret` is not a cvar value.)
+- **`true`**: a packet without the secret, or with another one, is rejected
+  (`missing or wrong log secret`, logged the first time per source and
+  reason, then every 1000th time). Set the same value in the game server's
+  `server.cfg` (`sv_logsecret <n>`) and with `gamewe server set -logsecret <n>`
+  or in the web admin. After a change in `hlstats_Servers` (read every
+  minute) the previous secret is still accepted for two `log_address`
+  intervals, at least two minutes.
+- **`auto`** (default): as `true`; in addition, every `log_address.interval`
+  the collector asks each Source server with an `rcon_password` for
+  `sv_logsecret`:
+  - no secret stored yet, or the last one older than `log_secret.interval`:
+    a new random number (`crypto/rand`) is first accepted, then set with
+    `sv_logsecret <n>` and read back, and only then stored in
+    `log_secret` and `log_secret_changed` (Unix time). If RCON or the database
+    fails, the game server gets the old value back and nothing is stored. The
+    previous secret stays valid for the grace time above, so packets on the
+    way are not lost.
+  - the game server has another value (it restarted, or someone changed it):
+    the stored one is set again.
+  - packets without the right secret are not dropped at once but held in a
+    small quarantine per server (at most 2000 lines and 1 MiB, at most 30
+    seconds; valid lines that arrive meanwhile wait behind them, so the order
+    stays). The collector asks the server for `sv_logsecret` right away (at
+    most every 10 seconds per server). If the server has no secret or another
+    one, it restarted: the held lines are processed in order, the secret is
+    set again, and for 5 seconds packets without it are accepted (still on the
+    way). If the server has the expected secret, the packets were forged:
+    they are dropped, valid lines go on, and a warning is logged (at most once a
+    minute per server, with the number of lines). Without an answer
+    (no RCON, timeout) the quarantine runs out after 30 seconds the same way.
+    A full quarantine drops further packets without the secret.
+  - A server without `rcon_password` is checked as with `true` when it has a
+    secret (set by hand), and not at all otherwise.
+  - Clearing `log_secret` (`gamewe server set -logsecret ""`) makes the
+    collector set a new one; to stop checking a server, use `false`.
+
+The secret travels in plain text in every UDP packet: it protects against
+packets with a forged sender address from elsewhere, not against someone who
+can read the traffic between game server and collector. Source reads
+`sv_logsecret` as a number (a value that is not a number, or 0, sends no
+secret), so secrets are numbers from 1 to 2147483647.
 
 Every server has its own worker with its own queue and player state, so lines of
 one server are processed in order, servers are processed in parallel, and the

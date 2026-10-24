@@ -16,10 +16,12 @@ import (
 	"strconv"
 	"strings"
 	"text/tabwriter"
+	"time"
 	"unicode/utf8"
 
 	"gamewe-collector/internal/database"
 	"gamewe-collector/internal/games"
+	"gamewe-collector/internal/logparse"
 	"gamewe-collector/internal/settings"
 )
 
@@ -385,6 +387,9 @@ func (a *Admin) DeleteGame(ctx context.Context, code string) error {
 // ServerFields are the values of `server add` / `server set`; nil = keep.
 type ServerFields struct {
 	Game, Name, RconPassword, PublicAddress *string
+	// LogSecret is hlstats_Servers.log_secret (sv_logsecret, "" = none);
+	// shown only as changed.
+	LogSecret *string
 }
 
 type server struct {
@@ -392,11 +397,12 @@ type server struct {
 	address                            string
 	port                               int
 	name, game, rcon, public, realgame string
+	secret                             string
 }
 
 func (a *Admin) server(ctx context.Context, ref string) (server, error) {
 	var s server
-	q := `SELECT s.serverId, s.address, s.port, s.name, s.game, s.rcon_password, s.publicaddress, COALESCE(g.realgame, '')
+	q := `SELECT s.serverId, s.address, s.port, s.name, s.game, s.rcon_password, s.publicaddress, COALESCE(g.realgame, ''), s.log_secret
 		FROM hlstats_Servers s LEFT JOIN hlstats_Games g ON g.code = s.game WHERE `
 	var r *sql.Row
 	if id, err := strconv.ParseInt(ref, 10, 64); err == nil {
@@ -406,33 +412,35 @@ func (a *Admin) server(ctx context.Context, ref string) (server, error) {
 	} else {
 		return s, fmt.Errorf("server %q: give the serverId or ip:port", ref)
 	}
-	err := r.Scan(&s.id, &s.address, &s.port, &s.name, &s.game, &s.rcon, &s.public, &s.realgame)
+	err := r.Scan(&s.id, &s.address, &s.port, &s.name, &s.game, &s.rcon, &s.public, &s.realgame, &s.secret)
 	if errors.Is(err, sql.ErrNoRows) {
 		return s, fmt.Errorf("server %s: %w", ref, ErrNotFound)
 	}
 	return s, err
 }
 
-// ListServers prints the game servers; the RCON password only as set / not set.
+// ListServers prints the game servers; the RCON password and the log
+// secret only as set / not set.
 func (a *Admin) ListServers(ctx context.Context) error {
-	rows, err := a.q(ctx, `SELECT s.serverId, s.address, s.port, s.game, COALESCE(g.realgame, ''), s.rcon_password <> '', s.name
+	rows, err := a.q(ctx, `SELECT s.serverId, s.address, s.port, s.game, COALESCE(g.realgame, ''), s.rcon_password <> '', s.log_secret <> '', s.name
 		FROM hlstats_Servers s LEFT JOIN hlstats_Games g ON g.code = s.game ORDER BY s.serverId`)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	w := tabwriter.NewWriter(a.Out, 0, 2, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\tADDRESS\tGAME\tENGINE\tRCON\tNAME")
+	fmt.Fprintln(w, "ID\tADDRESS\tGAME\tENGINE\tRCON\tLOGSECRET\tNAME")
+	setStr := map[bool]string{true: "set", false: "-"}
 	for rows.Next() {
 		var id int64
 		var addr, game, realgame, name string
 		var port int
-		var rcon bool
-		if err := rows.Scan(&id, &addr, &port, &game, &realgame, &rcon, &name); err != nil {
+		var rcon, secret bool
+		if err := rows.Scan(&id, &addr, &port, &game, &realgame, &rcon, &secret, &name); err != nil {
 			return err
 		}
 		_, engine, _ := games.Resolve(realgame, game)
-		fmt.Fprintf(w, "%d\t%s:%d\t%s\t%s\t%s\t%s\n", id, addr, port, game, engine, map[bool]string{true: "set", false: "-"}[rcon], name)
+		fmt.Fprintf(w, "%d\t%s:%d\t%s\t%s\t%s\t%s\t%s\n", id, addr, port, game, engine, setStr[rcon], setStr[secret], name)
 	}
 	if err := rows.Err(); err != nil {
 		return err
@@ -451,6 +459,11 @@ func (a *Admin) checkFields(ctx context.Context, f ServerFields) error {
 	}
 	if f.RconPassword != nil && (len(*f.RconPassword) > 128 || strings.ContainsAny(*f.RconPassword, "\"\r\n\x00")) {
 		return errors.New("rcon password: at most 128 characters, no quotes or line breaks")
+	}
+	if f.LogSecret != nil {
+		if err := logparse.CheckSecret(*f.LogSecret); err != nil {
+			return err
+		}
 	}
 	if f.PublicAddress != nil && utf8.RuneCountInString(*f.PublicAddress) > 255 {
 		return errors.New("public address: at most 255 characters")
@@ -487,12 +500,18 @@ func (a *Admin) AddServer(ctx context.Context, addr string, f ServerFields) erro
 		return *p
 	}
 	if !a.DryRun {
-		if _, err := a.exec(ctx, `INSERT INTO hlstats_Servers (address, port, name, game, rcon_password, publicaddress) VALUES (?, ?, ?, ?, ?, ?)`,
-			ap.Addr().String(), int(ap.Port()), str(f.Name, ""), *f.Game, str(f.RconPassword, ""), str(f.PublicAddress, ap.String())); err != nil {
+		var changed int64
+		if str(f.LogSecret, "") != "" {
+			changed = time.Now().Unix()
+		}
+		if _, err := a.exec(ctx, `INSERT INTO hlstats_Servers (address, port, name, game, rcon_password, publicaddress, log_secret, log_secret_changed) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			ap.Addr().String(), int(ap.Port()), str(f.Name, ""), *f.Game, str(f.RconPassword, ""), str(f.PublicAddress, ap.String()),
+			str(f.LogSecret, ""), changed); err != nil {
 			return err
 		}
 	}
-	a.say("server %s added: game %s, rcon password %s", ap, *f.Game, map[bool]string{true: "set", false: "not set"}[str(f.RconPassword, "") != ""])
+	isSet := map[bool]string{true: "set", false: "not set"}
+	a.say("server %s added: game %s, rcon password %s, log secret %s", ap, *f.Game, isSet[str(f.RconPassword, "") != ""], isSet[str(f.LogSecret, "") != ""])
 	return nil
 }
 
@@ -524,6 +543,14 @@ func (a *Admin) SetServer(ctx context.Context, ref string, f ServerFields) error
 	add("name", "name", f.Name, s.name, false)
 	add("rcon_password", "rcon password", f.RconPassword, s.rcon, true)
 	add("publicaddress", "public address", f.PublicAddress, s.public, false)
+	if f.LogSecret != nil && *f.LogSecret != s.secret {
+		add("log_secret", "log secret", f.LogSecret, s.secret, true)
+		sets = append(sets, "log_secret_changed = ?")
+		args = append(args, time.Now().Unix())
+		if *f.LogSecret == "" {
+			changed[len(changed)-1] = "log secret removed"
+		}
+	}
 	if len(sets) == 0 {
 		a.say("server %d (%s:%d) unchanged", s.id, s.address, s.port)
 		return nil

@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"crypto/subtle"
 	"errors"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -19,31 +20,46 @@ var (
 )
 
 // ParsePacket extracts the log line from a UDP log packet. Packets start
-// with 0xFFFFFFFF followed by 'R' (no secret) or 'S'<secret> (sv_logsecret).
-// If secret is set, only packets carrying exactly that secret are accepted.
+// with 0xFFFFFFFF followed by 'R' (0x52, no secret) or 'S'<secret> (0x53,
+// sv_logsecret). If secret is set, only packets carrying exactly that
+// secret are accepted.
 func ParsePacket(b []byte, secret string) (string, error) {
+	line, got, hasSecret, err := SplitPacket(b)
+	if err != nil {
+		return "", err
+	}
+	if secret != "" && (!hasSecret || !SecretEqual(got, secret)) {
+		return "", ErrBadSecret
+	}
+	return line, nil
+}
+
+// SplitPacket extracts the log line and, for 'S' packets, the secret
+// (hasSecret) from a UDP log packet; it checks nothing.
+func SplitPacket(b []byte) (line, secret string, hasSecret bool, err error) {
 	b = bytes.TrimPrefix(b, []byte{0xff, 0xff, 0xff, 0xff})
 	s := strings.TrimRight(string(b), "\x00\r\n ")
-	got, hasSecret := "", false
 	switch {
 	case strings.HasPrefix(s, "RL "):
 		s = s[1:]
 	case strings.HasPrefix(s, "S"):
 		i := strings.Index(s, "L ")
 		if i < 0 {
-			return "", ErrNotLog
+			return "", "", false, ErrNotLog
 		}
-		got, s, hasSecret = s[1:i], s[i:], true
+		secret, s, hasSecret = s[1:i], s[i:], true
 	case strings.HasPrefix(s, "L "):
 	case strings.HasPrefix(s, "log L "): // GoldSrc (HLDS)
 		s = s[4:]
 	default:
-		return "", ErrNotLog
+		return "", "", false, ErrNotLog
 	}
-	if secret != "" && (!hasSecret || subtle.ConstantTimeCompare([]byte(got), []byte(secret)) != 1) {
-		return "", ErrBadSecret
-	}
-	return s, nil
+	return s, secret, hasSecret, nil
+}
+
+// SecretEqual compares two log secrets in constant time.
+func SecretEqual(a, b string) bool {
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
 // Player is a player reference: "Name<userid><steamid><team>".
@@ -464,4 +480,22 @@ func props(s string) map[string]string {
 		out[m[1]] = m[2]
 	}
 	return out
+}
+
+// MaxSecret is the largest log secret: the Source engine reads
+// sv_logsecret as a number (a value that is not one, or 0, sends no
+// secret), so secrets are decimal numbers from 1 to the largest int32.
+const MaxSecret = 2147483647
+
+// CheckSecret reports whether s can be used as sv_logsecret: empty (no
+// secret) or a decimal number 1..MaxSecret without leading zeros.
+func CheckSecret(s string) error {
+	if s == "" {
+		return nil
+	}
+	n, err := strconv.ParseUint(s, 10, 64)
+	if err != nil || n < 1 || n > MaxSecret || s[0] == '0' {
+		return fmt.Errorf("log secret: want a number from 1 to %d (sv_logsecret is read as a number)", MaxSecret)
+	}
+	return nil
 }

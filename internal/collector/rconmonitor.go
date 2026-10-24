@@ -241,7 +241,11 @@ type MonitorConfig struct {
 // MonitorInterval) and the log address every LogInterval, over one
 // connection that is kept open. srv returns the current hlstats_Servers
 // row (the RCON password can change in the web admin).
-func monitor(ctx context.Context, srv func() stats.Server, cfg MonitorConfig, deliver func(Status, time.Time), timeout func() time.Duration, log *slog.Logger) {
+//
+// sec (nil: off) is features.log_secret auto: every LogInterval the
+// secret is checked and set (secretJob.manage), and a quarantine asks for
+// sv_logsecret at once, at most every secretCheckEvery.
+func monitor(ctx context.Context, srv func() stats.Server, cfg MonitorConfig, sec *secretJob, deliver func(Status, time.Time), timeout func() time.Duration, log *slog.Logger) {
 	var c rcon.Conn
 	var key connKey
 	defer func() {
@@ -278,11 +282,20 @@ func monitor(ctx context.Context, srv func() stats.Server, cfg MonitorConfig, de
 	if !cfg.Status {
 		statusT.Stop()
 	}
-	if !cfg.LogAddress {
+	if !cfg.LogAddress && sec == nil {
 		logT.Stop()
 	}
 	defer statusT.Stop()
 	defer logT.Stop()
+	var checkC <-chan struct{}
+	if sec != nil {
+		checkC = sec.gate.check
+	}
+	checkT := time.NewTimer(time.Hour)
+	checkT.Stop()
+	defer checkT.Stop()
+	var lastCheck time.Time
+	checkArmed := false
 	client := func() rcon.Conn {
 		s := srv()
 		if s.RconPassword == "" {
@@ -297,7 +310,13 @@ func monitor(ctx context.Context, srv func() stats.Server, cfg MonitorConfig, de
 		}
 		return c
 	}
-	noPassword := errors.New("no rcon_password in hlstats_Servers: status and logaddress skipped")
+	noPassword := errors.New("no rcon_password in hlstats_Servers: status, logaddress and log secret skipped")
+	checkSecret := func() {
+		lastCheck = time.Now()
+		if c := client(); c != nil {
+			report("logsecret", sec.check(c))
+		}
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -328,7 +347,24 @@ func monitor(ctx context.Context, srv func() stats.Server, cfg MonitorConfig, de
 				}
 				continue
 			}
-			report("logaddress", ensureLogAddress(c, srv().Engine, cfg, log))
+			if cfg.LogAddress {
+				report("logaddress", ensureLogAddress(c, srv().Engine, cfg, log))
+			}
+			if sec != nil {
+				report("logsecret", sec.manage(c, srv()))
+			}
+		case <-checkC:
+			if wait := secretCheckEvery - time.Since(lastCheck); wait > 0 {
+				if !checkArmed {
+					checkT.Reset(wait)
+					checkArmed = true
+				}
+				continue
+			}
+			checkSecret()
+		case <-checkT.C:
+			checkArmed = false
+			checkSecret()
 		}
 	}
 }

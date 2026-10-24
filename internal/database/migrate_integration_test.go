@@ -145,7 +145,7 @@ func webRights(t *testing.T, name string) {
 			t.Errorf("gamewe_web: %s: %v", q, err)
 		}
 	}
-	for _, q := range []string{`SELECT COUNT(*) FROM hlstats_Users`, `SELECT COUNT(rcon_password) FROM hlstats_Servers`, `SELECT COUNT(*) FROM hlstats_Events_Chat`} {
+	for _, q := range []string{`SELECT COUNT(*) FROM hlstats_Users`, `SELECT COUNT(rcon_password) FROM hlstats_Servers`, `SELECT COUNT(log_secret) FROM hlstats_Servers`, `SELECT COUNT(*) FROM hlstats_Events_Chat`} {
 		var n int
 		if err := web.QueryRow(q).Scan(&n); err == nil {
 			t.Errorf("gamewe_web may: %s", q)

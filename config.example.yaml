@@ -61,6 +61,11 @@ features:
   log_address:         # logaddress_list; logaddress_add + "log on" if the collector is missing
     enabled: true
     interval: 1m       # how often (at least 10s)
+  log_secret:          # sv_logsecret: accept only log packets with the server's secret
+    enabled: auto      # false: no check; true: check hlstats_Servers.log_secret;
+                       # auto: as true, and the collector sets and rotates sv_logsecret over RCON
+                       # (Source servers with rcon_password; checked every log_address interval)
+    interval: 24h      # auto: a new secret this often (at least 1m)
   daily_awards:        # the daily awards of the previous day (by hand: gamewe awards -date ...)
     enabled: true
     timezone: UTC      # IANA time zone of the day and the time, e.g. Europe/Berlin

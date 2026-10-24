@@ -165,3 +165,42 @@ func TestDailyAwardsSchedule(t *testing.T) {
 		}
 	}
 }
+
+func TestLogSecret(t *testing.T) {
+	base := "database:\n  host: db\n  user: u\n  name: n\n"
+	cfg, err := Parse([]byte(base))
+	if d, _ := cfg.Features.LogSecret.Every(); err != nil || cfg.Features.LogSecret.Enabled != SecretAuto || d != 24*time.Hour {
+		t.Errorf("default %+v %v, want auto every 24h", cfg.Features.LogSecret, err)
+	}
+	for in, want := range map[string]SecretMode{
+		"  log_secret: false\n":                                SecretOff,
+		"  log_secret: true\n":                                 SecretOn,
+		"  log_secret: auto\n":                                 SecretAuto,
+		"  log_secret:\n    enabled: false\n":                  SecretOff,
+		"  log_secret:\n    enabled: yes\n":                    SecretOn,
+		"  log_secret:\n    enabled: \"AUTO\"\n":               SecretAuto,
+		"  log_secret:\n    interval: 1h\n":                    SecretAuto,
+		"  log_secret:\n    enabled: true\n    interval: 60\n": SecretOn,
+	} {
+		cfg, err := Parse([]byte(base + "features:\n" + in))
+		if err != nil || cfg.Features.LogSecret.Enabled != want {
+			t.Errorf("%q: %+v %v, want %s", in, cfg.Features.LogSecret, err, want)
+		}
+	}
+	for _, bad := range []string{
+		"  log_secret: sometimes\n",
+		"  log_secret:\n    enabled: 2\n",
+		"  log_secret:\n    enabled: [true]\n",
+		"  log_secret:\n    interval: 30s\n",
+		"  log_secret:\n    interval: daily\n",
+		"  log_secret:\n    secret: 123\n",
+	} {
+		if _, err := Parse([]byte(base + "features:\n" + bad)); err == nil {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+	// The old listen.log_secret points to the feature.
+	if _, err := Parse([]byte(base + "listen:\n  log_secret: x\n")); err == nil || !strings.Contains(err.Error(), "features.log_secret") {
+		t.Errorf("listen.log_secret: %v", err)
+	}
+}

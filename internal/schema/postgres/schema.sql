@@ -837,6 +837,8 @@ CREATE TABLE hlstats_Servers (
   name varchar(255) NOT NULL DEFAULT '',
   game varchar(10) NOT NULL DEFAULT 'valve',
   rcon_password varchar(128) NOT NULL DEFAULT '',
+  log_secret varchar(64) NOT NULL DEFAULT '',
+  log_secret_changed bigint NOT NULL DEFAULT 0,
   publicaddress varchar(255) NOT NULL DEFAULT '',
   statusurl varchar(255) NOT NULL DEFAULT '',
   kills bigint NOT NULL DEFAULT 0,

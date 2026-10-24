@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"gamewe-collector/internal/games"
 	"gamewe-collector/internal/logparse"
 	"gamewe-collector/internal/settings"
 	"gamewe-collector/internal/stats"
@@ -52,6 +53,9 @@ type Hub struct {
 	// Monitor are the RCON jobs per server (features in the config file);
 	// none if all are off. Set it before the first SetServers.
 	Monitor MonitorConfig
+	// Secret is features.log_secret (default off). Set it before the
+	// first SetServers.
+	Secret SecretConfig
 
 	mu      sync.RWMutex
 	byID    map[int64]*worker
@@ -63,10 +67,13 @@ type Hub struct {
 }
 
 type worker struct {
+	id    int64
+	addr  string
 	srv   stats.Server
 	queue chan packet
 	proc  *Processor
 	stop  context.CancelFunc // the RCON monitor
+	gate  *secretGate        // features.log_secret
 }
 
 type packet struct {
@@ -113,9 +120,13 @@ func (h *Hub) Reload(ctx context.Context) error {
 		seen[w] = true
 	}
 	var usable []stats.Server
+	info := map[string]bool{}
 	for _, srv := range servers {
 		if srv.Warning != "" && srv.Err == nil {
 			seen[srv.Warning] = true
+		}
+		if msg, isInfo := SecretNote(h.Secret.Mode, srv); msg != "" && srv.Err == nil {
+			seen[msg], info[msg] = true, isInfo
 		}
 		if srv.Err != nil {
 			seen[fmt.Sprintf("hlstats_Servers serverId %d is ignored: %v", srv.ID, srv.Err)] = true
@@ -124,7 +135,11 @@ func (h *Hub) Reload(ctx context.Context) error {
 		usable = append(usable, srv)
 	}
 	for msg := range seen {
-		if !h.lastLog[msg] {
+		switch {
+		case h.lastLog[msg]:
+		case info[msg]:
+			h.log.Info(msg)
+		default:
 			h.log.Warn(msg)
 		}
 	}
@@ -182,10 +197,14 @@ func (h *Hub) SetServers(list []stats.Server) (added, removed int) {
 		taken[srv.AddrPort] = srv.ID
 		want[srv.ID] = srv
 	}
+	now := time.Now()
+	grace := secretGrace(h.logEvery())
 	var stop []*worker
 	for id, w := range h.byID {
 		srv, ok := want[id]
 		if ok && srv.AddrPort == w.srv.AddrPort && srv.GameID == w.srv.GameID && srv.Game == w.srv.Game && srv.Engine == w.srv.Engine {
+			h.applySecret(w, srv, now, grace)
+			w.srv.LogSecret, w.srv.LogSecretChanged = srv.LogSecret, srv.LogSecretChanged
 			if srv.Name != w.srv.Name || srv.RconPassword != w.srv.RconPassword || srv.MaxPlayers != w.srv.MaxPlayers {
 				u := srv
 				select {
@@ -203,9 +222,11 @@ func (h *Hub) SetServers(list []stats.Server) (added, removed int) {
 		if h.byID[id] != nil {
 			continue
 		}
-		w := &worker{srv: srv, queue: make(chan packet, QueueSize), proc: NewProcessor(h.store, h.set, srv, h.reply, h.log)}
+		w := &worker{id: id, addr: srv.Address, srv: srv, queue: make(chan packet, QueueSize), proc: NewProcessor(h.store, h.set, srv, h.reply, h.log),
+			gate: newSecretGate()}
 		w.proc.Geo = h.Geo
-		if h.Monitor.Status || h.Monitor.LogAddress {
+		h.applySecret(w, srv, now, grace)
+		if h.Monitor.Status || h.Monitor.LogAddress || h.Secret.Mode == SecretAuto {
 			ctx, cancel := context.WithCancel(context.Background())
 			w.stop = cancel
 			id := srv.ID
@@ -219,9 +240,21 @@ func (h *Hub) SetServers(list []stats.Server) (added, removed int) {
 					}
 				}
 			}
-			go monitor(ctx, func() stats.Server { return h.server(id, srv) }, h.Monitor, deliver,
-				func() time.Duration { return time.Duration(h.set.Get().RconTimeout) * time.Second },
-				h.log.With("server", srv.Address, "server_id", srv.ID))
+			mlog := h.log.With("server", srv.Address, "server_id", srv.ID)
+			var sec *secretJob
+			if h.Secret.Mode == SecretAuto {
+				every := h.Secret.Interval
+				if every <= 0 {
+					every = DefaultSecretInterval
+				}
+				sec = &secretJob{gate: w.gate, interval: every, grace: grace, log: mlog,
+					store: func(ctx context.Context, secret string, changed time.Time) error {
+						return h.store.SetLogSecret(ctx, id, secret, changed)
+					},
+					verdict: func(genuine bool, why string) { h.endQuarantine(w, genuine, why) }}
+			}
+			go monitor(ctx, func() stats.Server { return h.server(id, srv) }, h.Monitor, sec, deliver,
+				func() time.Duration { return time.Duration(h.set.Get().RconTimeout) * time.Second }, mlog)
 		}
 		h.byID[id] = w
 		h.exact[srv.AddrPort] = w
@@ -237,6 +270,25 @@ func (h *Hub) SetServers(list []stats.Server) (added, removed int) {
 		close(w.queue)
 	}
 	return added, len(stop)
+}
+
+// logEvery is features.log_address.interval.
+func (h *Hub) logEvery() time.Duration {
+	if h.Monitor.LogInterval > 0 {
+		return h.Monitor.LogInterval
+	}
+	return DefaultLogAddressInterval
+}
+
+// applySecret hands the log secret of srv's row to w's gate. GoldSrc
+// servers have no sv_logsecret: never checked.
+func (h *Hub) applySecret(w *worker, srv stats.Server, now time.Time, grace time.Duration) {
+	secret := srv.LogSecret
+	if h.Secret.Mode == SecretOff || srv.Engine == games.GoldSrc {
+		secret = ""
+	}
+	verify := h.Secret.Mode == SecretAuto && srv.RconPassword != "" && srv.Engine != games.GoldSrc
+	w.gate.fromDB(secret, srv.LogSecretChanged, verify, now, grace)
 }
 
 // server returns the current hlstats_Servers row of a worker (def if it
@@ -400,16 +452,18 @@ func (h *Hub) Dispatch(src netip.AddrPort, payload []byte, now time.Time) error 
 		}
 		return ErrUnknownSource
 	}
-	line, err := logparse.ParsePacket(payload, "")
+	if h.Secret.Mode == SecretOff {
+		line, err := logparse.ParsePacket(payload, "")
+		if err != nil {
+			return err
+		}
+		return w.enqueue(packet{line: line, at: now})
+	}
+	line, secret, has, err := logparse.SplitPacket(payload)
 	if err != nil {
 		return err
 	}
-	select {
-	case w.queue <- packet{line: line, at: now}:
-		return nil
-	default:
-		return ErrQueueFull
-	}
+	return h.admit(w, line, secret, has, now)
 }
 
 // Close stops accepting lines, waits until every queued line is processed

@@ -62,6 +62,11 @@ var Migrations = []Migration{
 			"time_action on hlstats_Events_PlayerActions (timestamp_id, actionId, playerId)",
 		Sync: true,
 	},
+	{
+		Version: 4, Name: "log-secret",
+		Desc: "hlstats_Servers.log_secret and log_secret_changed for features.log_secret (sv_logsecret; not readable by gamewe_web)",
+		Sync: true,
+	},
 }
 
 // Latest is the newest schema version this collector knows.
