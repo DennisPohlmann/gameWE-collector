@@ -87,7 +87,7 @@ sudo -u gamewe /opt/gamewe/collector/bin/gamewe awards -date 2026-10-21
 | `gamewe -V` / `--version` / `version` | the version |
 | `gamewe status`, `gamewe logaddress`, `gamewe rcon` | RCON status, log address registration, any RCON command (below) |
 | `gamewe game`, `gamewe server`, `gamewe option` | games, servers and settings like the web admin (below) |
-| `gamewe reset GAME -mode stats\|all` | reset a ranking (below) |
+| `gamewe reset GAME -mode player-stats\|all-stats\|all` | reset a ranking (below) |
 | `gamewe awards -date YYYY-MM-DD` | decide the daily awards of a day again |
 | `gamewe geoip-update` | download the DB-IP database now |
 | `gamewe simulate` | replay a sample game into the database or to a running collector |
@@ -146,11 +146,26 @@ gamewe option set gamewe_command_display both      # gamewe_* values are checked
 ### Resetting a ranking
 
 ```bash
-gamewe reset css3 -mode stats -dry-run   # rows per table that would be deleted / updated, nothing changes
-gamewe reset css3 -mode stats            # players stay, back to the start skill, statistics empty
-gamewe reset css3 -mode all              # the players of css3 are deleted too
-gamewe reset -list                       # the latest resets and their results
+gamewe reset css3 -mode player-stats -dry-run  # rows per table that would be deleted / updated, nothing changes
+gamewe reset css3 -mode player-stats   # player statistics only: players stay with the start skill, server statistics stay
+gamewe reset css3 -mode all-stats      # player and server statistics; the players stay
+gamewe reset css3 -mode all            # all statistics, and the players of css3 are deleted too
+gamewe reset -list                     # the latest resets and their results
 ```
+
+What each mode clears:
+
+| | `player-stats` | `all-stats` | `all` |
+| --- | --- | --- | --- |
+| Player statistics: `hlstats_Events_*`, `hlstats_Players_History`, `hlstats_Players_{Weapons,Actions,Maps,Roles,Teams}` and their `_History_Months`, `hlstats_Awards_History`, the award winners, the totals summed from player events in `hlstats_Weapons`, `_Actions`, `_Teams`, `_Roles`, `_Maps`; skill (back to the start skill) and counters of `hlstats_Players`, `hlstats_PlayersInactive`, `hlstats_PlayerNames` | yes | yes | yes |
+| Server statistics: the counters of `hlstats_Servers` (`kills`, `players`, `rounds`, `suicides`, `headshots`, `bombs_*`, `ct_wins`/`ts_wins`, `act_players`, `map_*`, shots and hits), `hlstats_server_load` (load history), `hlstats_Trend` | no | yes | yes |
+| Players: `hlstats_Players`, `hlstats_PlayersInactive`, `hlstats_PlayerNames`, `hlstats_PlayerUniqueIds`, `hlstats_Players_Data`, `hlstats_Players_Resets`, `hlstats_Clans` | kept | kept | deleted |
+
+The live view (`hlstats_Livestats`) is cleared in every mode: the collector
+forgets the players of the paused servers and adds them again with their next
+line. `stats`, the name of `player-stats` before collector 0.2, still works
+(also for jobs queued by an older web); before, it reset the server
+statistics too.
 
 Games, servers, teams, weapons, actions, awards and settings stay; other
 games are not touched. It asks for the game code to confirm (`-yes` skips

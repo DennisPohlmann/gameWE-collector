@@ -59,23 +59,30 @@ func q(t *testing.T, db *database.DB, sql string, args ...any) int {
 	return count(t, db, sql, args...)
 }
 
-// stats keeps the players of the game with the start skill and no
-// counters, deletes its events; the other game is untouched; the dry run
-// before changes nothing.
-func TestIntegrationResetStats(t *testing.T) {
+// player-stats keeps the players of the game with the start skill and no
+// counters, deletes its events and keeps the server statistics; the other
+// game is untouched; the dry run before changes nothing.
+func TestIntegrationResetPlayerStats(t *testing.T) {
 	db := testDB(t)
 	hub, store, _ := resetFixture(t, db)
 	flush(t, hub)
 	hub.Close(context.Background())
 	before := q(t, db, `SELECT COUNT(*) FROM hlstats_Events_Frags`)
-	counts, err := store.ResetCounts(context.Background(), "css", stats.ResetStats)
+	serverKills := q(t, db, `SELECT kills FROM hlstats_Servers WHERE game = 'css'`)
+	if serverKills == 0 {
+		t.Fatal("fixture: no server kills")
+	}
+	counts, err := store.ResetCounts(context.Background(), "css", stats.ResetPlayerStats)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if q(t, db, `SELECT COUNT(*) FROM hlstats_Events_Frags`) != before || !strings.Contains(stats.FormatCounts(counts), "Events_Frags 2") {
 		t.Fatalf("dry run: %s", stats.FormatCounts(counts))
 	}
-	if _, err := store.Reset(context.Background(), "css", stats.ResetStats); err != nil {
+	if strings.Contains(stats.FormatCounts(counts), "Servers") {
+		t.Errorf("dry run touches the servers: %s", stats.FormatCounts(counts))
+	}
+	if _, err := store.Reset(context.Background(), "css", stats.ResetPlayerStats); err != nil {
 		t.Fatal(err)
 	}
 	for _, c := range []struct {
@@ -88,7 +95,8 @@ func TestIntegrationResetStats(t *testing.T) {
 		{"css actions gone", q(t, db, `SELECT COUNT(*) FROM hlstats_Events_PlayerActions WHERE game_id = 1`), 0},
 		{"css history gone", q(t, db, `SELECT COUNT(*) FROM hlstats_Players_History WHERE game = 'css'`), 0},
 		{"css unique ids kept", q(t, db, `SELECT COUNT(*) FROM hlstats_PlayerUniqueIds WHERE game = 'css'`), 2},
-		{"css server counters", q(t, db, `SELECT kills FROM hlstats_Servers WHERE game = 'css'`), 0},
+		{"css server counters kept", q(t, db, `SELECT kills FROM hlstats_Servers WHERE game = 'css'`), serverKills},
+		{"css weapon totals", q(t, db, `SELECT COALESCE(SUM(kills), 0) FROM hlstats_Weapons WHERE game = 'css'`), 0},
 		{"tf frag kept", q(t, db, `SELECT COUNT(*) FROM hlstats_Events_Frags WHERE game_id = 2`), 1},
 		{"tf player kept", q(t, db, `SELECT COUNT(*) FROM hlstats_Players WHERE game = 'tf' AND kills = 1`), 1},
 	} {
@@ -96,11 +104,44 @@ func TestIntegrationResetStats(t *testing.T) {
 			t.Errorf("%s: got %d, want %d", c.name, c.got, c.want)
 		}
 	}
-	if _, err := store.Reset(context.Background(), "nope", stats.ResetStats); err == nil {
+	if _, err := store.Reset(context.Background(), "nope", stats.ResetPlayerStats); err == nil {
 		t.Error("unknown game reset")
 	}
 	if _, err := store.Reset(context.Background(), "css' OR '1'='1", stats.ResetAll); err == nil {
 		t.Error("game code with SQL accepted")
+	}
+}
+
+// all-stats resets the server statistics too and keeps the players; the
+// old mode name stats (jobs of an older web) is player-stats.
+func TestIntegrationResetAllStats(t *testing.T) {
+	for _, mode := range []string{stats.ResetAllStats, stats.ResetStatsOld} {
+		t.Run(mode, func(t *testing.T) {
+			db := testDB(t)
+			hub, store, _ := resetFixture(t, db)
+			flush(t, hub)
+			hub.Close(context.Background())
+			if _, err := store.Reset(context.Background(), "css", mode); err != nil {
+				t.Fatal(err)
+			}
+			serverKills := 0
+			if mode == stats.ResetStatsOld { // = player-stats: the servers keep their kills
+				serverKills = 2
+			}
+			for _, c := range []struct {
+				name      string
+				got, want int
+			}{
+				{"css players kept", q(t, db, `SELECT COUNT(*) FROM hlstats_Players WHERE game = 'css'`), 2},
+				{"css players reset", q(t, db, `SELECT COUNT(*) FROM hlstats_Players WHERE game = 'css' AND kills <> 0`), 0},
+				{"css server counters", q(t, db, `SELECT kills FROM hlstats_Servers WHERE game = 'css'`), serverKills},
+				{"tf server counters kept", q(t, db, `SELECT kills FROM hlstats_Servers WHERE game = 'tf'`), 1},
+			} {
+				if c.got != c.want {
+					t.Errorf("%s: got %d, want %d", c.name, c.got, c.want)
+				}
+			}
+		})
 	}
 }
 
@@ -123,6 +164,7 @@ func TestIntegrationResetAll(t *testing.T) {
 		{"tf frag", q(t, db, `SELECT COUNT(*) FROM hlstats_Events_Frags WHERE game_id = 2`), 1},
 		{"games kept", q(t, db, `SELECT COUNT(*) FROM hlstats_Games`), 2},
 		{"actions kept", q(t, db, `SELECT COUNT(*) FROM hlstats_Actions WHERE game = 'css'`), 3},
+		{"css server counters", q(t, db, `SELECT kills FROM hlstats_Servers WHERE game = 'css'`), 0},
 	} {
 		if c.got != c.want {
 			t.Errorf("%s: got %d, want %d", c.name, c.got, c.want)
@@ -143,7 +185,7 @@ func TestIntegrationResetJob(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, _ := store.AddJob(ctx, stats.JobReset, "css", stats.ResetStats, "test", time.Now())
+	second, _ := store.AddJob(ctx, stats.JobReset, "css", stats.ResetPlayerStats, "test", time.Now())
 	jobs := &Jobs{Store: store, Hub: hub, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -185,7 +227,7 @@ func TestIntegrationResetJob(t *testing.T) {
 	}
 
 	// A collector stopped during a reset left the job running.
-	third, _ := store.AddJob(ctx, stats.JobReset, "tf", stats.ResetStats, "test", time.Now())
+	third, _ := store.AddJob(ctx, stats.JobReset, "tf", stats.ResetStatsOld, "test", time.Now()) // queued by an older web
 	if ok, err := store.ClaimJob(ctx, third, stats.JobPending, time.Now()); err != nil || !ok {
 		t.Fatal(ok, err)
 	}

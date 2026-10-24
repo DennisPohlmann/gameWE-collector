@@ -61,10 +61,11 @@ Usage:
   gamewe server list|add|set|remove ...           game servers (hlstats_Servers)
   gamewe option list|get|set ...                  settings (hlstats_Options)
                                    see "gamewe game help"; all take -config and -dry-run
-  gamewe reset GAME -mode stats|all [-dry-run] [-yes]
-                                   reset a ranking (stats: players stay with the start
-                                   skill; all: players deleted too); queued for the
-                                   running collector if there is one
+  gamewe reset GAME -mode player-stats|all-stats|all [-dry-run] [-yes]
+                                   reset a ranking (player-stats: players stay with the
+                                   start skill, server statistics stay; all-stats: server
+                                   statistics too; all: players deleted too); queued for
+                                   the running collector if there is one
   gamewe reset -list               the latest queued resets
   gamewe geoip-update [-file FILE]  download DB-IP City Lite now (default
                                    /var/lib/gamewe/collector/dbip-city-lite.mmdb); the

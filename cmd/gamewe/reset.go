@@ -21,12 +21,17 @@ import (
 )
 
 const resetUsage = `Usage:
-  gamewe reset GAME -mode stats|all [-dry-run] [-yes] [-config FILE]
+  gamewe reset GAME -mode player-stats|all-stats|all [-dry-run] [-yes] [-config FILE]
   gamewe reset -list [-config FILE]
 
-Resets the ranking GAME (an hlstats_Games code). -mode stats keeps the
-players with the start skill and empty statistics; -mode all deletes the
-players of the game too. Games, servers, definitions and settings stay.
+Resets the ranking GAME (an hlstats_Games code):
+  -mode player-stats  player statistics only: the players stay with the start
+                      skill and empty statistics, the server statistics stay
+                      (stats is the old name and still works)
+  -mode all-stats     player and server statistics (server counters, load
+                      history, trend); the players stay
+  -mode all           all statistics and the players of the game
+Games, servers, definitions and settings stay.
 -dry-run shows the rows per table and changes nothing. Without -yes it asks
 for the game code to confirm.
 
@@ -44,7 +49,7 @@ func resetWith(args []string, in io.Reader, out io.Writer) error {
 	fs := flag.NewFlagSet("reset", flag.ContinueOnError)
 	fs.Usage = func() { fmt.Fprintln(os.Stderr, resetUsage) }
 	path := fs.String("config", config.DefaultPath, "path to the YAML config file")
-	mode := fs.String("mode", "", "stats (keep players, start skill) or all (delete the players too)")
+	mode := fs.String("mode", "", "player-stats (keep players and server statistics), all-stats (keep players) or all (delete the players too)")
 	dry := fs.Bool("dry-run", false, "only show the rows per table")
 	yes := fs.Bool("yes", false, "do not ask for confirmation")
 	list := fs.Bool("list", false, "show the latest queued resets")
@@ -79,8 +84,11 @@ func resetWith(args []string, in io.Reader, out io.Writer) error {
 		}
 		return listJobs(ctx, store, out)
 	}
-	if len(pos) != 1 || (*mode != stats.ResetStats && *mode != stats.ResetAll) {
+	if len(pos) != 1 {
 		return errors.New(resetUsage)
+	}
+	if *mode, err = stats.ResetMode(*mode); err != nil {
+		return fmt.Errorf("%w\n\n%s", err, resetUsage)
 	}
 	game := pos[0]
 	counts, err := store.ResetCounts(ctx, game, *mode)

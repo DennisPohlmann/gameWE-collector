@@ -149,8 +149,9 @@ func (j *Jobs) do(ctx context.Context, job stats.Job) {
 
 // reset pauses the servers of game, resets the ranking and lets them go on.
 func (j *Jobs) reset(ctx context.Context, game, mode string) ([]stats.TableCount, error) {
-	if mode != stats.ResetStats && mode != stats.ResetAll {
-		return nil, fmt.Errorf("mode %q: must be %s or %s", mode, stats.ResetStats, stats.ResetAll)
+	mode, err := stats.ResetMode(mode)
+	if err != nil {
+		return nil, err
 	}
 	if _, err := j.Store.ResetCounts(ctx, game, mode); err != nil { // checks the game before pausing
 		return nil, err

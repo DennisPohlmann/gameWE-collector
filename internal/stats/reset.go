@@ -10,13 +10,42 @@ import (
 )
 
 // Reset modes of a ranking (hlstats_Games row).
+//
+// Player statistics: the event tables, the per-player tables and histories,
+// the award winners and the ranking totals summed from player events
+// (hlstats_Weapons, _Actions, _Teams, _Roles, _Maps); the players keep
+// their names and ids with the start skill and zero counters.
+// Server statistics: the counters in hlstats_Servers, hlstats_server_load
+// and hlstats_Trend. The live view (hlstats_Livestats) is cleared in every
+// mode: the collector forgets the players of the paused servers.
 const (
-	// ResetStats keeps the players and sets them back to the start skill
-	// with empty statistics.
-	ResetStats = "stats"
-	// ResetAll deletes the players of the game too.
+	// ResetPlayerStats resets the player statistics and keeps the players
+	// and the server statistics.
+	ResetPlayerStats = "player-stats"
+	// ResetAllStats resets the player and the server statistics and keeps
+	// the players.
+	ResetAllStats = "all-stats"
+	// ResetAll resets all statistics and deletes the players of the game.
 	ResetAll = "all"
+	// ResetStatsOld is the name of ResetPlayerStats before collector 0.2:
+	// still accepted from the CLI and from queued jobs.
+	ResetStatsOld = "stats"
 )
+
+// ResetModes are the modes for messages, in the order of the usage text.
+const ResetModes = ResetPlayerStats + ", " + ResetAllStats + " or " + ResetAll
+
+// ResetMode returns the mode name (ResetStatsOld as ResetPlayerStats), or
+// an error for an unknown one.
+func ResetMode(mode string) (string, error) {
+	switch mode {
+	case ResetPlayerStats, ResetAllStats, ResetAll:
+		return mode, nil
+	case ResetStatsOld:
+		return ResetPlayerStats, nil
+	}
+	return "", fmt.Errorf("mode %q: must be %s", mode, ResetModes)
+}
 
 // ErrUnknownGame: the game code is not in hlstats_Games.
 var ErrUnknownGame = errors.New("unknown game (not in hlstats_Games)")
@@ -73,9 +102,9 @@ func zeroCols(cols []string) string {
 	return strings.Join(parts, ", ")
 }
 
-// resetSteps lists the tables of a reset, dependent rows first: the tables
-// may be MyISAM (no transactions), so an interrupted reset is completed by
-// running it again.
+// resetSteps lists the tables of a reset (mode as from ResetMode),
+// dependent rows first: the tables may be MyISAM (no transactions), so an
+// interrupted reset is completed by running it again.
 func resetSteps(mode string) []resetStep {
 	byGame := func(g string, _, _ int) []any { return []any{g} }
 	byGid := func(_ string, id, _ int) []any { return []any{id} }
@@ -97,8 +126,6 @@ func resetSteps(mode string) []resetStep {
 	steps = append(steps,
 		resetStep{table: "hlstats_Awards_History", where: "award_id IN (SELECT awardId FROM hlstats_Awards WHERE game = ?)", args: byGame},
 		resetStep{table: "hlstats_Livestats", where: servers, args: byGame},
-		resetStep{table: "hlstats_server_load", where: servers, args: byGame},
-		resetStep{table: "hlstats_Trend", where: "game = ?", args: byGame},
 		resetStep{table: "hlstats_Weapons", set: "kills = 0, headshots = 0", where: "game = ?", args: byGame},
 		resetStep{table: "hlstats_Actions", set: "count = 0", where: "game = ?", args: byGame},
 		resetStep{table: "hlstats_Teams", set: zeroCols(resetTeamCounters), where: "game = ?", args: byGame},
@@ -106,8 +133,14 @@ func resetSteps(mode string) []resetStep {
 		resetStep{table: "hlstats_Maps", set: "kills = 0, headshots = 0, teamkills = 0, teama_wins = 0, teamb_wins = 0, played = 0, play_time = 0, rounds = 0",
 			where: "game = ?", args: byGame},
 		resetStep{table: "hlstats_Awards", set: "d_winner_id = NULL, d_winner_count = NULL", where: "game = ?", args: byGame},
-		resetStep{table: "hlstats_Servers", set: zeroCols(resetServerCounters), where: "game = ?", args: byGame},
 	)
+	if mode != ResetPlayerStats {
+		steps = append(steps,
+			resetStep{table: "hlstats_server_load", where: servers, args: byGame},
+			resetStep{table: "hlstats_Trend", where: "game = ?", args: byGame},
+			resetStep{table: "hlstats_Servers", set: zeroCols(resetServerCounters), where: "game = ?", args: byGame},
+		)
+	}
 	if mode == ResetAll {
 		return append(steps,
 			resetStep{table: "hlstats_Players_Data", where: players, args: byGame2},
@@ -127,22 +160,24 @@ func resetSteps(mode string) []resetStep {
 	)
 }
 
-// resetGame checks mode and game and returns the game's hlstats_Games id.
-func (s *Store) resetGame(ctx context.Context, game, mode string) (int, error) {
-	if mode != ResetStats && mode != ResetAll {
-		return 0, fmt.Errorf("mode %q: must be %s or %s", mode, ResetStats, ResetAll)
+// resetGame checks mode and game and returns the game's hlstats_Games id
+// and the mode name.
+func (s *Store) resetGame(ctx context.Context, game, mode string) (int, string, error) {
+	mode, err := ResetMode(mode)
+	if err != nil {
+		return 0, "", err
 	}
 	var id int
 	if err := s.queryRow(ctx, `SELECT id FROM hlstats_Games WHERE code = ?`, game).Scan(&id); err != nil {
-		return 0, fmt.Errorf("game %q: %w", game, ErrUnknownGame)
+		return 0, "", fmt.Errorf("game %q: %w", game, ErrUnknownGame)
 	}
-	return id, nil
+	return id, mode, nil
 }
 
 // ResetCounts returns, without changing anything, how many rows a reset of
 // game would delete or update per table.
 func (s *Store) ResetCounts(ctx context.Context, game, mode string) ([]TableCount, error) {
-	gid, err := s.resetGame(ctx, game, mode)
+	gid, mode, err := s.resetGame(ctx, game, mode)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +203,7 @@ func (s *Store) ResetCounts(ctx context.Context, game, mode string) ([]TableCoun
 // far (running it again completes it). Only while no processor of the
 // game's servers works (the collector pauses them).
 func (s *Store) Reset(ctx context.Context, game, mode string) ([]TableCount, error) {
-	gid, err := s.resetGame(ctx, game, mode)
+	gid, mode, err := s.resetGame(ctx, game, mode)
 	if err != nil {
 		return nil, err
 	}
