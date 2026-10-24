@@ -2,8 +2,9 @@
 
 For everybody who reads the HLstatsX database that the collector writes, such as
 the web frontend. The structure is
-`schema/hlstatsx.sql` (MariaDB / MySQL) or `schema/postgres/hlstatsx.sql`
-(PostgreSQL). Both hold the same data; the differences of the PostgreSQL
+`internal/schema/mysql/schema.sql` (MariaDB / MySQL) or
+`internal/schema/postgres/schema.sql` (PostgreSQL), compiled into the
+collector and created by `gamewe db migrate`. Both hold the same data; the differences of the PostgreSQL
 variant are listed in [PostgreSQL](#postgresql) at the end.
 
 ## Conventions
@@ -258,7 +259,8 @@ css. The web computes it; nothing is stored per player.
 
 ## Default data
 
-`schema/hlstatsx.sql` (and `schema/init/02_seed.sql`) fill the definition
+The reference data (`internal/schema/mysql/seed.sql`, loaded by
+`gamewe db migrate`) fills the definition
 tables, not runtime data: for CS:S (`css`) the HLstatsX definitions of the
 old production database (46 actions with rewards, weapons with modifiers,
 teams, roles, 39 awards, ranks and ribbons, ribbon classes), generic clan tag

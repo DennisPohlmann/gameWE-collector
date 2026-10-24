@@ -13,7 +13,7 @@ import (
 // except hlstats_Users, hlstats_Events_Rcon and hlstats_Events_Chat, and never
 // hlstats_Servers.rcon_password or hlstats_Events_Connects.ipAddress.
 func TestWebUserGrants(t *testing.T) {
-	schema, err := os.ReadFile("../../schema/hlstatsx.sql")
+	schema, err := os.ReadFile("../../internal/schema/mysql/schema.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,7 +23,7 @@ func TestWebUserGrants(t *testing.T) {
 	}
 	hidden := map[string]bool{"hlstats_Users": true, "hlstats_Events_Rcon": true, "hlstats_Events_Chat": true}
 	hiddenCol := map[string]string{"hlstats_Servers": "rcon_password", "hlstats_Events_Connects": "ipAddress"}
-	data, err := os.ReadFile("../../schema/init/03_grants.sql")
+	data, err := os.ReadFile("../../internal/schema/mysql/grants.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,15 +40,15 @@ func TestWebUserGrants(t *testing.T) {
 	// The web admin queues ranking resets (hlstats_gamewe_jobs); gamewe_web
 	// never writes there.
 	if !strings.Contains(string(data), "GRANT INSERT ON `hlstats_gamewe_jobs` TO 'gamewe_web_admin'@'%';") {
-		t.Error("03_grants.sql: gamewe_web_admin cannot queue jobs")
+		t.Error("grants.sql: gamewe_web_admin cannot queue jobs")
 	}
 	// A user gamewe_admin (the web README's manual setup) gets the same,
 	// if it exists (MariaDB and the generated PostgreSQL file).
-	pg, err := os.ReadFile("../../schema/postgres/init/03_grants.sql")
+	pg, err := os.ReadFile("../../internal/schema/postgres/grants.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, f := range map[string][]byte{"03_grants.sql": data, "postgres 03_grants.sql": pg} {
+	for name, f := range map[string][]byte{"grants.sql": data, "postgres grants.sql": pg} {
 		plain := strings.ReplaceAll(string(f), "`", "")
 		if !strings.Contains(plain, "gamewe_admin") || !strings.Contains(plain, "SELECT, INSERT ON hlstats_gamewe_jobs TO") {
 			t.Errorf("%s: no conditional grant for gamewe_admin on hlstats_gamewe_jobs", name)
@@ -74,9 +74,9 @@ func TestWebUserGrants(t *testing.T) {
 		}
 	}
 	if regexp.MustCompile("ON `?[a-z_]*`?\\.\\* TO 'gamewe_web'").Match(data) {
-		t.Error("03_grants.sql grants gamewe_web a whole database")
+		t.Error("grants.sql grants gamewe_web a whole database")
 	}
 	if !strings.Contains(string(data), "REVOKE SELECT ON `hlstats_Events_Chat` FROM 'gamewe_web'") {
-		t.Error("03_grants.sql does not revoke an old SELECT on hlstats_Events_Chat")
+		t.Error("grants.sql does not revoke an old SELECT on hlstats_Events_Chat")
 	}
 }

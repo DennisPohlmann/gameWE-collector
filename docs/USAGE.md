@@ -82,8 +82,10 @@ sudo -u gamewe /opt/gamewe/collector/bin/gamewe awards -date 2026-10-21
 
 | Command | What it does |
 |---------|--------------|
-| `gamewe run` | the collector (systemd starts it) |
-| `gamewe check` | config, database connection and TLS, schema completeness, game servers and settings |
+| `gamewe run` | the collector (systemd starts it); refuses to start (exit code 1) while the database schema is older than the binary |
+| `gamewe check` | config, database connection and TLS, schema version and pending migrations, game servers and settings |
+| `gamewe db migrate` | create the tables of a new database, bring an older one to this version (below) |
+| `gamewe db status`, `gamewe db grants`, `gamewe db seed` | schema version and migrations; the web users' rights again; missing reference data |
 | `gamewe -V` / `--version` / `version` | the version |
 | `gamewe status`, `gamewe logaddress`, `gamewe rcon` | RCON status, log address registration, any RCON command (below) |
 | `gamewe game`, `gamewe server`, `gamewe option` | games, servers and settings like the web admin (below) |
@@ -91,6 +93,28 @@ sudo -u gamewe /opt/gamewe/collector/bin/gamewe awards -date 2026-10-21
 | `gamewe awards -date YYYY-MM-DD` | decide the daily awards of a day again |
 | `gamewe geoip-update` | download the DB-IP database now |
 | `gamewe simulate` | replay a sample game into the database or to a running collector |
+
+### Database schema
+
+The schema is built into the binary; only `gamewe db migrate` changes the
+database ([DATABASE.md](DATABASE.md#schema-versions-and-upgrades)). `gamewe db`
+alone lists the subcommands.
+
+```bash
+gamewe db status                 # schema version, pending and applied migrations (with date)
+gamewe db migrate -n             # --dry-run: the plan only; exit code 0 up to date, 2 pending, 1 error
+gamewe db migrate                # plan, backup advice, then "Backup made? Migrate now? [y/N]" (y/yes/j/ja)
+gamewe db migrate -f             # --force: no question (scripts, CI); the plan is printed anyway
+gamewe db grants                 # grant the web users their table rights again
+gamewe db grants -print | mariadb -u root -p gamewe   # the same SQL, run as a database admin
+gamewe db seed                   # add missing reference data; existing rows stay as they are
+```
+
+`-f` and `-n` together are an error. Without a terminal on stdin (cron,
+scripts, `docker compose run -T`) `gamewe db migrate` does not wait for an
+answer: it stops with a message unless `-f` is given. Stop the collector
+while migrating; the migration takes a lock, so a second run at the same
+time waits and then finds nothing to do.
 
 ### RCON jobs and checks by hand
 

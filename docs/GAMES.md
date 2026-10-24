@@ -36,7 +36,7 @@ guesses every game from its code.
 
 ## Default data
 
-`02_seed.sql` has teams, roles, actions (rewards), weapons (modifiers),
+The reference data (`internal/schema/mysql/seed.sql`) has teams, roles, actions (rewards), weapons (modifiers),
 awards, ranks and ribbons for css (gameME values), and for cstrike, dod,
 dods, tfc, valve, ns, tf, hl2mp and csgo the definitions of HLstatsX:CE
 (`sql/install.sql` of github.com/A1mDev/hlstatsx-community-edition) with these
@@ -114,7 +114,7 @@ plugin on cstrike, dod and tfc. valve and ns have none.
 ## CS:GO
 
 The base data of `csgo` (CE values; rows of gameWE's own csgo block at the
-top of `02_seed.sql` win where both define a code):
+top of `seed.sql` win where both define a code):
 
 | Data | Rows | Content |
 |------|------|---------|

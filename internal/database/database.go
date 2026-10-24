@@ -85,7 +85,7 @@ func openMySQL(cfg config.Database, tlsConf *tls.Config) (*sql.DB, error) {
 	mc.ParseTime = true
 	mc.Loc = time.UTC
 	mc.Timeout = time.Duration(cfg.ConnectTimeout) * time.Second
-	// The schema (schema/hlstatsx.sql) is utf8mb4.
+	// The schema (internal/schema) is utf8mb4.
 	if err := mc.Apply(mysql.Charset("utf8mb4", "utf8mb4_unicode_ci")); err != nil {
 		return nil, err
 	}
@@ -172,10 +172,7 @@ func CheckTables(ctx context.Context, db *DB) error {
 	for _, t := range Tables {
 		var n int
 		if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+t+" WHERE 1 = 0").Scan(&n); err != nil {
-			if t == "hlstats_Events_Latency" {
-				return fmt.Errorf("table %s: %w (%s)", t, err, SchemaHint)
-			}
-			return fmt.Errorf("table %s: %w (is this the gameWE database, see schema/hlstatsx.sql or schema/postgres/hlstatsx.sql?)", t, err)
+			return fmt.Errorf("table %s: %w (is this the gameWE database? %s)", t, err, SchemaHint)
 		}
 	}
 	return nil

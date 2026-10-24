@@ -51,9 +51,9 @@ func TestLive(t *testing.T) {
 	}
 }
 
-// The gamewe_* rows in schema/init/02_seed.sql must match the defaults.
+// The gamewe_* rows in internal/schema/mysql/seed.sql must match the defaults.
 func TestSeedMatchesDefaults(t *testing.T) {
-	data, err := os.ReadFile("../../schema/init/02_seed.sql")
+	data, err := os.ReadFile("../../internal/schema/mysql/seed.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestSeedMatchesDefaults(t *testing.T) {
 	}
 	for _, k := range Keys() {
 		if _, ok := opts[k.Name]; !ok {
-			t.Errorf("02_seed.sql lacks %s", k.Name)
+			t.Errorf("seed.sql lacks %s", k.Name)
 		}
 	}
 	s, warn := FromOptions(opts)

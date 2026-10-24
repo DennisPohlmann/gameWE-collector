@@ -43,7 +43,7 @@ What this means for the import:
 - Docker or Podman for the temporary MariaDB (any MariaDB 10.6+ that you can
   copy files into works too).
 - Free disk space: about three times the unpacked size of the ZIP.
-- The gameWE collector package (for `schema/init/`), see
+- The gameWE collector package (`schema/init/` and the `gamewe` binary), see
   [INSTALLATION.md](INSTALLATION.md).
 
 The commands are for `bash` (in `zsh` the table lists would not be split into
@@ -88,9 +88,15 @@ cd /opt/gamewe/collector/doc/schema/init
 COLLECTOR_PASSWORD='change-me' WEB_PASSWORD='change-me' WEB_ADMIN_PASSWORD='change-me' ./init-db.sh -u root -p
 ```
 
-It creates the database `gamewe` with its three users, the tables, the
-reference data and the rights. Use a new, empty database; the import replaces
-the content of most tables.
+It creates the database `gamewe` with its three users. Then create the
+tables, the reference data and the web users' rights with the collector
+(`database.*` in its config pointing to this database):
+
+```bash
+sudo -u gamewe /opt/gamewe/collector/bin/gamewe db migrate -f
+```
+
+Use a new, empty database; the import replaces the content of most tables.
 
 ## 4. Copy the data
 
@@ -132,7 +138,7 @@ mariadb --default-character-set=utf8mb4 gamewe < gameme-options.sql
 
 These are the same tables as in the dump (gameWE has every table of the
 export, plus `hlstats_Events_Latency` and `hlstats_gamewe_jobs`). The rights
-of `03_grants.sql` stay: `TRUNCATE` keeps the tables. `ERROR 1062 Duplicate
+of the web users stay: `TRUNCATE` keeps the tables. `ERROR 1062 Duplicate
 entry` means a table was not emptied; `Incorrect string value` means the text
 was not dumped with `--default-character-set=latin1`.
 
@@ -141,7 +147,7 @@ was not dumped with `--default-character-set=latin1`.
 ```bash
 # add the gameWE reference data that gameME did not have (other games,
 # weapons, actions, awards, settings); existing rows are not changed
-mariadb -u root -p gamewe < /opt/gamewe/collector/doc/schema/init/02_seed.sql
+sudo -u gamewe /opt/gamewe/collector/bin/gamewe db seed
 ```
 
 Then, in `mariadb gamewe`:

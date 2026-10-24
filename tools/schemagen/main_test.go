@@ -12,21 +12,21 @@ import (
 // The PostgreSQL files in the repository must be what the generator makes
 // from the MariaDB files (run `make schema` after changing those).
 func TestPostgresFilesUpToDate(t *testing.T) {
-	schema, _ := os.ReadFile("../../schema/hlstatsx.sql")
-	seed, _ := os.ReadFile("../../schema/init/02_seed.sql")
+	schema, _ := os.ReadFile("../../internal/schema/mysql/schema.sql")
+	seed, _ := os.ReadFile("../../internal/schema/mysql/seed.sql")
 	wantSchema, wantSeed, err := Generate(string(schema), string(seed))
 	if err != nil {
 		t.Fatal(err)
 	}
-	grants, _ := os.ReadFile("../../schema/init/03_grants.sql")
+	grants, _ := os.ReadFile("../../internal/schema/mysql/grants.sql")
 	wantGrants, err := ConvertGrants(string(grants))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for file, want := range map[string]string{
-		"../../schema/postgres/hlstatsx.sql":       wantSchema,
-		"../../schema/postgres/init/02_seed.sql":   wantSeed,
-		"../../schema/postgres/init/03_grants.sql": wantGrants,
+		"../../internal/schema/postgres/schema.sql":       wantSchema,
+		"../../internal/schema/postgres/seed.sql":   wantSeed,
+		"../../internal/schema/postgres/grants.sql": wantGrants,
 	} {
 		got, err := os.ReadFile(file)
 		if err != nil || string(got) != want {
@@ -38,19 +38,18 @@ func TestPostgresFilesUpToDate(t *testing.T) {
 // Requirements of the web frontend: unquoted identifiers, no CREATE TYPE,
 // the same tables, and both seeds with the same number of rows per table.
 func TestPostgresSchemaRules(t *testing.T) {
-	pg, err := os.ReadFile("../../schema/postgres/hlstatsx.sql")
+	pg, err := os.ReadFile("../../internal/schema/postgres/schema.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := string(pg)
-	ddl := s[:strings.Index(s, "-- BEGIN REFERENCE DATA")] // the data may contain quotes
-	if strings.Contains(ddl, `"`) || strings.Contains(ddl, "`") {
+	if strings.Contains(s, `"`) || strings.Contains(s, "`") {
 		t.Error("the PostgreSQL schema must not quote identifiers")
 	}
 	if strings.Contains(strings.ToUpper(s), "CREATE TYPE") {
 		t.Error("the PostgreSQL schema must not create types (ENUMs are varchar + CHECK)")
 	}
-	my, _ := os.ReadFile("../../schema/hlstatsx.sql")
+	my, _ := os.ReadFile("../../internal/schema/mysql/schema.sql")
 	myTables := regexp.MustCompile("CREATE TABLE `([^`]+)`").FindAllStringSubmatch(string(my), -1)
 	pgTables := regexp.MustCompile(`CREATE (?:UNLOGGED )?TABLE (\w+)`).FindAllStringSubmatch(s, -1)
 	if len(myTables) != len(pgTables) {
@@ -73,8 +72,8 @@ func TestPostgresSchemaRules(t *testing.T) {
 		}
 		return out
 	}
-	mySeed, _ := os.ReadFile("../../schema/init/02_seed.sql")
-	pgSeed, _ := os.ReadFile("../../schema/postgres/init/02_seed.sql")
+	mySeed, _ := os.ReadFile("../../internal/schema/mysql/seed.sql")
+	pgSeed, _ := os.ReadFile("../../internal/schema/postgres/seed.sql")
 	a, b := rows(string(mySeed)), rows(string(pgSeed))
 	if len(a) < 10 || len(a) != len(b) {
 		t.Fatalf("seed tables: %v vs %v", a, b)

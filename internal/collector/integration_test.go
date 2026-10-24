@@ -3,7 +3,7 @@
 //go:build integration
 
 // Integration test against a real MariaDB / MySQL or PostgreSQL with the
-// gameWE schema (schema/hlstatsx.sql or schema/postgres/hlstatsx.sql). It
+// gameWE schema (internal/schema, created by gamewe db migrate). It
 // DELETES ALL ROWS of the database, so it only runs with
 // GAMEWE_TEST_DB_WIPE=yes:
 //
@@ -322,10 +322,10 @@ func TestIntegrationServerAddedAtRuntime(t *testing.T) {
 	}
 }
 
-// The default data of schema/init/02_seed.sql rewards the HLstatsX events:
+// The default data of internal/schema/mysql/seed.sql rewards the HLstatsX events:
 // player actions, headshot and kill streak actions, player-vs-player actions
 // and team bonuses.
-// loadSeed replaces the default data with schema/init/02_seed.sql.
+// loadSeed replaces the default data with internal/schema/mysql/seed.sql.
 func loadSeed(t *testing.T, db *database.DB) {
 	t.Helper()
 	for _, tbl := range []string{"hlstats_Games", "hlstats_Actions", "hlstats_Weapons", "hlstats_Options", "hlstats_Teams",
@@ -334,9 +334,9 @@ func loadSeed(t *testing.T, db *database.DB) {
 			t.Fatal(err)
 		}
 	}
-	seedFile := "../../schema/init/02_seed.sql"
+	seedFile := "../../internal/schema/mysql/seed.sql"
 	if db.Postgres() {
-		seedFile = "../../schema/postgres/init/02_seed.sql"
+		seedFile = "../../internal/schema/postgres/seed.sql"
 	}
 	seed, err := os.ReadFile(seedFile)
 	if err != nil {
@@ -1193,7 +1193,7 @@ func TestIntegrationPlayerCount(t *testing.T) {
 	check("restart", 2)
 }
 
-// A fresh schema (schema/init) is complete: the schema check (read only, also
+// A fresh schema (internal/schema) is complete: the schema check (read only, also
 // for the collector's user) finds nothing missing on both databases.
 func TestIntegrationSchemaCheck(t *testing.T) {
 	db := testDB(t)

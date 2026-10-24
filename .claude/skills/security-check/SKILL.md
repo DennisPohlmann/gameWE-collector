@@ -32,7 +32,7 @@ The numbers follow the original 20-point pre-launch list.
    `hlstats_Servers`, never from config committed to git.
 2. **Least privilege (RLS equivalent):** the database has no row level
    security; the boundary is the DB user. Collector user writes, web user
-   reads with the exclusions in `schema/init/03_grants.sql` (and Postgres).
+   reads with the exclusions in `internal/schema/mysql/grants.sql` (and Postgres).
    New table or column with personal data or secrets: decide the grant in
    both grant files, the grants test must pass.
 3. **IDOR:** a log line may only change stats of the server it came from and

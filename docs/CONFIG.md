@@ -176,9 +176,9 @@ to the server the command came from, each server through its own connection.
 
 Keys starting with `gamewe_`. A missing key uses the default. An invalid value
 keeps the default and is logged as a warning, as is an unknown `gamewe_*` key
-(probably a typo). `schema/hlstatsx.sql` and `schema/init/02_seed.sql` create
-all keys with their defaults; the seed only adds missing keys and never changes
-values that are already set.
+(probably a typo). `gamewe db migrate` creates all keys with their defaults in
+a new database (the reference data, `internal/schema/mysql/seed.sql`); the
+seed only adds missing keys and never changes values that are already set.
 
 | Key | Default | Meaning |
 |-----|---------|---------|

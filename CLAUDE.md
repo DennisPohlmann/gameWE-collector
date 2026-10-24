@@ -95,7 +95,14 @@ the audit summary of `security-privacy-audit`.
 - DB users: the collector user writes, `gamewe_web` gets SELECT only and
   no `hlstats_Users`, `hlstats_Events_Rcon`, `hlstats_Events_Chat`,
   `hlstats_Servers.rcon_password`, `hlstats_Events_Connects.ipAddress`
-  (`schema/init/03_grants.sql` and the Postgres counterpart). A new table
-  needs a grant decision in both files (a test checks this).
+  (`internal/schema/mysql/grants.sql` and the generated Postgres file). A
+  new table needs a grant decision there (a test checks this).
+- The schema is compiled in (`internal/schema`, go:embed); the collector
+  never reads SQL files from disk. Only `gamewe db migrate` changes the
+  structure (`internal/database/migrate.go`, `migrations.go`), never the
+  running collector, which refuses to start on an old schema. Migrations
+  only add (tables, columns, indexes, missing seed rows), are idempotent,
+  never delete rows or drop tables/columns; released migrations are never
+  changed. How to add one: `docs/DEVELOPMENT.md`, "Adding a migration".
 - Secrets stay out of git: `config.yaml`, `*.pem`, `*.key`, real
   `docker-compose.yml` values are ignored; examples use `change-me`.

@@ -2,8 +2,8 @@
 
 // Package stats writes game events into the HLstatsX (gameME style)
 // database, MariaDB / MySQL or PostgreSQL, and answers the queries behind
-// the in-game commands. The schemas are schema/hlstatsx.sql and
-// schema/postgres/hlstatsx.sql.
+// the in-game commands. The schemas are internal/schema/mysql/schema.sql
+// and internal/schema/postgres/schema.sql.
 //
 // SQL is written once with ? placeholders; the few dialect differences go
 // through ignore, upsert, insertID and skillSet. The MariaDB tables are

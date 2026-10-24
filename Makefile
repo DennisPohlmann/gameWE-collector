@@ -57,16 +57,12 @@ package: build geoip
 	install -m 0644 THIRD-PARTY-LICENSES.md $(STAGE)/$(OPT)/doc/
 	cp -r licenses $(STAGE)/$(OPT)/doc/licenses && chmod -R u=rwX,go=rX $(STAGE)/$(OPT)/doc/licenses
 	install -m 0644 README.md CHANGELOG.md LICENSE docs/*.md $(STAGE)/$(OPT)/doc/
-	install -m 0644 schema/hlstatsx.sql $(STAGE)/$(OPT)/doc/schema/
-	install -m 0644 schema/init/00_create_database.sql schema/init/02_seed.sql schema/init/03_grants.sql $(STAGE)/$(OPT)/doc/schema/init/
-	install -m 0644 schema/hlstatsx.sql $(STAGE)/$(OPT)/doc/schema/init/01_schema.sql
+	install -m 0644 schema/init/00_create_database.sql $(STAGE)/$(OPT)/doc/schema/init/
 	install -m 0755 schema/init/init-db.sh $(STAGE)/$(OPT)/doc/schema/init/
 	install -m 0640 config.example.yaml $(STAGE)/etc/gamewe/collector/config.example.yaml
 	install -m 0644 packaging/gamewe-collector.service $(STAGE)/etc/systemd/system/gamewe-collector.service
 	umask 022 && install -d $(STAGE)/$(OPT)/doc/schema/postgres/init
-	install -m 0644 schema/postgres/hlstatsx.sql $(STAGE)/$(OPT)/doc/schema/postgres/
-	install -m 0644 schema/postgres/init/00_create_database.sql schema/postgres/init/02_seed.sql schema/postgres/init/03_grants.sql $(STAGE)/$(OPT)/doc/schema/postgres/init/
-	install -m 0644 schema/postgres/hlstatsx.sql $(STAGE)/$(OPT)/doc/schema/postgres/init/01_schema.sql
+	install -m 0644 schema/postgres/init/00_create_database.sql $(STAGE)/$(OPT)/doc/schema/postgres/init/
 	install -m 0755 schema/postgres/init/init-db.sh $(STAGE)/$(OPT)/doc/schema/postgres/init/
 	install -d $(DIST)
 	tar --sort=name --owner=0 --group=0 --numeric-owner -C $(STAGE) -czf $(DIST)/$(PKG).tar.gz etc opt var
@@ -80,12 +76,10 @@ IMAGE ?= gamewe-collector
 docker: geoip
 	docker build --build-arg VERSION=$(VERSION) -t $(IMAGE):$(VERSION) .
 
-# Copy the reference data (schema/init/02_seed.sql) into schema/hlstatsx.sql,
-# so the schema file alone creates a working database, then generate the
-# PostgreSQL files (schema/postgres/) from the MariaDB ones.
+# Generate the PostgreSQL files (internal/schema/postgres/) from the MariaDB
+# ones (internal/schema/mysql/). Both are compiled into the binary; the
+# package ships only the init scripts (schema/init/: database and users).
 schema:
-	awk -v seed=schema/init/02_seed.sql '/^-- BEGIN REFERENCE DATA/ {print; while ((getline l < seed) > 0) print l; skip=1; next} /^-- END REFERENCE DATA/ {skip=0} !skip' schema/hlstatsx.sql > schema/hlstatsx.sql.tmp
-	mv schema/hlstatsx.sql.tmp schema/hlstatsx.sql
 	$(GO) run ./tools/schemagen
 
 clean:

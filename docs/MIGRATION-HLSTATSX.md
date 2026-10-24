@@ -39,7 +39,7 @@ The full mapping per table is in [Table mapping](#table-mapping).
   guide does not cover PostgreSQL as the target.
 - Free disk space for the CE dump, the copy and the gameWE database (about
   three times the size of the CE database).
-- The gameWE collector package (for `schema/init/`), see
+- The gameWE collector package (`schema/init/` and the `gamewe` binary), see
   [INSTALLATION.md](INSTALLATION.md), and the script
   `docs/migration/hlstatsx-ce-to-gamewe.sql` from the collector's source
   (repository or source archive of the release).
@@ -130,13 +130,20 @@ or rename one of them in the copy and run the command again.
 ```bash
 cd /opt/gamewe/collector/doc/schema/init
 COLLECTOR_PASSWORD='change-me' WEB_PASSWORD='change-me' WEB_ADMIN_PASSWORD='change-me' ./init-db.sh -u root -p
+# database.* of /etc/gamewe/collector/config.yaml pointing to this database:
+sudo -u gamewe /opt/gamewe/collector/bin/gamewe db migrate -f
 ```
 
-It creates the database `gamewe` with its three users, the tables, the
-gameWE reference data (games, teams, roles, actions with rewards, weapons with
-modifiers, awards, ranks, ribbons, settings) and the rights
-([INSTALLATION.md](INSTALLATION.md), section C). The script needs this new,
-empty database.
+`init-db.sh` creates the database `gamewe` with its three users,
+`gamewe db migrate` the tables, the gameWE reference data (games, teams,
+roles, actions with rewards, weapons with modifiers, awards, ranks, ribbons,
+settings) and the rights ([INSTALLATION.md](INSTALLATION.md), section C). The
+script needs this new, empty database.
+
+(An HLstatsX database of the variant gameWE writes, with `timestamp_id` in
+the event tables instead of CE's `eventTime`, needs no copy: `gamewe db
+migrate` upgrades it in place, [DATABASE.md](DATABASE.md#schema-versions-and-upgrades).
+For CE it refuses and points here.)
 
 ## 5. Run the conversion
 
@@ -260,7 +267,7 @@ and keep `hlstatsx-ce.sql` as the backup.
 | `hlstats_Events_Statsme`, `_Statsme2`, `_StatsmeLatency`, `_StatsmeTime` | no such tables in gameWE; the weapon statistics come from the gameWE plugin (`hlstats_Players_Weapons`) from now on |
 | `hlstats_Livestats` | who is online now; rebuilt by the collector |
 | `hlstats_Options`, `_Options_Choices`, `hlstats_Servers_Config*`, `_Servers_VoiceComm` | CE's settings and server configuration; gameWE has its own (`gamewe_*`) |
-| `hlstats_Games_Defaults`, `_Games_Supported`, `_Mods_*`, `hlstats_Heatmap_Config`, `hlstats_Countries`, `geoLiteCity_*` | CE's own reference data; gameWE ships its own (`02_seed.sql`, GeoIP database) |
+| `hlstats_Games_Defaults`, `_Games_Supported`, `_Mods_*`, `hlstats_Heatmap_Config`, `hlstats_Countries`, `geoLiteCity_*` | CE's own reference data; gameWE ships its own (`gamewe db migrate` / `gamewe db seed`, GeoIP database) |
 | `hlstats_Ranks`, `hlstats_Ribbons`, `hlstats_Players_Ribbons` | gameWE has its own rank and ribbon definitions and derives them per player |
 | `Players.lastAddress` | the last IP; gameWE keeps IPs only in `hlstats_Events_Connects` |
 | `Players.activity`, `mmrank`, `displayEvents`, `blockavatar`, `Awards.g_winner_*`, `Clans.hidden`, `mapregion` | no such columns in gameWE |

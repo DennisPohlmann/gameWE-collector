@@ -34,8 +34,10 @@ jobs:
       - name: actionlint
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 
-  # Both databases, created from scratch with the init scripts: gamewe for
-  # the collector tests (they delete all rows), gamewe_init stays as created.
+  # Both databases, created from scratch with the init scripts and
+  # gamewe db migrate: gamewe for the collector tests (they delete all
+  # rows), gamewe_init stays as created. The migration tests create and drop
+  # their own databases mig_* (new, HLstatsX, older gameWE, lock, rights).
   # Two LTS lines of MariaDB and the two newest PostgreSQL versions.
   integration:
     needs: test
@@ -87,6 +89,34 @@ jobs:
             DB_NAME=$db schema/init/init-db.sh
             DB_NAME=$db schema/postgres/init/init-db.sh
           done
+      - name: create the tables (gamewe db migrate)
+        run: |
+          go build -o "$RUNNER_TEMP/gamewe" ./cmd/gamewe
+          for db in gamewe gamewe_init; do
+            for t in mariadb:3306 postgres:5432; do
+              cfg="$RUNNER_TEMP/$db-${t%%:*}.yaml"
+              printf 'database:\n  type: %s\n  host: 127.0.0.1\n  port: %s\n  user: gamewe\n  password: %s\n  name: %s\n' \
+                "${t%%:*}" "${t##*:}" "$COLLECTOR_PASSWORD" "$db" > "$cfg"
+              "$RUNNER_TEMP/gamewe" db migrate -f -config "$cfg"
+              "$RUNNER_TEMP/gamewe" db migrate -n -config "$cfg"
+            done
+          done
+      - name: migrations (MariaDB)
+        env:
+          GAMEWE_TEST_MIGRATE_TYPE: mysql
+          GAMEWE_TEST_MIGRATE_HOST: 127.0.0.1
+          GAMEWE_TEST_MIGRATE_PORT: 3306
+          GAMEWE_TEST_MIGRATE_ADMIN_USER: root
+          GAMEWE_TEST_MIGRATE_ADMIN_PASSWORD: root
+        run: go test -count=1 -p 1 -tags integration -run Migrate -v ./internal/database/ ./cmd/gamewe/
+      - name: migrations (PostgreSQL)
+        env:
+          GAMEWE_TEST_MIGRATE_TYPE: postgres
+          GAMEWE_TEST_MIGRATE_HOST: 127.0.0.1
+          GAMEWE_TEST_MIGRATE_PORT: 5432
+          GAMEWE_TEST_MIGRATE_ADMIN_USER: postgres
+          GAMEWE_TEST_MIGRATE_ADMIN_PASSWORD: postgres
+        run: go test -count=1 -p 1 -tags integration -run Migrate -v ./internal/database/ ./cmd/gamewe/
       - name: init scripts, grants, schema parity
         env:
           GAMEWE_TEST_INIT_MYSQL: 127.0.0.1:3306/gamewe_init

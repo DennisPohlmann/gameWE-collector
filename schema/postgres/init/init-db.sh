@@ -5,9 +5,10 @@
 #
 #   COLLECTOR_PASSWORD=... WEB_PASSWORD=... WEB_ADMIN_PASSWORD=... ./init-db.sh [psql options]
 #
-# Runs 00_create_database.sql (roles and database), the schema
-# (01_schema.sql, or ../hlstatsx.sql in the source tree), 02_seed.sql and
-# 03_grants.sql as a PostgreSQL superuser, e.g.  ./init-db.sh -U postgres -h db.example.org
+# Runs 00_create_database.sql (roles, database, schema rights) as a
+# PostgreSQL superuser, e.g.  ./init-db.sh -U postgres -h db.example.org
+# The tables, the reference data and the web roles' table rights are then
+# created by the collector:  gamewe db migrate
 #
 # Environment:
 #   DB_NAME             database name (default gamewe)
@@ -29,9 +30,6 @@ if [[ ! "$db" =~ ^[a-z0-9_]+$ ]]; then
 	echo "DB_NAME may only contain lower-case letters, digits and _" >&2
 	exit 2
 fi
-
-schema=$dir/01_schema.sql
-[[ -f "$schema" ]] || schema=$dir/../hlstatsx.sql
 
 # Never touch an existing database (it would also reset the role passwords).
 existing=$($psql "$@" -d postgres -tAX -v db="$db" <<'SQL'
@@ -55,10 +53,4 @@ fi
 	cat "$dir/00_create_database.sql"
 } | $psql "$@" -d postgres -q -v ON_ERROR_STOP=1
 echo "database $db and roles created"
-$psql "$@" -d "$db" -q -v ON_ERROR_STOP=1 <"$schema"
-echo "schema loaded ($(basename "$schema"))"
-$psql "$@" -d "$db" -q -v ON_ERROR_STOP=1 <"$dir/02_seed.sql"
-echo "reference data checked (02_seed.sql)"
-$psql "$@" -d "$db" -q -v ON_ERROR_STOP=1 <"$dir/03_grants.sql"
-echo "rights granted (03_grants.sql)"
-echo "next: set database.type: postgres, name: $db, user gamewe and its password in /etc/gamewe/collector/config.yaml, then run: gamewe check"
+echo "next: set database.type: postgres, name: $db, user gamewe and its password in /etc/gamewe/collector/config.yaml, then run: gamewe db migrate (creates the tables) and gamewe check"

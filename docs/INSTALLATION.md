@@ -19,7 +19,7 @@ passwords.
 | UDP port for game-server logs (Source, GoldSrc) | `41337` (`listen.port`) |
 | Config file | `/etc/gamewe/collector/config.yaml` |
 | State directory (GeoIP database) | `/var/lib/gamewe/collector` |
-| Binary, docs, SQL | `/opt/gamewe/collector/bin/gamewe`, `/opt/gamewe/collector/doc/` |
+| Binary, docs, init scripts | `/opt/gamewe/collector/bin/gamewe`, `/opt/gamewe/collector/doc/` |
 | Service | `gamewe-collector` (systemd), user `gamewe` |
 
 **Supported databases** (tested in CI with every release):
@@ -28,7 +28,7 @@ passwords.
 |----------|----------|-------|
 | MariaDB | 11.4 (LTS), 12.3 (LTS) | recommended; `schema/init/` |
 | PostgreSQL | 17, 18 | `schema/postgres/init/` |
-| MySQL 8.x | not tested | the collector speaks the MySQL protocol, but `03_grants.sql` uses MariaDB syntax (`BEGIN NOT ATOMIC`) and does not run on MySQL. Use MariaDB or PostgreSQL. |
+| MySQL 8.x | not supported | the collector speaks the MySQL protocol, but the schema (`USING HASH`) and the web users' rights (`BEGIN NOT ATOMIC`) use MariaDB syntax. Use MariaDB or PostgreSQL. |
 
 **Folder layout** (release archive; the container has the same paths inside):
 
@@ -39,7 +39,7 @@ passwords.
 | `/etc/gamewe/collector/db-password` (optional) | `root:gamewe` | `0640` | the database password alone (`database.password_file`) |
 | `/etc/gamewe/collector/config.example.yaml` | `root:root` | `0640` | the example of the release |
 | `/opt/gamewe/collector/bin/gamewe` | `root:root` | `0755` | the binary |
-| `/opt/gamewe/collector/doc/` | `root:root` | `0755` / files `0644` | docs, licenses, SQL |
+| `/opt/gamewe/collector/doc/` | `root:root` | `0755` / files `0644` | docs, licenses, init scripts |
 | `/var/lib/gamewe/` | `gamewe:gamewe` | `0755` | state |
 | `/var/lib/gamewe/collector/` | `gamewe:gamewe` | `0755` | GeoIP database and its monthly update (systemd `StateDirectory`) |
 | `/etc/systemd/system/gamewe-collector.service` | `root:root` | `0644` | the unit |
@@ -48,8 +48,9 @@ passwords.
 
 The image `ghcr.io/dennispohlmann/gamewe-collector` (tags of a release: the
 version, e.g. `0.1.0`, `<major>.<minor>` and `latest`; `edge` is the latest
-commit on `main`) contains the static binary, the docs
-and SQL in `/opt/gamewe/collector/doc/` and the GeoIP database. It runs as the
+commit on `main`) contains the static binary (with the database schema built
+in), the docs and init scripts in `/opt/gamewe/collector/doc/` and the GeoIP
+database. It runs as the
 non-root user `nonroot` (uid 65532). Pull it with `docker pull`, or
 build it yourself: `make docker`.
 
@@ -110,6 +111,7 @@ docker compose --profile postgres up -d
 (cd schema/postgres/init && PSQL='docker compose -f ../../../docker-compose.yml exec -T postgres psql' \
   ./init-db.sh -U postgres)
 
+docker compose run --rm collector db migrate -f   # creates the tables (the collector does not start before)
 docker compose up -d collector
 docker compose run --rm collector check     # config, database, schema, servers
 ```
@@ -159,8 +161,8 @@ opt/gamewe/collector/bin/gamewe                 the binary
 opt/gamewe/collector/doc/                       README, CHANGELOG, INSTALLATION, CONFIG, USAGE, INTERFACE, DATABASE,
                                                 DB-SEMANTICS, GAMES, DEVELOPMENT,
                                                 LICENSE, THIRD-PARTY-LICENSES.md, licenses/, GEOIP-NOTICE
-opt/gamewe/collector/doc/schema/                MariaDB: hlstatsx.sql, init/ (00_create_database, 01_schema, 02_seed, 03_grants, init-db.sh)
-opt/gamewe/collector/doc/schema/postgres/       PostgreSQL: hlstatsx.sql, init/ (the same files)
+opt/gamewe/collector/doc/schema/init/           MariaDB: 00_create_database.sql, init-db.sh (database and users; the tables are built into gamewe)
+opt/gamewe/collector/doc/schema/postgres/init/  PostgreSQL: the same two files
 var/lib/gamewe/collector/dbip-city-lite.mmdb    GeoIP database (DB-IP City Lite, CC BY 4.0), updated there monthly
 ```
 
@@ -254,85 +256,65 @@ The unit is in `/etc/systemd/system/` (units installed by hand); change it with
 
 ## C. Database
 
-MariaDB / MySQL (tested: MariaDB 11.4 and 12.3) or PostgreSQL (tested: 17 and
-18). Three database users:
+MariaDB (tested: 11.4 and 12.3) or PostgreSQL (tested: 17 and 18). Three
+database users:
 
 | User | For | Rights |
 |------|-----|--------|
-| `gamewe` | the collector (`config.yaml`) | read and write rows, never the structure |
+| `gamewe` | the collector (`config.yaml`) and `gamewe db migrate` | read and write rows; create and alter tables (never drop); grant the web users their table rights |
 | `gamewe_web` | the public web pages | SELECT, without users, RCON events, chat, `hlstats_Servers.rcon_password`, `hlstats_Events_Connects.ipAddress` |
 | `gamewe_web_admin` | the web admin pages | SELECT on all; writes settings, games, servers, definitions, admin users; queues ranking resets |
 
 ### A new database
 
-The init script creates the database, the three users with their passwords,
-the tables, the reference data (games, teams, roles, actions, weapons,
-awards, ranks, settings) and the rights. It stops without changing anything if
-the database already has tables.
+Two steps. The init script creates the database and the three users with
+their passwords (it stops without changing anything if the database already
+has tables); `gamewe db migrate` then creates the tables, the reference data
+(games, teams, roles, actions, weapons, awards, ranks, settings) and the web
+users' rights. The collector does not start before.
 
 ```bash
-# MariaDB / MySQL, as a database admin
+# MariaDB, as a database admin
 cd /opt/gamewe/collector/doc/schema/init
 COLLECTOR_PASSWORD='change-me' WEB_PASSWORD='change-me' WEB_ADMIN_PASSWORD='change-me' ./init-db.sh -u root -p
 
 # PostgreSQL, as a superuser
 cd /opt/gamewe/collector/doc/schema/postgres/init
 COLLECTOR_PASSWORD='change-me' WEB_PASSWORD='change-me' WEB_ADMIN_PASSWORD='change-me' ./init-db.sh -U postgres
+
+# then, with database.* set in /etc/gamewe/collector/config.yaml:
+sudo -u gamewe /opt/gamewe/collector/bin/gamewe db migrate      # shows the plan, asks; -f: no question
+sudo -u gamewe /opt/gamewe/collector/bin/gamewe check
+systemctl enable --now gamewe-collector
 ```
-
-What the script runs, in order (by hand: replace the `CHANGE_ME_*`
-placeholders in `00_create_database.sql` first):
-
-```bash
-# MariaDB / MySQL protocol (in /opt/gamewe/collector/doc/schema/init/)
-mysql -u root -p < 00_create_database.sql      # CREATE DATABASE gamewe CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
-                                               # users gamewe, gamewe_web, gamewe_web_admin
-mysql -u root -p gamewe < 01_schema.sql        # tables (and the reference data)
-mysql -u root -p gamewe < 02_seed.sql          # reference data (only inserts what is missing)
-mysql -u root -p gamewe < 03_grants.sql        # table and column rights of gamewe_web and gamewe_web_admin
-
-# PostgreSQL (in /opt/gamewe/collector/doc/schema/postgres/init/)
-psql -U postgres -v db=gamewe -v collector_pw=change-me -v web_pw=change-me -v admin_pw=change-me \
-     -f 00_create_database.sql                 # roles and CREATE DATABASE gamewe ENCODING 'UTF8' TEMPLATE template0
-psql -U postgres -d gamewe -v ON_ERROR_STOP=1 -f 01_schema.sql
-psql -U postgres -d gamewe -v ON_ERROR_STOP=1 -f 02_seed.sql
-psql -U postgres -d gamewe -v ON_ERROR_STOP=1 -f 03_grants.sql
-```
-
-The rights (`03_grants.sql`; the collector user gets
-`SELECT, INSERT, UPDATE, DELETE` on all tables in `00_create_database.sql`):
-
-| User | Tables |
-|------|--------|
-| `gamewe` | SELECT, INSERT, UPDATE, DELETE on all tables (PostgreSQL: also the sequences) |
-| `gamewe_web` | SELECT on every table except `hlstats_Users`, `hlstats_Events_Rcon`, `hlstats_Events_Chat`; on `hlstats_Servers` without `rcon_password`, on `hlstats_Events_Connects` without `ipAddress` (column rights) |
-| `gamewe_web_admin` | SELECT on all tables (PostgreSQL: and the sequences); INSERT, UPDATE, DELETE on `hlstats_Options`, `_Games`, `_Servers`, `_Clans`, `_Weapons`, `_Actions`, `_Teams`, `_Roles`, `_Awards`, `_Definition_Ranks_Ribbons`, `_Users`; UPDATE of `skill`, `hideranking`, `clan` on `hlstats_Players`; INSERT on `hlstats_gamewe_jobs` |
 
 `DB_NAME=name` chooses another database name. On MariaDB the users are created
 for the host `'%'`: restrict them to the collector's and the web server's
-addresses, and require TLS (`REQUIRE SSL`) when the database is on another host
-([DATABASE.md](DATABASE.md), also for doing the four steps by hand).
-No web admin login is created; the web frontend does that
-(`npm run create-admin -- <name>`).
+addresses, and require TLS (`REQUIRE SSL`) when the database is on another host.
+The rights of each user, and doing the init step by hand, are in
+[DATABASE.md](DATABASE.md). No web admin login is created; the web frontend
+does that (`npm run create-admin -- <name>`).
 
-### New reference data
+### Schema upgrades
 
-There are no migrations: the scripts above always create the complete current
-schema. `gamewe check` shows what an existing database lacks
-(`schema incomplete: missing ...`); the collector runs on with fallbacks, but
-without those parts (DATABASE.md, "Incomplete schemas"). New reference data
-of a later release (games, awards, ...) is added with its `02_seed.sql`:
+The database schema is built into the binary. At every start the collector
+compares the database with it; if the database is older (or something is
+missing), the collector **does not start** (exit code 1, `systemctl status
+gamewe-collector` and the journal name the command) until
+`gamewe db migrate` brought it up. Only that command changes the
+structure, never the running collector. `gamewe db status` shows the version,
+`gamewe db migrate -n` the plan; details, what a migration may do and the
+list of versions are in [DATABASE.md](DATABASE.md#schema-versions-and-upgrades).
 
-```bash
-mysqldump --single-transaction gamewe > gamewe-backup.sql     # PostgreSQL: pg_dump -Fc gamewe > gamewe.dump
-mysql -u root -p gamewe < /opt/gamewe/collector/doc/schema/init/02_seed.sql   # only adds missing rows
-# PostgreSQL: psql -U postgres -d gamewe -v ON_ERROR_STOP=1 -f /opt/gamewe/collector/doc/schema/postgres/init/02_seed.sql
-sudo -u gamewe /opt/gamewe/collector/bin/gamewe check         # schema: ok
-```
+A database created before this version (with `01_schema.sql`, or an older
+HLstatsX database of the variant gameWE uses) is upgraded the same way. Its
+collector user has no CREATE / ALTER rights yet: the first
+`gamewe db migrate` stops and prints the `GRANT` (MariaDB) or the
+ownership change (PostgreSQL) to run once as a database admin.
 
-`02_seed.sql` only inserts rows that are missing (games, teams, roles,
-actions, weapons, awards, ranks, ribbons, settings); it never changes
-existing rows or rankings of your own (such as `css1`).
+The SQL files `hlstatsx.sql`, `01_schema.sql`, `02_seed.sql`, `03_grants.sql`
+and `upgrade-*.sql` of older releases are obsolete (`gamewe check` lists the
+ones still in `/opt/gamewe/collector/doc/schema/`; delete them).
 
 ### Coming from HLstatsX:CE or gameME
 
@@ -401,20 +383,28 @@ from the collector host with the sample game:
 
 ## E. Update
 
-Read the release's entry in [CHANGELOG.md](../CHANGELOG.md) first. New reference
-data of a release (games, awards, ...) comes with `init/02_seed.sql`: run it
-after the update (C, "New reference data"); `gamewe check` says if the schema
-itself lacks something.
+Read the release's entry in [CHANGELOG.md](../CHANGELOG.md) first. An update
+is: make a backup, replace the binary, `gamewe db migrate`, start the
+collector. New tables, columns, indexes and reference data come with the
+binary; the collector refuses to start until the migration ran.
 
 ```bash
+# backup first (MariaDB / PostgreSQL)
+mariadb-dump -u root -p --single-transaction --routines gamewe > gamewe-before-update.sql
+# pg_dump -U postgres -Fc gamewe > gamewe-before-update.dump
+
 # archive
+systemctl stop gamewe-collector
 mkdir gamewe && tar -xzf gamewe-collector-<version>-linux-amd64.tar.gz -C gamewe && cd gamewe
 cp -r etc opt / && cp -rn var / && chown -R gamewe:gamewe /var/lib/gamewe
-systemctl daemon-reload && systemctl restart gamewe-collector
+sudo -u gamewe /opt/gamewe/collector/bin/gamewe db migrate      # plan, question; "up to date" if nothing changed
+systemctl daemon-reload && systemctl start gamewe-collector
 sudo -u gamewe /opt/gamewe/collector/bin/gamewe check
 
 # container
-docker compose pull && docker compose up -d        # or docker pull + docker run again
+docker compose pull
+docker compose stop collector && docker compose run --rm collector db migrate -f
+docker compose up -d
 ```
 
 `config.yaml` is never in the archive, so it is kept.

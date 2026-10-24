@@ -37,7 +37,7 @@ version semantic-release will make (`feat` → minor, `fix` → patch,
 5. **SQL:** `grep -rn 'Sprintf(' --include=*.go internal | grep -Ei 'select|insert|update|delete|where'`
    and confirm every hit only formats constant identifiers.
 6. **Grants:** `go test ./internal/database/ -run Grant` passes and the
-   exclusions in `schema/init/03_grants.sql` and the Postgres grants still
+   exclusions in `internal/schema/mysql/grants.sql` and the Postgres grants still
    match (no SELECT for the web user on users, RCON events, chat, RCON
    password, connect IPs).
 7. **Input fuzz:** for parsers that changed since the last tag

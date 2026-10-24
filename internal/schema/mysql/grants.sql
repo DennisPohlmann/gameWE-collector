@@ -1,10 +1,12 @@
--- gameWE - collector: table rights of the web users (run as root on the
--- new database:  mysql gamewe < 03_grants.sql).
+-- gameWE - collector: table rights of the web users.
 --
--- Step 4 of 4, after 01_schema.sql: MySQL / MariaDB only grant table and
--- column rights on tables that exist. The users are created in
--- 00_create_database.sql. Table names are unqualified, so the rights apply
--- to the database the script runs in.
+-- Compiled into the collector (internal/schema): `gamewe db migrate` runs
+-- it after it created or changed tables (MySQL / MariaDB only grant table
+-- and column rights on tables that exist), as the collector user, which
+-- needs WITH GRANT OPTION for it (schema/init/00_create_database.sql).
+-- `gamewe db grants -print` prints it for running as root instead. The users
+-- are created in 00_create_database.sql. Table names are unqualified, so the
+-- rights apply to the database the script runs in.
 --
 -- gamewe_web (public web pages): SELECT on every table, except
 -- hlstats_Users (web admin logins), hlstats_Events_Rcon (RCON commands

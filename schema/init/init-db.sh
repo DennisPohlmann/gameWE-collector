@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# gameWE - collector: create a new, empty gameWE / HLstatsX database.
+# gameWE - collector: create a new, empty gameWE database and its users.
 #
 #   COLLECTOR_PASSWORD=... WEB_PASSWORD=... WEB_ADMIN_PASSWORD=... ./init-db.sh [mysql options]
 #
-# Runs 00_create_database.sql (database and users), the schema
-# (01_schema.sql, or ../hlstatsx.sql in the source tree), 02_seed.sql
-# (reference data, edit it first) and 03_grants.sql with a
-# MySQL / MariaDB admin account,
-# e.g.  ./init-db.sh -u root -p
+# Runs 00_create_database.sql (database, users and their database rights)
+# with a MySQL / MariaDB admin account, e.g.  ./init-db.sh -u root -p
+# The tables, the reference data and the web users' table rights are then
+# created by the collector:  gamewe db migrate
 #
 # Environment:
 #   DB_NAME             database name (default gamewe)
@@ -45,9 +44,6 @@ if [[ "$existing" != "0" ]]; then
 	exit 1
 fi
 
-schema=$dir/01_schema.sql
-[[ -f "$schema" ]] || schema=$dir/../hlstatsx.sql
-
 # Replace the placeholders without passing the passwords on the command line.
 esc() { printf '%s' "$1" | sed 's/[&|]/\\&/g'; }
 sed -e "s|\`gamewe\`|\`$db\`|g" \
@@ -56,10 +52,4 @@ sed -e "s|\`gamewe\`|\`$db\`|g" \
 	-e "s|CHANGE_ME_WEB|$(esc "$WEB_PASSWORD")|g" \
 	"$dir/00_create_database.sql" | $mysql "$@"
 echo "database $db and users created"
-$mysql "$@" "$db" <"$schema"
-echo "schema loaded ($(basename "$schema"))"
-$mysql "$@" "$db" <"$dir/02_seed.sql"
-echo "reference data checked (02_seed.sql)"
-$mysql "$@" "$db" <"$dir/03_grants.sql"
-echo "web user rights granted (03_grants.sql)"
-echo "next: set database.name: $db, user gamewe and its password in /etc/gamewe/collector/config.yaml, register the game servers in the web admin, then run: gamewe check"
+echo "next: set database.name: $db, user gamewe and its password in /etc/gamewe/collector/config.yaml, then run: gamewe db migrate (creates the tables), register the game servers in the web admin and run: gamewe check"

@@ -11,7 +11,7 @@ You need Go (version in `go.mod`, currently 1.27), `make` and GNU tar.
 make test vet                 # tests and static checks
 make build                    # build/linux-amd64/gamewe
 make package                  # dist/gamewe-collector-<version>-linux-amd64.tar.gz (+ .sha256)
-make schema                   # after editing schema/hlstatsx.sql or schema/init/: regenerate schema/postgres/
+make schema                   # after editing internal/schema/mysql/*.sql: regenerate internal/schema/postgres/
 make docker                   # container image gamewe-collector:<version>
 ```
 
@@ -28,7 +28,7 @@ workflow artifact) and the container image, which it pushes to
 `internal/collector/integration_test.go` runs three servers (two games),
 interleaved and concurrent, against a real MariaDB / MySQL or PostgreSQL. It
 **deletes all rows** of the database it is given, so use a scratch database
-created with `init-db.sh`:
+created with `init-db.sh` and `gamewe db migrate -f`:
 
 ```bash
 GAMEWE_TEST_DB_TYPE=mysql GAMEWE_TEST_DB_HOST=127.0.0.1 GAMEWE_TEST_DB_PORT=3306 GAMEWE_TEST_DB_USER=gamewe \
@@ -38,7 +38,7 @@ go test -race -tags integration ./internal/collector/
 ```
 
 `internal/database/init_integration_test.go` checks databases freshly created
-by both `init-db.sh` scripts (it changes nothing that it does not undo): the
+by both `init-db.sh` scripts and `gamewe db migrate` (it changes nothing that it does not undo): the
 rights of `gamewe_web` and `gamewe_web_admin`, rows inserted without id as
 `gamewe_web_admin`, and that both schemas have the same columns, NOT NULLs,
 defaults, identity columns and primary keys:
@@ -49,7 +49,72 @@ GAMEWE_TEST_WEB_PASSWORD=... GAMEWE_TEST_WEB_ADMIN_PASSWORD=... \
 go test -tags integration -run Init ./internal/database/
 ```
 
-CI runs both against MariaDB 11.4 and PostgreSQL 17 service containers.
+The migration tests (`internal/database/migrate_integration_test.go`,
+`cmd/gamewe/migrate_integration_test.go`) create and drop their own databases
+`mig_*` with the server's admin account and run `gamewe db migrate` on a new
+database, on the old HLstatsX structure gameWE started from
+(`internal/database/testdata/hlstatsx-old.sql` plus synthetic rows), on
+gameWE 0.2.0 / 0.2.1 databases, with missing rights, with two runs at the
+same time, and the binary end to end (`run` refuses an old schema with exit
+code 1, `db migrate -n` / `-f` / the question, `run` starts afterwards). They
+also set the passwords of the users `gamewe`, `gamewe_web` and
+`gamewe_web_admin` (`COLLECTOR_PASSWORD`, `WEB_PASSWORD`,
+`WEB_ADMIN_PASSWORD`): only point them at a throwaway server.
+
+```bash
+GAMEWE_TEST_MIGRATE_TYPE=mysql GAMEWE_TEST_MIGRATE_HOST=127.0.0.1 GAMEWE_TEST_MIGRATE_PORT=3306 \
+GAMEWE_TEST_MIGRATE_ADMIN_USER=root GAMEWE_TEST_MIGRATE_ADMIN_PASSWORD=... \
+go test -p 1 -tags integration -run Migrate ./internal/database/ ./cmd/gamewe/
+# PostgreSQL: GAMEWE_TEST_MIGRATE_TYPE=postgres ... ADMIN_USER=postgres
+```
+
+CI runs all of them against both MariaDB / PostgreSQL pairs of service
+containers.
+
+### Adding a migration
+
+The target schema lives in `internal/schema/mysql/` (`schema.sql`,
+`seed.sql`, `grants.sql`, compiled into the binary with go:embed); the
+PostgreSQL files in `internal/schema/postgres/` are generated from them. The
+versions are the list `Migrations` in `internal/database/migrations.go`.
+There are no SQL files per migration and no dialect variants to write: a
+migration names *what* an older database needs, the definitions come from the
+schema files, and the migrator builds the DDL per dialect (one `ALTER TABLE`
+per table on MariaDB, `ADD COLUMN IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS`
+on PostgreSQL), each step only if the information_schema says it is missing.
+
+Example, a new column `hlstats_Servers.log_secret`:
+
+1. Add the column (or index, or table) to `internal/schema/mysql/schema.sql`,
+   in the `mariadb-dump` format of the file (one column or key per line,
+   backquoted names). A new table also needs its rights in `grants.sql`
+   (`TestWebUserGrants` fails without); a column the public web must not read
+   (a secret) goes into the column list exclusion of `gamewe_web` there, like
+   `rcon_password`.
+2. `make schema` (regenerates the PostgreSQL files; `TestPostgresFilesUpToDate`
+   fails if you forget).
+3. Append to `Migrations`, with the next version number (no gaps, never reuse
+   one), a short kebab-case `Name` and a one-line `Desc` for the plan:
+   ```go
+   {Version: 4, Name: "server-log-secret", Desc: "column hlstats_Servers.log_secret (...)", Sync: true},
+   ```
+   `Sync` adds every table, column and index of the schema the database
+   lacks. `Seed: true` additionally loads `seed.sql` (only `INSERT IGNORE`:
+   missing rows; use it when you added reference data). `Drop` lists indexes
+   a new one replaces (dropped only once the replacement exists). Anything
+   else (data fixes, type changes) needs new code in `migrate.go` and must
+   stay idempotent and never delete user data.
+4. Never change a migration that was released: its checksum is recorded,
+   `gamewe db status` warns about a difference. Write a new one.
+5. Tests: `go test ./internal/schema/ ./internal/database/ ./tools/...` (schema
+   parsing, both dialects equal, plan steps), then the integration tests
+   against throwaway MariaDB and PostgreSQL containers (above,
+   `-run Migrate`): a new database and every upgrade path must end up to
+   date, a second run must be a no-op. Add a case to
+   `internal/database/migrate_integration_test.go` if the migration does more
+   than `Sync`.
+6. Docs: the version table in [DATABASE.md](DATABASE.md#schema-versions-and-upgrades)
+   and, for a new column, [DB-SEMANTICS.md](DB-SEMANTICS.md).
 
 ## Releases
 

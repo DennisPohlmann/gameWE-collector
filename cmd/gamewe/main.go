@@ -40,8 +40,17 @@ const usage = `gameWE - collector %s
 Usage:
   gamewe run      [-config FILE] [-listen IP:PORT] [-log-level LEVEL] [-reload DURATION]
                                    start the collector (used by systemd)
-  gamewe check    [-config FILE]   test the database (shows TLS state), list the
-                                   game servers and settings found in it
+  gamewe check    [-config FILE]   test the database (shows TLS state and pending
+                                   migrations), list the game servers and settings found in it
+  gamewe db migrate [-config FILE] [-f|--force] [-n|--dry-run]
+                                   create the tables of a new database, or bring an older
+                                   gameWE / HLstatsX database to this version (shows the plan,
+                                   asks first; -n only shows it); "run" refuses to start until then
+  gamewe db status  [-config FILE] schema version, pending and applied migrations
+  gamewe db grants  [-config FILE] [-print]
+                                   grant the web users their table rights again
+  gamewe db seed    [-config FILE] [-print]
+                                   add missing reference data (existing rows stay)
   gamewe simulate [-config FILE] [-file LOG] [-game CODE] [-server IP:PORT] [-send HOST:PORT]
                                    replay sample log lines into the database, or send
                                    them as UDP log packets to a running collector
@@ -112,11 +121,20 @@ func main() {
 		err = adminCmd(cmd, args)
 	case "reset":
 		err = resetCmd(args)
+	case "db":
+		err = dbCmd(args)
 	case "help", "-h", "-help", "--help":
 		fmt.Printf(usage, version.Version)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n\n"+usage, cmd, version.Version)
 		os.Exit(2)
+	}
+	var ee exitError
+	if errors.As(err, &ee) {
+		if ee.msg != "" {
+			fmt.Fprintf(os.Stderr, "gamewe %s: %s\n", cmd, ee.msg)
+		}
+		os.Exit(ee.code)
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "gamewe %s: %v\n", cmd, err)
@@ -147,6 +165,7 @@ func loadConfig(name string, args []string, extra func(*flag.FlagSet)) (config.C
 	if err != nil {
 		return cfg, fmt.Errorf("config %s: %w", *path, err)
 	}
+	configPath = *path
 	return cfg, nil
 }
 
@@ -207,25 +226,40 @@ func runCmd(args []string) error {
 	defer db.Close()
 	cctx, cancel := context.WithTimeout(ctx, time.Duration(cfg.Database.ConnectTimeout+5)*time.Second)
 	info, err := database.Inspect(cctx, db)
+	cancel()
+	if err != nil {
+		d := cfg.Database
+		return fmt.Errorf("database %s:%d/%s not reachable: %w", d.Host, d.Port, d.Name, database.Explain(err))
+	}
+	log.Info("database connected", "type", cfg.Database.Type, "server", info.Version, "tls", tlsState(info))
+	// The schema must be the one of this collector: only gamewe db migrate
+	// changes it, never the running collector.
+	cctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+	plan, err := database.PlanMigrations(cctx, db)
 	if err == nil {
 		err = database.CheckTables(cctx, db)
+		if !plan.UpToDate() {
+			err = nil // the missing parts are listed below
+		}
 	}
 	cancel()
 	if err != nil {
 		return fmt.Errorf("database: %w", database.Explain(err))
 	}
-	log.Info("database connected", "type", cfg.Database.Type, "server", info.Version, "tls", tlsState(info))
-	jobsTable := true
-	if missing, err := database.MissingSchema(ctx, db); err != nil {
-		log.Warn("schema check", "err", err)
-	} else {
-		for _, r := range missing {
-			log.Warn(r.String(), "hint", database.SchemaHint)
-			if r.Table == "hlstats_gamewe_jobs" {
-				jobsTable = false
-			}
-		}
+	for _, w := range plan.Warnings {
+		log.Warn(w)
 	}
+	if !plan.UpToDate() {
+		for i, r := range plan.Missing {
+			if i == 20 {
+				log.Error(fmt.Sprintf("... and %d more", len(plan.Missing)-i))
+				break
+			}
+			log.Error(r.String())
+		}
+		return schemaOutdated(plan)
+	}
+	log.Info("database schema up to date", "version", plan.Current)
 
 	set := settings.NewLive(settings.Defaults())
 	store := stats.NewStore(db, set)
@@ -286,11 +320,7 @@ func runCmd(args []string) error {
 		log.Warn("no usable game servers in hlstats_Servers yet; add them in the web admin (checked every " + reload.String() + ")")
 	}
 	go hub.RunReloader(ctx, reload)
-	if jobsTable {
-		go (&collector.Jobs{Store: store, Hub: hub, Log: log}).Run(ctx)
-	} else {
-		log.Info("ranking resets by the collector are off: the database has no hlstats_gamewe_jobs (" + database.SchemaHint + ")")
-	}
+	go (&collector.Jobs{Store: store, Hub: hub, Log: log}).Run(ctx)
 	da := cfg.Features.DailyAwards
 	if da.Enabled {
 		loc, _ := da.Location() // checked by config.Validate
@@ -346,18 +376,24 @@ func checkCmd(args []string) error {
 	}
 	// The schema first: it names everything missing, CheckTables stops at
 	// the first missing table.
-	missing, err := database.MissingSchema(ctx, db)
+	plan, err := database.PlanMigrations(ctx, db)
 	if err != nil {
 		return err
 	}
-	if len(missing) == 0 {
-		fmt.Println("schema:    ok")
+	if plan.UpToDate() {
+		fmt.Printf("schema:    ok (version %d)\n", plan.Current)
+	} else {
+		fmt.Printf("schema:    version %d, this collector needs %d: %d migration steps pending, the collector does not start.\n", plan.Current, plan.Latest, len(plan.Steps))
+		fmt.Printf("           Make a backup, then run: %s   (plan: %s -n)\n", migrateCommand(), migrateCommand())
 	}
-	for _, r := range missing {
-		fmt.Printf("schema:    %s\n", r)
+	for _, w := range plan.Warnings {
+		fmt.Printf("warning:   %s\n", w)
 	}
-	if len(missing) > 0 {
-		fmt.Println("           " + database.SchemaHint)
+	for _, r := range plan.Missing {
+		fmt.Printf("missing:   %s\n", strings.TrimPrefix(r.String(), "schema incomplete: missing "))
+	}
+	for _, f := range obsoleteSQL() {
+		fmt.Printf("note:      %s is from an older package and not used any more (the schema is built into gamewe); it can be deleted\n", f)
 	}
 	if err := database.CheckTables(ctx, db); err != nil {
 		return err

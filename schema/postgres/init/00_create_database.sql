@@ -1,10 +1,11 @@
 -- gameWE - collector: create the PostgreSQL roles and database (run as superuser).
 --
--- Step 1 of 4 (init-db.sh runs all of them):
---   00_create_database.sql   roles and database          (this file)
---   01_schema.sql            tables and default data (= schema/postgres/hlstatsx.sql)
---   02_seed.sql              default data again (idempotent; already in 01)
---   03_grants.sql            rights of the roles
+-- The only SQL to run by hand (init-db.sh does it, docs/DATABASE.md). The
+-- tables, the reference data and the table rights of the web roles are
+-- created by the collector afterwards:  gamewe db migrate
+-- The collector role gamewe may create tables in the schema public and owns
+-- them (only the owner may alter a table); it grants the web roles their
+-- rights on them.
 --
 -- psql variables (init-db.sh sets them):
 --   db            database name, e.g. gamewe
@@ -27,3 +28,8 @@ ALTER ROLE gamewe_web_admin LOGIN PASSWORD :'admin_pw';
 
 SELECT format('CREATE DATABASE %I ENCODING ''UTF8'' TEMPLATE template0', :'db')
 WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'db') \gexec
+
+SELECT format('GRANT CONNECT ON DATABASE %I TO gamewe, gamewe_web, gamewe_web_admin', :'db') \gexec
+\connect :"db"
+GRANT USAGE, CREATE ON SCHEMA public TO gamewe;
+GRANT USAGE ON SCHEMA public TO gamewe_web, gamewe_web_admin;

@@ -4,7 +4,7 @@
 --   mariadb -u root -p gamewe < hlstatsx-ce-to-gamewe.sql
 --
 -- * Run it in the gameWE database (here `gamewe`), created by
---   schema/init/init-db.sh just before. It stops at once if that database
+--   schema/init/init-db.sh and gamewe db migrate just before. It stops at once if that database
 --   already has players or servers.
 -- * The HLstatsX:CE data is read from the database `hlstatsx_ce` on the same
 --   server: a copy of the CE database (never the live one), converted to
@@ -15,7 +15,7 @@
 --   of the CE database server, usually the system zone: leave SYSTEM then).
 -- * The CE database is only read. Running the script twice on the same
 --   gameWE database is refused by the check below; start again with a new
---   database (init-db.sh) instead.
+--   database (init-db.sh, gamewe db migrate) instead.
 
 SET NAMES utf8mb4;
 SET time_zone = 'SYSTEM';     -- e.g. '+01:00', or 'Europe/Berlin' if the time zone tables are loaded
