@@ -2,7 +2,10 @@
 
 package games
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestResolve(t *testing.T) {
 	for _, c := range []struct {
@@ -25,6 +28,19 @@ func TestResolve(t *testing.T) {
 		base, e, warn := Resolve(c.realgame, c.code)
 		if base != c.base || e != c.engine || (warn != "") != c.warn {
 			t.Errorf("Resolve(%q, %q) = %s, %s, %q", c.realgame, c.code, base, e, warn)
+		}
+	}
+}
+
+func TestIsBase(t *testing.T) {
+	for _, code := range Known() {
+		if !IsBase(code) || !IsBase(" "+strings.ToUpper(code)+" ") {
+			t.Errorf("IsBase(%q) = false", code)
+		}
+	}
+	for _, code := range []string{"", "css1", "gungame", "cs2", "dod_x", "tf2"} {
+		if IsBase(code) {
+			t.Errorf("IsBase(%q) = true", code)
 		}
 	}
 }

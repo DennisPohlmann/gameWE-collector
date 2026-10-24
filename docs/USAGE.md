@@ -133,7 +133,8 @@ gamewe game add css3 "CS:S GunGame" -template css  # a ranking with copies of cs
                                                    #   weapons, awards, ranks and ribbons (and its realgame)
 gamewe game add css3 "CS:S GunGame" -template css  # again: adds only what is missing
 gamewe game hide css                               # hide / show in the web's game list
-gamewe game delete css3                            # only a game without servers and players
+gamewe game delete css3                            # only a game without servers and players;
+                                                   #   default games (css, cstrike, tf, ...) are refused: hide them
 gamewe server list                                 # the RCON password only as set / -
 gamewe server add 198.51.100.7:27315 -game css3 -name "GunGame" -rcon-password-file /root/rcon.txt
 gamewe server set 198.51.100.7:27315 -game css1    # or the serverId; only the given fields change

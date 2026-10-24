@@ -159,6 +159,18 @@ func TestAdmin(t *testing.T) {
 		t.Error("definitions of the deleted game left")
 	}
 
+	cssRows := count(t, db, `SELECT COUNT(*) FROM hlstats_Games WHERE code = 'css'`)
+	for _, x := range []*Admin{a, dry} {
+		for _, code := range []string{"css", "CSS"} {
+			if err := x.DeleteGame(ctx, code); err == nil || !strings.Contains(err.Error(), "default ranking") {
+				t.Errorf("delete %s (dry run %v): %v", code, x.DryRun, err)
+			}
+		}
+	}
+	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Games WHERE code = 'css'`); n != cssRows {
+		t.Errorf("css rows: %d, want %d", n, cssRows)
+	}
+
 	if err := a.SetOption(ctx, "gamewe_command_display", "both"); err != nil {
 		t.Fatal(err)
 	}

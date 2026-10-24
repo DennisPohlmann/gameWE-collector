@@ -20,7 +20,7 @@ const adminUsage = `usage:
   gamewe game list
   gamewe game add CODE NAME [-template CODE] [-realgame GAME] [-hidden]
   gamewe game hide|show CODE
-  gamewe game delete CODE                 (only a game without servers and players)
+  gamewe game delete CODE                 (only a game without servers and players, not a default game)
   gamewe server list
   gamewe server add IP:PORT -game CODE [-name NAME] [-rcon-password-file FILE | -rcon-password PW] [-public-address ADDR]
   gamewe server set ID|IP:PORT [-game CODE] [-name NAME] [-rcon-password-file FILE | -rcon-password PW] [-public-address ADDR]

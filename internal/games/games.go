@@ -75,3 +75,15 @@ func Known() []string {
 	}
 	return out
 }
+
+// IsBase reports whether code is a known base game (a default ranking),
+// ignoring case.
+func IsBase(code string) bool {
+	c := strings.ToLower(strings.TrimSpace(code))
+	for _, e := range engines {
+		if c == e.code {
+			return true
+		}
+	}
+	return false
+}

@@ -264,9 +264,13 @@ func (a *Admin) SetGameHidden(ctx context.Context, code string, hidden bool) err
 	return nil
 }
 
-// DeleteGame deletes an unused game with its definitions. A game with
-// servers or players is refused.
+// DeleteGame deletes an unused game with its definitions. A default
+// ranking (a known base game) and a game with servers or players are
+// refused.
 func (a *Admin) DeleteGame(ctx context.Context, code string) error {
+	if games.IsBase(code) {
+		return fmt.Errorf("game %q is a default ranking: not deleted (hide it instead)", code)
+	}
 	if _, err := a.game(ctx, code); err != nil {
 		return err
 	}
