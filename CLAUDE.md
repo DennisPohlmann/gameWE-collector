@@ -28,7 +28,8 @@ GitHub release with the archive (+ sha256) and the image tags `<version>`,
   `CONFIG.md` (all settings), `USAGE.md` (commands, pages, operation),
   `INTERFACE.md` (log lines, RCON commands, APIs between the components),
   `DEVELOPMENT.md` (build, tests, CI, releases); repo-specific extras:
-  `DATABASE.md`, `DB-SEMANTICS.md`, `GAMES.md`.
+  `DATABASE.md`, `DB-SEMANTICS.md`, `GAMES.md`, `MIGRATION-HLSTATSX.md`,
+  `MIGRATION-GAMEME.md`, `migration/` (SQL scripts for the migrations).
 - New documentation goes into the matching file there; no other top-level
   doc files and no per-distribution install guides.
 
