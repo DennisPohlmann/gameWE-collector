@@ -176,6 +176,34 @@ func TestMonitorPolls(t *testing.T) {
 	}
 }
 
+func TestMonitorLogInterval(t *testing.T) {
+	firstStatus, firstLogAddress = 10*time.Millisecond, 10*time.Millisecond
+	t.Cleanup(func() { firstStatus, firstLogAddress = 2*time.Second, 5*time.Second })
+	gs := fakeGameServer(t)
+	srv := stats.Server{ID: 7, AddrPort: netip.MustParseAddrPort(gs.Addr), RconPassword: "pw"}
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	cfg := MonitorConfig{LogAddress: true, LogInterval: 20 * time.Millisecond, ListenPort: 41337}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		monitor(ctx, func() stats.Server { return srv }, cfg, func(Status, time.Time) {},
+			func() time.Duration { return 2 * time.Second }, log)
+		close(done)
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for strings.Count(strings.Join(gs.Commands(), ","), "logaddress_list") < 3 {
+		if time.Now().After(deadline) {
+			t.Fatalf("log address not checked every LogInterval: %v", gs.Commands())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	<-done
+	if cmds := strings.Join(gs.Commands(), ","); strings.Count(cmds, "logaddress_add") != 1 || strings.Contains(cmds, "status") {
+		t.Errorf("commands %s", cmds)
+	}
+}
+
 func TestParseConnected(t *testing.T) {
 	for in, want := range map[string]time.Duration{"1:02:33": time.Hour + 2*time.Minute + 33*time.Second, "12:01": 12*time.Minute + time.Second, "": 0, "x": 0} {
 		if got := parseConnected(in); got != want {

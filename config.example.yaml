@@ -58,7 +58,9 @@ features:
   rcon_status:         # RCON "status" of every server: players and bots, map, max players (DB-SEMANTICS.md)
     enabled: true
     interval: 10s      # how often (at least 2s)
-  log_address: true    # every minute logaddress_list; logaddress_add + "log on" if the collector is missing
+  log_address:         # logaddress_list; logaddress_add + "log on" if the collector is missing
+    enabled: true
+    interval: 1m       # how often (at least 10s)
   daily_awards:        # the daily awards of the previous day (by hand: gamewe awards -date ...)
     enabled: true
     timezone: UTC      # IANA time zone of the day and the time, e.g. Europe/Berlin

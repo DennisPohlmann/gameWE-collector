@@ -92,14 +92,14 @@ func TestFeatures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f := cfg.Features; !f.RconStatus.Enabled || f.RconStatus.Interval != "10s" || !f.LogAddress || !f.DailyAwards.Enabled || f.DailyAwards.Timezone != "UTC" || f.DailyAwards.Time != "00:00" {
+	if f := cfg.Features; !f.RconStatus.Enabled || f.RconStatus.Interval != "10s" || !f.LogAddress.Enabled || f.LogAddress.Interval != "1m" || !f.DailyAwards.Enabled || f.DailyAwards.Timezone != "UTC" || f.DailyAwards.Time != "00:00" {
 		t.Errorf("defaults %+v, want all on", f)
 	}
 	cfg, err = Parse([]byte(base + "features:\n  rcon_status: false\n  daily_awards: false\nlisten:\n  public_address: 203.0.113.4:41337\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f := cfg.Features; f.RconStatus.Enabled || f.RconStatus.Interval != "10s" || !f.LogAddress || f.DailyAwards.Enabled || cfg.Listen.PublicAddress != "203.0.113.4:41337" {
+	if f := cfg.Features; f.RconStatus.Enabled || f.RconStatus.Interval != "10s" || !f.LogAddress.Enabled || f.DailyAwards.Enabled || cfg.Listen.PublicAddress != "203.0.113.4:41337" {
 		t.Errorf("parsed %+v %q", f, cfg.Listen.PublicAddress)
 	}
 	if _, err := Parse([]byte(base + "listen:\n  public_address: example.org\n")); err == nil {
@@ -117,6 +117,26 @@ func TestFeatures(t *testing.T) {
 		if _, err := Parse([]byte(base + "features:\n  rcon_status:\n    interval: " + bad + "\n")); err == nil {
 			t.Errorf("rcon_status.interval %q accepted", bad)
 		}
+	}
+	cfg, err = Parse([]byte(base + "features:\n  log_address: false\n"))
+	if err != nil || cfg.Features.LogAddress.Enabled || cfg.Features.LogAddress.Interval != "1m" {
+		t.Errorf("log_address legacy form: %+v %v", cfg.Features.LogAddress, err)
+	}
+	cfg, err = Parse([]byte(base + "features:\n  log_address:\n    interval: 5m\n"))
+	if d, _ := cfg.Features.LogAddress.Every(); err != nil || !cfg.Features.LogAddress.Enabled || d != 5*time.Minute {
+		t.Errorf("log_address mapping: %+v %v", cfg.Features.LogAddress, err)
+	}
+	cfg, err = Parse([]byte(base + "features:\n  log_address:\n    enabled: true\n    interval: 30\n"))
+	if d, _ := cfg.Features.LogAddress.Every(); err != nil || d != 30*time.Second {
+		t.Errorf("log_address seconds: %+v %v", cfg.Features.LogAddress, err)
+	}
+	for _, bad := range []string{"5s", "often", "0"} {
+		if _, err := Parse([]byte(base + "features:\n  log_address:\n    interval: " + bad + "\n")); err == nil {
+			t.Errorf("log_address.interval %q accepted", bad)
+		}
+	}
+	if _, err := Parse([]byte(base + "features:\n  log_address:\n    every: 1m\n")); err == nil {
+		t.Error("unknown log_address key accepted")
 	}
 	if _, err := Parse([]byte(base + "features:\n  rcon_stats: true\n")); err == nil {
 		t.Error("unknown feature accepted")

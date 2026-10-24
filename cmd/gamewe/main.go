@@ -246,7 +246,9 @@ func runCmd(args []string) error {
 	}
 	rs := cfg.Features.RconStatus
 	every, _ := rs.Every() // checked by config.Validate
-	hub.Monitor = collector.MonitorConfig{Status: rs.Enabled, StatusInterval: every, LogAddress: cfg.Features.LogAddress,
+	la := cfg.Features.LogAddress
+	laEvery, _ := la.Every() // checked by config.Validate
+	hub.Monitor = collector.MonitorConfig{Status: rs.Enabled, StatusInterval: every, LogAddress: la.Enabled, LogInterval: laEvery,
 		PublicAddress: cfg.Listen.PublicAddress, ListenPort: listenPort(listen, cfg.Listen.Port)}
 	rctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	err = hub.Reload(rctx)
@@ -294,7 +296,7 @@ func runCmd(args []string) error {
 		h, m, _ := da.At()
 		go collector.RunDailyAwards(ctx, store, collector.Schedule{Loc: loc, Hour: h, Minute: m}, log)
 	}
-	log.Info("features", "rcon_status", rs.Enabled, "rcon_status_every", every.String(), "log_address", cfg.Features.LogAddress,
+	log.Info("features", "rcon_status", rs.Enabled, "rcon_status_every", every.String(), "log_address", la.Enabled, "log_address_every", laEvery.String(),
 		"daily_awards", da.Enabled, "daily_awards_at", da.Time+" "+da.Timezone)
 
 	if listen == "" {
@@ -319,8 +321,9 @@ func checkCmd(args []string) error {
 	fmt.Printf("listen:    udp %s\n", cfg.Listen.UDP())
 	da := cfg.Features.DailyAwards
 	every, _ := cfg.Features.RconStatus.Every()
-	fmt.Printf("features:  rcon_status %v (every %v), log_address %v, daily_awards %v (%s %s)\n",
-		cfg.Features.RconStatus.Enabled, every, cfg.Features.LogAddress, da.Enabled, da.Time, da.Timezone)
+	laEvery, _ := cfg.Features.LogAddress.Every()
+	fmt.Printf("features:  rcon_status %v (every %v), log_address %v (every %v), daily_awards %v (%s %s)\n",
+		cfg.Features.RconStatus.Enabled, every, cfg.Features.LogAddress.Enabled, laEvery, da.Enabled, da.Time, da.Timezone)
 	fmt.Printf("database:  %s %s@%s:%d/%s, tls mode %s\n", d.Type, d.User, d.Host, d.Port, d.Name, d.TLS.Mode)
 
 	db, err := database.Open(d)

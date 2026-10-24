@@ -102,11 +102,11 @@ default):
   bots in the live view and `act_players` (also on an empty server and right
   after a collector restart, without any log line), the map, maximum players,
   the name if none is set, pings. One connection per server stays open.
-- **log address** every minute: `logaddress_list`; if the collector is missing,
+- **log address** every minute (`features.log_address.interval`): `logaddress_list`; if the collector is missing,
   `logaddress_add <ip:port>` and `log on`. The address is
   `listen.public_address`, or the collector's address of the RCON connection
   with the listen port. So a game server that restarted without
-  `logaddress_add` in its config is back within a minute.
+  `logaddress_add` in its config is back within that interval.
 - **stats** every 10 minutes for `hlstats_server_load` (`gamewe_server_load`).
 
 Everything can be checked by hand (`-config` as for `run`):

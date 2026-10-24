@@ -220,7 +220,9 @@ features:
   rcon_status:
     enabled: true               # RCON status of every server
     interval: 10s
-  log_address: true             # re-register the collector (logaddress_add, log on) when missing
+  log_address:
+    enabled: true               # re-register the collector (logaddress_add, log on) when missing
+    interval: 1m
   daily_awards:
     enabled: true
     timezone: UTC               # IANA zone, e.g. Europe/Berlin
@@ -376,7 +378,8 @@ rcon_password "change-me"            // the same as in hlstats_Servers
 ```
 
 With the RCON password the collector also registers itself (`logaddress_add`,
-`log on`) when a server restarted without it, every minute. Install the
+`log on`) when a server restarted without it, every minute
+(`features.log_address.interval`). Install the
 [gameWE SourceMod plugin](https://github.com/DennisPohlmann/gameWE-plugin-sourcemod)
 for the in-game replies (`!rank`, `!top10`, menus) and the extra statistics
 (weapon accuracy, positions, roles).

@@ -70,7 +70,7 @@ type Listen struct {
 // by default.
 type Features struct {
 	RconStatus  RconStatus  `yaml:"rcon_status"`  // poll every server's "status" over RCON
-	LogAddress  bool        `yaml:"log_address"`  // register the collector with logaddress_add
+	LogAddress  LogAddress  `yaml:"log_address"`  // register the collector with logaddress_add
 	DailyAwards DailyAwards `yaml:"daily_awards"` // the daily awards job
 }
 
@@ -104,12 +104,48 @@ func (r *RconStatus) UnmarshalYAML(n *yaml.Node) error {
 }
 
 // Every returns Interval as a duration ("10s", "1m" or plain seconds).
-func (r RconStatus) Every() (time.Duration, error) {
-	if s, err := strconv.Atoi(strings.TrimSpace(r.Interval)); err == nil {
+func (r RconStatus) Every() (time.Duration, error) { return interval(r.Interval) }
+
+// interval reads a Go duration ("10s", "1m") or plain seconds.
+func interval(v string) (time.Duration, error) {
+	if s, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
 		return time.Duration(s) * time.Second, nil
 	}
-	return time.ParseDuration(strings.TrimSpace(r.Interval))
+	return time.ParseDuration(strings.TrimSpace(v))
 }
+
+// LogAddress keeps the collector registered on every game server
+// (logaddress_list, logaddress_add when missing). In the config file it is a
+// mapping, or (legacy form) just true / false.
+type LogAddress struct {
+	Enabled  bool   `yaml:"enabled"`
+	Interval string `yaml:"interval"` // Go duration ("1m") or seconds
+}
+
+// MinLogAddressInterval is the shortest features.log_address.interval.
+const MinLogAddressInterval = 10 * time.Second
+
+// UnmarshalYAML accepts "log_address: true" and the mapping.
+func (l *LogAddress) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode {
+		return n.Decode(&l.Enabled)
+	}
+	if n.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: features.log_address: want true / false or enabled, interval", n.Line)
+	}
+	for i := 0; i < len(n.Content); i += 2 {
+		switch k := n.Content[i].Value; k {
+		case "enabled", "interval":
+		default:
+			return fmt.Errorf("line %d: features.log_address: unknown key %q (enabled, interval)", n.Content[i].Line, k)
+		}
+	}
+	type plain LogAddress
+	return n.Decode((*plain)(l))
+}
+
+// Every returns Interval as a duration ("1m", "30s" or plain seconds).
+func (l LogAddress) Every() (time.Duration, error) { return interval(l.Interval) }
 
 // DailyAwards is when the daily awards of the previous day are decided.
 // In the config file it is a mapping, or (legacy form) just true / false.
@@ -185,7 +221,8 @@ func Defaults() Config {
 		MaxOpenConns:   8,
 		ConnectTimeout: 10,
 		TLS:            TLS{Mode: TLSDisable},
-	}, GeoIP: GeoIP{AutoUpdate: true}, Features: Features{RconStatus: RconStatus{Enabled: true, Interval: "10s"}, LogAddress: true,
+	}, GeoIP: GeoIP{AutoUpdate: true}, Features: Features{RconStatus: RconStatus{Enabled: true, Interval: "10s"},
+		LogAddress:  LogAddress{Enabled: true, Interval: "1m"},
 		DailyAwards: DailyAwards{Enabled: true, Timezone: "UTC", Time: "00:00"}}}
 }
 
@@ -273,6 +310,9 @@ func (c Config) Validate() error {
 	}
 	if d, err := c.Features.RconStatus.Every(); err != nil || d < MinStatusInterval {
 		return fmt.Errorf("features.rcon_status.interval %q: want a duration of at least %v, e.g. \"10s\"", c.Features.RconStatus.Interval, MinStatusInterval)
+	}
+	if d, err := c.Features.LogAddress.Every(); err != nil || d < MinLogAddressInterval {
+		return fmt.Errorf("features.log_address.interval %q: want a duration of at least %v, e.g. \"1m\"", c.Features.LogAddress.Interval, MinLogAddressInterval)
 	}
 	if _, err := c.Features.DailyAwards.Location(); err != nil {
 		return fmt.Errorf("features.daily_awards.timezone %q: %v (an IANA name such as UTC or Europe/Berlin)", c.Features.DailyAwards.Timezone, err)

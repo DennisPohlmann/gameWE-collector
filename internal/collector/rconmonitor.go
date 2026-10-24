@@ -20,9 +20,13 @@ import (
 	"gamewe-collector/internal/stats"
 )
 
-// MonitorInterval is how often the RCON monitor checks the log address, and
-// the longest wait between status polls while the server does not answer.
+// MonitorInterval is the longest wait between status polls while the server
+// does not answer.
 const MonitorInterval = time.Minute
+
+// DefaultLogAddressInterval is how often the log address is checked by
+// default (features.log_address.interval).
+const DefaultLogAddressInterval = time.Minute
 
 // DefaultStatusInterval is how often "status" is polled by default
 // (features.rcon_status.interval).
@@ -227,13 +231,14 @@ type MonitorConfig struct {
 	Status         bool          // poll "status"
 	StatusInterval time.Duration // how often (default DefaultStatusInterval)
 	LogAddress     bool          // keep the collector registered with logaddress_add
+	LogInterval    time.Duration // how often (default DefaultLogAddressInterval)
 	PublicAddress  string        // listen.public_address
 	ListenPort     int
 }
 
 // monitor polls one game server over RCON until ctx is done: "status" every
 // StatusInterval (handed to deliver; after errors the wait doubles up to
-// MonitorInterval) and the log address every MonitorInterval, over one
+// MonitorInterval) and the log address every LogInterval, over one
 // connection that is kept open. srv returns the current hlstats_Servers
 // row (the RCON password can change in the web admin).
 func monitor(ctx context.Context, srv func() stats.Server, cfg MonitorConfig, deliver func(Status, time.Time), timeout func() time.Duration, log *slog.Logger) {
@@ -264,6 +269,10 @@ func monitor(ctx context.Context, srv func() stats.Server, cfg MonitorConfig, de
 		interval = DefaultStatusInterval
 	}
 	wait := interval
+	logEvery := cfg.LogInterval
+	if logEvery <= 0 {
+		logEvery = DefaultLogAddressInterval
+	}
 	statusT := time.NewTimer(firstStatus) // first rounds shortly after start
 	logT := time.NewTimer(firstLogAddress)
 	if !cfg.Status {
@@ -311,7 +320,7 @@ func monitor(ctx context.Context, srv func() stats.Server, cfg MonitorConfig, de
 			}
 			statusT.Reset(wait)
 		case <-logT.C:
-			logT.Reset(MonitorInterval)
+			logT.Reset(logEvery)
 			c := client()
 			if c == nil {
 				if !cfg.Status {
