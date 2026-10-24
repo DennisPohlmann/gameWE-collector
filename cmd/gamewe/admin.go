@@ -19,6 +19,7 @@ import (
 const adminUsage = `usage:
   gamewe game list
   gamewe game add CODE NAME [-template CODE] [-realgame GAME] [-hidden]
+  gamewe game set CODE [-name NAME] [-realgame GAME] [-order N] [-hidden=true|false]
   gamewe game hide|show CODE
   gamewe game delete CODE                 (only a game without servers and players, not a default game)
   gamewe server list
@@ -69,10 +70,11 @@ func adminCmd(kind string, args []string) error {
 	dry := fs.Bool("dry-run", false, "only show what would change")
 	template := fs.String("template", "", "game whose definitions a new game copies")
 	realgame := fs.String("realgame", "", "base game (css, cstrike, tf, ...); default: the template's")
-	hidden := fs.Bool("hidden", false, "add the game hidden")
+	hidden := fs.Bool("hidden", false, "add the game hidden; game set: -hidden=true|false")
+	order := fs.Int("order", 0, "game set: position in the web's game list (hlstats_Games.display_id)")
 	var game, name, rcon, rconFile, public optional
 	fs.Var(&game, "game", "hlstats_Games code")
-	fs.Var(&name, "name", "server name")
+	fs.Var(&name, "name", "server or game name")
 	fs.Var(&rcon, "rcon-password", "RCON password (visible in the process list: prefer -rcon-password-file)")
 	fs.Var(&rconFile, "rcon-password-file", "file with the RCON password ('-' = stdin)")
 	fs.Var(&public, "public-address", "address shown in the web")
@@ -83,6 +85,8 @@ func adminCmd(kind string, args []string) error {
 	if len(pos) == 0 {
 		return errors.New(adminUsage)
 	}
+	given := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { given[f.Name] = true })
 	if rcon.set && rconFile.set {
 		return errors.New("give -rcon-password or -rcon-password-file, not both")
 	}
@@ -126,6 +130,21 @@ func adminCmd(kind string, args []string) error {
 			return err
 		}
 		return a.AddGame(ctx, rest[0], rest[1], *template, *realgame, *hidden)
+	case "game set":
+		if err := want(1); err != nil {
+			return err
+		}
+		gf := admin.GameFields{Name: name.ptr()}
+		if given["realgame"] {
+			gf.Realgame = realgame
+		}
+		if given["order"] {
+			gf.Order = order
+		}
+		if given["hidden"] {
+			gf.Hidden = hidden
+		}
+		return a.SetGame(ctx, rest[0], gf)
 	case "game hide", "game show":
 		if err := want(1); err != nil {
 			return err

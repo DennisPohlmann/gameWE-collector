@@ -171,6 +171,43 @@ func TestAdmin(t *testing.T) {
 		t.Errorf("css rows: %d, want %d", n, cssRows)
 	}
 
+	gname, grealgame, gorder, ghidden := "Renamed", "CSS", 7, true
+	if err := dry.SetGame(ctx, "zz_tpl", GameFields{Name: &gname, Realgame: &grealgame, Order: &gorder, Hidden: &ghidden}); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Games WHERE code = 'zz_tpl' AND name = 'Template' AND realgame = 'cstrike' AND display_id = 0 AND hidden = '0'`); n != 1 {
+		t.Error("dry run changed the game")
+	}
+	if err := a.SetGame(ctx, "zz_tpl", GameFields{Name: &gname, Realgame: &grealgame, Order: &gorder, Hidden: &ghidden}); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Games WHERE code = 'zz_tpl' AND name = 'Renamed' AND realgame = 'css' AND display_id = 7 AND hidden = '1'`); n != 1 {
+		t.Error("game set did not store the fields")
+	}
+	gorder = 3
+	if err := a.SetGame(ctx, "zz_tpl", GameFields{Order: &gorder}); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Games WHERE code = 'zz_tpl' AND name = 'Renamed' AND realgame = 'css' AND display_id = 3 AND hidden = '1'`); n != 1 {
+		t.Error("game set -order changed other fields")
+	}
+	bad, empty := "quake", ""
+	if err := a.SetGame(ctx, "zz_tpl", GameFields{Realgame: &bad}); err == nil {
+		t.Error("unknown realgame accepted")
+	}
+	if err := a.SetGame(ctx, "zz_tpl", GameFields{Name: &empty}); err == nil {
+		t.Error("empty name accepted")
+	}
+	if err := a.SetGame(ctx, "zz_tpl", GameFields{}); err == nil || err.Error() != "nothing to change" {
+		t.Errorf("game set without fields: %v", err)
+	}
+	if err := a.SetGame(ctx, "zz_none", GameFields{Name: &gname}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("game set of an unknown game: %v", err)
+	}
+	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Games WHERE code = 'zz_tpl' AND realgame = 'css'`); n != 1 {
+		t.Error("refused game set changed the realgame")
+	}
+
 	if err := a.SetOption(ctx, "gamewe_command_display", "both"); err != nil {
 		t.Fatal(err)
 	}

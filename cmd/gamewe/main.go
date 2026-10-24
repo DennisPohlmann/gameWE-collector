@@ -57,7 +57,7 @@ Usage:
   gamewe logaddress [-config FILE] [-server ID|IP:PORT|all] [-add] [-address IP:PORT]
                                    is the collector registered as log address (logaddress_list)?
                                    -add registers it where it is missing (logaddress_add, log on)
-  gamewe game   list|add|hide|show|delete ...    games (rankings), as in the web admin
+  gamewe game   list|add|set|hide|show|delete ... games (rankings), as in the web admin
   gamewe server list|add|set|remove ...           game servers (hlstats_Servers)
   gamewe option list|get|set ...                  settings (hlstats_Options)
                                    see "gamewe game help"; all take -config and -dry-run

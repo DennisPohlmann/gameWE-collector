@@ -126,12 +126,17 @@ gamewe awards -date 2026-10-21                # decide the daily awards of a day
 The `gamewe` binary also changes the database like the web admin does (with
 the collector's database user; `-config` as for `run`, `-dry-run` shows what
 would change). The collector picks up every change within 60 seconds.
+A server's ranking must exist before the server is added: create it with
+`game add` first, then `server add -game CODE`.
 
 ```bash
 gamewe game list                                   # games (rankings): realgame, engine, servers, players
 gamewe game add css3 "CS:S GunGame" -template css  # a ranking with copies of css's teams, roles, actions,
                                                    #   weapons, awards, ranks and ribbons (and its realgame)
 gamewe game add css3 "CS:S GunGame" -template css  # again: adds only what is missing
+gamewe game set css3 -name "CS:S GunGame 24/7"    # only the given fields change
+gamewe game set css3 -realgame css -order 2        # base game, position in the web's game list
+gamewe game set css3 -hidden=true                  # the same as game hide css3
 gamewe game hide css                               # hide / show in the web's game list
 gamewe game delete css3                            # only a game without servers and players;
                                                    #   default games (css, cstrike, tf, ...) are refused: hide them

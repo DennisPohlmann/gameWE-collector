@@ -264,6 +264,81 @@ func (a *Admin) SetGameHidden(ctx context.Context, code string, hidden bool) err
 	return nil
 }
 
+// GameFields are the values of `game set`; nil = keep.
+type GameFields struct {
+	Name, Realgame *string
+	Order          *int // hlstats_Games.display_id
+	Hidden         *bool
+}
+
+// SetGame changes the given fields of a game.
+func (a *Admin) SetGame(ctx context.Context, code string, f GameFields) error {
+	if f.Name == nil && f.Realgame == nil && f.Order == nil && f.Hidden == nil {
+		return errors.New("nothing to change")
+	}
+	g, err := a.game(ctx, code)
+	if err != nil {
+		return err
+	}
+	if f.Name != nil && (*f.Name == "" || utf8.RuneCountInString(*f.Name) > 255) {
+		return errors.New("name: 1-255 characters")
+	}
+	if f.Realgame != nil {
+		col, err := a.realgameCol(ctx)
+		if err != nil {
+			return err
+		}
+		if col != "realgame" {
+			return fmt.Errorf("-realgame: the database has no hlstats_Games.realgame; %s", database.SchemaHint)
+		}
+		if base, _, warn := games.Resolve(*f.Realgame, code); warn != "" || base != strings.ToLower(*f.Realgame) {
+			return fmt.Errorf("realgame %q is not a known game (%s)", *f.Realgame, strings.Join(games.Known(), ", "))
+		}
+		r := strings.ToLower(*f.Realgame)
+		f.Realgame = &r
+	}
+	var order int
+	if f.Order != nil {
+		if *f.Order < -32768 || *f.Order > 32767 {
+			return errors.New("order: -32768 to 32767")
+		}
+		if err := a.row(ctx, `SELECT display_id FROM hlstats_Games WHERE code = ?`, g.Code).Scan(&order); err != nil {
+			return err
+		}
+	}
+	var sets []string
+	var args []any
+	var changed []string
+	add := func(col string, v any, desc string) {
+		sets = append(sets, col+" = ?")
+		args = append(args, v)
+		changed = append(changed, desc)
+	}
+	if f.Name != nil && *f.Name != g.Name {
+		add("name", *f.Name, fmt.Sprintf("name %q -> %q", g.Name, *f.Name))
+	}
+	if f.Realgame != nil && *f.Realgame != g.Realgame {
+		add("realgame", *f.Realgame, fmt.Sprintf("realgame %q -> %q", g.Realgame, *f.Realgame))
+	}
+	if f.Order != nil && *f.Order != order {
+		add("display_id", *f.Order, fmt.Sprintf("order %d -> %d", order, *f.Order))
+	}
+	if f.Hidden != nil && *f.Hidden != g.Hidden {
+		add("hidden", map[bool]string{true: "1", false: "0"}[*f.Hidden], map[bool]string{true: "hidden", false: "shown"}[*f.Hidden])
+	}
+	if len(sets) == 0 {
+		a.say("game %s unchanged", g.Code)
+		return nil
+	}
+	if !a.DryRun {
+		if _, err := a.exec(ctx, `UPDATE hlstats_Games SET `+strings.Join(sets, ", ")+` WHERE code = ?`, append(args, g.Code)...); err != nil {
+			return err
+		}
+	}
+	a.say("game %s: %s", g.Code, strings.Join(changed, ", "))
+	return nil
+}
+
 // DeleteGame deletes an unused game with its definitions. A default
 // ranking (a known base game) and a game with servers or players are
 // refused.
