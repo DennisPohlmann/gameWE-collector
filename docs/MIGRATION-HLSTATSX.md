@@ -142,7 +142,8 @@ script needs this new, empty database.
 
 (An HLstatsX database of the variant gameWE writes, with `timestamp_id` in
 the event tables instead of CE's `eventTime`, needs no copy: `gamewe db
-migrate` upgrades it in place, [DATABASE.md](DATABASE.md#schema-versions-and-upgrades).
+migrate` upgrades it in place, once by hand with a backup (the collector's
+start does not do it automatically), [DATABASE.md](DATABASE.md#schema-versions-and-upgrades).
 For CE it refuses and points here.)
 
 ## 5. Run the conversion

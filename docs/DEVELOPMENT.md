@@ -56,7 +56,10 @@ database, on the old HLstatsX structure gameWE started from
 (`internal/database/testdata/hlstatsx-old.sql` plus synthetic rows), on
 gameWE 0.2.0 / 0.2.1 databases, with missing rights, with two runs at the
 same time, and the binary end to end (`run` refuses an old schema with exit
-code 1, `db migrate -n` / `-f` / the question, `run` starts afterwards). They
+code 1 with `database.auto_migrate: false`, `db migrate -n` / `-f` / the
+question, `run` starts afterwards; `run` migrates a new database itself with
+`auto_migrate`, refuses an HLstatsX database without versions and stops on
+missing rights). They
 also set the passwords of the users `gamewe`, `gamewe_web` and
 `gamewe_web_admin` (`COLLECTOR_PASSWORD`, `WEB_PASSWORD`,
 `WEB_ADMIN_PASSWORD`): only point them at a throwaway server.

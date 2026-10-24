@@ -82,9 +82,9 @@ sudo -u gamewe /opt/gamewe/collector/bin/gamewe awards -date 2026-10-21
 
 | Command | What it does |
 |---------|--------------|
-| `gamewe run` | the collector (systemd starts it); refuses to start (exit code 1) while the database schema is older than the binary |
+| `gamewe run` | the collector (systemd starts it); migrates an outdated database schema at start (`database.auto_migrate`), with `auto_migrate: false` it refuses to start (exit code 1) until `gamewe db migrate` ran |
 | `gamewe check` | config, database connection and TLS, schema version and pending migrations, game servers and settings |
-| `gamewe db migrate` | create the tables of a new database, bring an older one to this version (below) |
+| `gamewe db migrate` | create the tables of a new database, bring an older one to this version (below); `gamewe run` does it at start with `database.auto_migrate` |
 | `gamewe db status`, `gamewe db grants`, `gamewe db seed` | schema version and migrations; the web users' rights again; missing reference data |
 | `gamewe -V` / `--version` / `version` | the version |
 | `gamewe status`, `gamewe logaddress`, `gamewe rcon` | RCON status, log address registration, any RCON command (below) |
@@ -96,8 +96,10 @@ sudo -u gamewe /opt/gamewe/collector/bin/gamewe awards -date 2026-10-21
 
 ### Database schema
 
-The schema is built into the binary; only `gamewe db migrate` changes the
-database ([DATABASE.md](DATABASE.md#schema-versions-and-upgrades)). `gamewe db`
+The schema is built into the binary. `gamewe run` brings an outdated database
+up to date at start (`database.auto_migrate`, the default; not an HLstatsX
+database without schema versions), otherwise `gamewe db migrate` does
+([DATABASE.md](DATABASE.md#schema-versions-and-upgrades)). `gamewe db`
 alone lists the subcommands.
 
 ```bash

@@ -45,7 +45,8 @@ Usage:
   gamewe db migrate [-config FILE] [-f|--force] [-n|--dry-run]
                                    create the tables of a new database, or bring an older
                                    gameWE / HLstatsX database to this version (shows the plan,
-                                   asks first; -n only shows it); "run" refuses to start until then
+                                   asks first; -n only shows it); "run" does it at start
+                                   (database.auto_migrate), or refuses to start until then
   gamewe db status  [-config FILE] schema version, pending and applied migrations
   gamewe db grants  [-config FILE] [-print]
                                    grant the web users their table rights again
@@ -232,16 +233,11 @@ func runCmd(args []string) error {
 		return fmt.Errorf("database %s:%d/%s not reachable: %w", d.Host, d.Port, d.Name, database.Explain(err))
 	}
 	log.Info("database connected", "type", cfg.Database.Type, "server", info.Version, "tls", tlsState(info))
-	// The schema must be the one of this collector: only gamewe db migrate
-	// changes it, never the running collector.
+	// The schema must be the one of this collector: database.auto_migrate
+	// brings it up to date here (as gamewe db migrate -f), before anything
+	// else touches the database; otherwise only gamewe db migrate changes it.
 	cctx, cancel = context.WithTimeout(ctx, 30*time.Second)
 	plan, err := database.PlanMigrations(cctx, db)
-	if err == nil {
-		err = database.CheckTables(cctx, db)
-		if !plan.UpToDate() {
-			err = nil // the missing parts are listed below
-		}
-	}
 	cancel()
 	if err != nil {
 		return fmt.Errorf("database: %w", database.Explain(err))
@@ -249,7 +245,19 @@ func runCmd(args []string) error {
 	for _, w := range plan.Warnings {
 		log.Warn(w)
 	}
-	if !plan.UpToDate() {
+	if !plan.UpToDate() && cfg.Database.AutoMigrate {
+		if plan, err = autoMigrate(ctx, log, db, cfg.Database, plan); err != nil {
+			return err
+		}
+	}
+	if plan.UpToDate() {
+		cctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+		err = database.CheckTables(cctx, db)
+		cancel()
+		if err != nil {
+			return fmt.Errorf("database: %w", database.Explain(err))
+		}
+	} else {
 		for i, r := range plan.Missing {
 			if i == 20 {
 				log.Error(fmt.Sprintf("... and %d more", len(plan.Missing)-i))
@@ -257,7 +265,7 @@ func runCmd(args []string) error {
 			}
 			log.Error(r.String())
 		}
-		return schemaOutdated(plan)
+		return schemaOutdated(plan, cfg.Database.AutoMigrate)
 	}
 	log.Info("database schema up to date", "version", plan.Current)
 
@@ -398,8 +406,13 @@ func checkCmd(args []string) error {
 	if plan.UpToDate() {
 		fmt.Printf("schema:    ok (version %d)\n", plan.Current)
 	} else {
-		fmt.Printf("schema:    version %d, this collector needs %d: %d migration steps pending, the collector does not start.\n", plan.Current, plan.Latest, len(plan.Steps))
-		fmt.Printf("           Make a backup, then run: %s   (plan: %s -n)\n", migrateCommand(), migrateCommand())
+		if autoMigrates(d, plan) {
+			fmt.Printf("schema:    version %d, this collector needs %d: %d migration steps pending, gamewe run migrates at start (database.auto_migrate).\n", plan.Current, plan.Latest, len(plan.Steps))
+			fmt.Printf("           Make a backup before the start, or migrate now: %s   (plan: %s -n)\n", migrateCommand(), migrateCommand())
+		} else {
+			fmt.Printf("schema:    version %d, this collector needs %d: %d migration steps pending, the collector does not start.\n", plan.Current, plan.Latest, len(plan.Steps))
+			fmt.Printf("           Make a backup, then run: %s   (plan: %s -n)\n", migrateCommand(), migrateCommand())
+		}
 	}
 	for _, w := range plan.Warnings {
 		fmt.Printf("warning:   %s\n", w)

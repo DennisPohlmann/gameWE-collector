@@ -49,9 +49,11 @@ not run on it. Details per game: [docs/GAMES.md](docs/GAMES.md).
 2. Create the database and its users with `schema/init/init-db.sh` (MariaDB)
    or `schema/postgres/init/init-db.sh` (PostgreSQL).
 3. Put the database connection into `/etc/gamewe/collector/config.yaml`,
-   create the tables with `gamewe db migrate` and check with `gamewe check`.
-   The schema is built into the binary: after an update, make a backup and
-   run `gamewe db migrate` again; the collector does not start before
+   create the tables with `gamewe db migrate` (or let the first start do it)
+   and check with `gamewe check`. The schema is built into the binary: after
+   an update the collector migrates the database at start
+   (`database.auto_migrate`, the default; make a backup before updating), or
+   with `auto_migrate: false` refuses to start until `gamewe db migrate` ran
    ([docs/DATABASE.md](docs/DATABASE.md#schema-versions-and-upgrades)).
 4. Register the game servers (web admin or `gamewe server add`) and add to
    their `server.cfg`:

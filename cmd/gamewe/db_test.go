@@ -5,7 +5,9 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
+	"log/slog"
 	"strings"
 	"testing"
 	"testing/iotest"
@@ -120,17 +122,55 @@ func TestMigrateHints(t *testing.T) {
 	defer func() { configPath = old }()
 	configPath = config.DefaultPath
 	p := &database.Plan{Current: 1, Latest: 2, Steps: make([]database.Step, 3)}
-	err := schemaOutdated(p)
-	if !strings.Contains(err.Error(), "schema version 1, needs 2; 3 steps pending") || !strings.Contains(err.Error(), "db migrate") ||
+	err := schemaOutdated(p, false)
+	if !strings.Contains(err.Error(), "schema version 1, needs 2; 3 steps pending; database.auto_migrate is false") || !strings.Contains(err.Error(), "db migrate") ||
 		strings.Contains(err.Error(), "-config") || !strings.Contains(err.Error(), "backup") {
 		t.Errorf("default config: %v", err)
 	}
 	configPath = "/srv/gamewe.yaml"
-	if err := schemaOutdated(p); !strings.HasSuffix(err.Error(), " db migrate -config /srv/gamewe.yaml") {
+	if err := schemaOutdated(p, true); !strings.Contains(err.Error(), "taken over once by hand") {
+		t.Errorf("auto, HLstatsX: %v", err)
+	}
+	if err := schemaOutdated(p, false); !strings.HasSuffix(err.Error(), " db migrate -config /srv/gamewe.yaml") {
 		t.Errorf("own config: %v", err)
 	}
 	if h := grantsHint(config.Database{Type: config.Postgres, Name: "stats"}); !strings.Contains(h, "db grants -config /srv/gamewe.yaml -print | psql -U postgres -d stats") {
 		t.Errorf("grants hint: %s", h)
+	}
+}
+
+func TestAutoMigrates(t *testing.T) {
+	on, off := config.Database{AutoMigrate: true}, config.Database{}
+	for _, c := range []struct {
+		d    config.Database
+		p    database.Plan
+		want bool
+	}{
+		{on, database.Plan{Kind: database.KindEmpty}, true},
+		{on, database.Plan{Kind: database.KindGameWE}, true}, // gameWE 0.1 - 0.2.1: no versions yet
+		{on, database.Plan{Kind: database.KindGameWE, Versions: true}, true},
+		{on, database.Plan{Kind: database.KindHLstatsX}, false}, // taken over by hand
+		{on, database.Plan{Kind: database.KindHLstatsX, Versions: true}, true},
+		{off, database.Plan{Kind: database.KindEmpty}, false},
+		{off, database.Plan{Kind: database.KindGameWE, Versions: true}, false},
+	} {
+		if got := autoMigrates(c.d, &c.p); got != c.want {
+			t.Errorf("auto_migrate %v, %s versions %v: %v, want %v", c.d.AutoMigrate, c.p.Kind, c.p.Versions, got, c.want)
+		}
+	}
+}
+
+func TestLineLog(t *testing.T) {
+	var buf bytes.Buffer
+	l := &lineLog{log: slog.New(slog.NewTextHandler(&buf, nil))}
+	fmt.Fprintf(l, "[1/2] v1 baseline: create")
+	fmt.Fprintf(l, " all tables\n\n[2/2] grants")
+	if n := strings.Count(buf.String(), "\n"); n != 1 || !strings.Contains(buf.String(), `"migrate: [1/2] v1 baseline: create all tables"`) {
+		t.Errorf("after the first line (%d lines):\n%s", n, buf.String())
+	}
+	l.flush()
+	if !strings.Contains(buf.String(), `"migrate: [2/2] grants"`) || strings.Count(buf.String(), "\n") != 2 {
+		t.Errorf("flush:\n%s", buf.String())
 	}
 }
 
@@ -142,7 +182,7 @@ func TestDBCmdUsage(t *testing.T) {
 	if err := dbCmd([]string{"frobnicate"}); !errors.As(err, &ee) || ee.code != 2 || !strings.Contains(ee.msg, "db migrate") {
 		t.Errorf("unknown: %v", err)
 	}
-	for _, want := range []string{"migrate", "status", "grants", "seed", "-f|--force", "-n|--dry-run", "2: migration pending"} {
+	for _, want := range []string{"migrate", "status", "grants", "seed", "-f|--force", "-n|--dry-run", "2: migration pending", "database.auto_migrate"} {
 		if !strings.Contains(dbUsage, want) {
 			t.Errorf("usage lacks %q", want)
 		}

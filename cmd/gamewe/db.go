@@ -4,11 +4,13 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -28,6 +30,8 @@ const dbUsage = `usage:
         -f, --force    no question (scripts); the plan is printed anyway
         -n, --dry-run  only print the plan; exit code 0: up to date,
                        2: migration pending, 1: error
+        gamewe run does the same at start (database.auto_migrate, default
+        true), except for an HLstatsX database without schema versions
   gamewe db status  [-config FILE]
         schema version, pending and applied migrations (with date)
   gamewe db grants  [-config FILE] [-print]
@@ -37,10 +41,11 @@ const dbUsage = `usage:
         add the missing reference data (games, teams, actions, weapons,
         awards, ranks, options); existing rows stay as they are
 
+
 A new database: create it with schema/init/init-db.sh (database, users,
-rights), then gamewe db migrate. An upgrade: replace the binary, make a
-backup, gamewe db migrate, start the collector. The collector refuses to
-start while the database is not up to date.`
+rights), then start the collector (it creates the tables) or run gamewe db
+migrate. An upgrade: make a backup, replace the binary, start the collector (or
+first gamewe db migrate with database.auto_migrate: false).`
 
 // exitError ends the program with code (and msg on stderr if not empty).
 type exitError struct {
@@ -70,10 +75,88 @@ func dbCommand(sub string) string {
 	return cmd
 }
 
-// schemaOutdated is the error of `gamewe run` on an old database.
-func schemaOutdated(p *database.Plan) error {
-	return fmt.Errorf("the database structure does not match the layout this collector needs (schema version %d, needs %d; %d steps pending). Make a backup, then run: %s",
-		p.Current, p.Latest, len(p.Steps), migrateCommand())
+// schemaOutdated is the error of `gamewe run` on an old database that was
+// not migrated automatically.
+func schemaOutdated(p *database.Plan, auto bool) error {
+	why := "database.auto_migrate is false"
+	if auto {
+		why = "an HLstatsX database without schema versions is not migrated automatically, it is taken over once by hand"
+	}
+	return fmt.Errorf("the database structure does not match the layout this collector needs (schema version %d, needs %d; %d steps pending; %s). Make a backup, then run: %s",
+		p.Current, p.Latest, len(p.Steps), why, migrateCommand())
+}
+
+// autoMigrates reports whether gamewe run migrates the database of plan p
+// itself: database.auto_migrate is on and it is not an HLstatsX database
+// that has never been migrated (that one is taken over by hand, with a
+// backup: DATABASE.md).
+func autoMigrates(d config.Database, p *database.Plan) bool {
+	return d.AutoMigrate && (p.Versions || p.Kind != database.KindHLstatsX)
+}
+
+// autoMigrate is the migration at the start of gamewe run
+// (database.auto_migrate): what gamewe db migrate -f does, with the steps
+// in the log. It returns the plan afterwards; the plan p is returned
+// unchanged if the database is not migrated automatically.
+func autoMigrate(ctx context.Context, log *slog.Logger, db *database.DB, d config.Database, p *database.Plan) (*database.Plan, error) {
+	if !autoMigrates(d, p) {
+		log.Warn("database not migrated automatically: an HLstatsX database without schema versions is taken over once by hand (backup first)", "command", migrateCommand())
+		return p, nil
+	}
+	log.Info("database schema outdated, migrating automatically (database.auto_migrate)",
+		"database", describeKind(p), "version", p.Current, "needs", p.Latest, "steps", len(p.Steps))
+	out := &lineLog{log: log}
+	res, err := database.Migrate(ctx, db, database.MigrateOptions{Out: out, Waiting: func() {
+		log.Info("another migration is running on this database, waiting for it")
+	}})
+	out.flush()
+	if err != nil {
+		return nil, fmt.Errorf("automatic migration (database.auto_migrate) failed; every step is idempotent, the next start (or gamewe db migrate) goes on from here: %w", err)
+	}
+	for _, w := range res.Warnings {
+		log.Warn("rights of the web users: " + w)
+	}
+	if len(res.Warnings) > 0 {
+		log.Warn("the schema is up to date; give the web users their rights as a database admin: " + grantsHint(d))
+	}
+	cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	after, err := database.PlanMigrations(cctx, db)
+	if err != nil {
+		return nil, fmt.Errorf("database: %w", database.Explain(err))
+	}
+	if after.UpToDate() {
+		log.Info("database migrated", "version", after.Current)
+	}
+	return after, nil
+}
+
+// lineLog writes every complete line written to it as one info record.
+type lineLog struct {
+	log *slog.Logger
+	buf []byte
+}
+
+func (l *lineLog) Write(b []byte) (int, error) {
+	l.buf = append(l.buf, b...)
+	for {
+		i := bytes.IndexByte(l.buf, '\n')
+		if i < 0 {
+			return len(b), nil
+		}
+		if line := strings.TrimSpace(string(l.buf[:i])); line != "" {
+			l.log.Info("migrate: " + line)
+		}
+		l.buf = l.buf[i+1:]
+	}
+}
+
+// flush logs a last line without newline.
+func (l *lineLog) flush() {
+	if line := strings.TrimSpace(string(l.buf)); line != "" {
+		l.log.Info("migrate: " + line)
+	}
+	l.buf = nil
 }
 
 func dbCmd(args []string) error {
@@ -250,9 +333,11 @@ func migrate(ctx context.Context, db *database.DB, d config.Database, f migrateF
 		fmt.Fprintf(out, "Dry run: nothing changed. %d steps pending.\n", len(p.Steps))
 		return exitError{2, ""}
 	}
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, backupAdvice(d, time.Now().Format("20060102-1504")))
-	fmt.Fprintln(out, "Stop the collector while migrating: MyISAM tables are locked while they are changed.")
+	if p.Kind != database.KindEmpty { // a new database has nothing to back up
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, backupAdvice(d, time.Now().Format("20060102-1504")))
+		fmt.Fprintln(out, "Stop the collector while migrating: MyISAM tables are locked while they are changed.")
+	}
 	if !f.force {
 		ok, err := confirm(in, out, interactive)
 		if err != nil {

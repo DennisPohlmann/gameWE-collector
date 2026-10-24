@@ -26,10 +26,11 @@
 #                config: type: postgres, port: 5432
 #
 # (Run the init commands from the directory of docker-compose.yml, or add
-# -f /path/to/docker-compose.yml to "docker compose".) Then create the tables:
+# -f /path/to/docker-compose.yml to "docker compose".) The collector creates
+# the tables at its first start and migrates the database after pulling a new
+# image (database.auto_migrate, the default; make a backup before updating).
+# With auto_migrate: false run this first (also by hand any time):
 #   docker compose run --rm collector db migrate -f
-# The collector does not start while the database schema is older than the
-# image; after pulling a new image run that command again (backup first).
 # TLS is not needed for a database on 127.0.0.1: tls.mode: disable (the default).
 services:
   collector:

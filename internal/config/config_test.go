@@ -33,12 +33,16 @@ func TestDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Database.Type != MySQL || cfg.Database.Port != 3306 || cfg.Database.ConnectTimeout != 10 {
+	if cfg.Database.Type != MySQL || cfg.Database.Port != 3306 || cfg.Database.ConnectTimeout != 10 || !cfg.Database.AutoMigrate {
 		t.Errorf("defaults not applied: %+v", cfg.Database)
 	}
 	cfg, err = Parse([]byte(strings.Replace(minimal, "database:\n", "database:\n  type: PostgreSQL\n", 1)))
 	if err != nil || cfg.Database.Type != Postgres || cfg.Database.Port != 5432 {
 		t.Errorf("postgres defaults: %v %+v", err, cfg.Database)
+	}
+	cfg, err = Parse([]byte(strings.Replace(minimal, "database:\n", "database:\n  auto_migrate: false\n", 1)))
+	if err != nil || cfg.Database.AutoMigrate {
+		t.Errorf("auto_migrate: false: %v %+v", err, cfg.Database)
 	}
 	cfg, _ = Parse([]byte(strings.Replace(minimal, "    mode: require\n", "", 1)))
 	if cfg.Database.TLS.Mode != TLSDisable {

@@ -9,8 +9,9 @@ The table structure, the reference data and the rights of the web users are
 `mysql/schema.sql`, `seed.sql`, `grants.sql` and the PostgreSQL files generated
 from them with `make schema`, so both always have the same tables, columns,
 defaults and reference data). The collector never reads SQL files from the
-disk: `gamewe db migrate` creates the tables of a new database and brings an
-older one to the current version ([Schema versions and
+disk: at its start (`database.auto_migrate`, the default) or with `gamewe db
+migrate` it creates the tables of a new database and brings an older one to
+the current version ([Schema versions and
 upgrades](#schema-versions-and-upgrades)). The only SQL you run by hand is
 the init script (database, users, rights).
 
@@ -25,16 +26,17 @@ PostgreSQL schema differs (types, names, zero dates) is listed in
 ## A new database (MariaDB / MySQL)
 
 Two steps: the init script creates the database and its users (as a MySQL /
-MariaDB admin), then `gamewe db migrate` creates the tables, loads the
-reference data and grants the web users their table rights (as the
-collector's user).
+MariaDB admin), then the collector creates the tables, loads the reference
+data and grants the web users their table rights (as the collector's user):
+at its first start (`database.auto_migrate`), or before with `gamewe db migrate`.
 
 ```bash
 cd /opt/gamewe/collector/doc/schema/init
 COLLECTOR_PASSWORD='...' WEB_PASSWORD='...' WEB_ADMIN_PASSWORD='...' ./init-db.sh -u root -p
 # other name: DB_NAME=stats ./init-db.sh ...
 # set database.name, user gamewe and its password in /etc/gamewe/collector/config.yaml, then:
-sudo -u gamewe /opt/gamewe/collector/bin/gamewe db migrate
+sudo systemctl start gamewe-collector                      # creates the tables at the first start
+# or first by hand: sudo -u gamewe /opt/gamewe/collector/bin/gamewe db migrate
 ```
 
 `init-db.sh` runs `00_create_database.sql` with the passwords and the name
@@ -56,7 +58,8 @@ host.
 The collector itself only reads and writes rows (`DELETE` is needed for
 `hlstats_Livestats`, `hlstats_PlayersInactive` and a rare race when two
 servers register the same new player). CREATE, ALTER and INDEX are for
-`gamewe db migrate`; it has no DROP right, so it cannot drop a table. The
+the migration (at the start with `database.auto_migrate`, or `gamewe db
+migrate`); it has no DROP right, so it cannot drop a table. The
 web users' rights are per table, and MariaDB only grants them on tables that
 exist: `gamewe db migrate` grants them after it created or changed tables,
 which needs `WITH GRANT OPTION` (it gives only the rights listed above). If
@@ -81,15 +84,30 @@ Then register the game servers in the web admin and run `gamewe check`.
 
 The table `gamewe_schema_migrations` records the schema versions (version,
 name, time, checksum, note) of a database. The collector checks the
-database at every start against the schema compiled into it: if a version is
-missing, or a table, column or index of the current schema, it **does not
-start** (exit code 1, the systemd unit fails) and names the command to run:
+database at every start against the schema compiled into it (a version is
+missing, or a table, column or index of the current schema):
+
+- **`database.auto_migrate: true`** (the default): it **migrates the
+  database itself**, before it touches anything else, exactly as `gamewe db
+  migrate -f` would (same plan, lock, rights check and steps; each step is a
+  line `migrate: [n/m] ...` in the journal), then starts. Nothing to do after
+  an update but restarting the collector. Make a backup before you install a
+  new version: the start does not ask. If the migration fails (e.g. missing
+  rights), the collector does not start and logs what to do; every step is
+  idempotent, so the next start (or `gamewe db migrate`) goes on from there.
+  Several collectors on one database wait for each other (lock).
+- **An HLstatsX database without schema versions** (taken over from an old
+  HLstatsX) is never migrated automatically: that is done once by hand, with
+  a backup ([MIGRATION-HLSTATSX.md](MIGRATION-HLSTATSX.md)); afterwards it has
+  versions and later updates run automatically.
+- **`database.auto_migrate: false`**: the collector **does not start**
+  (exit code 1, the systemd unit fails) and names the command to run:
 
 ```
-gamewe run: the database structure does not match the layout this collector needs (schema version 0, needs 3; 20 steps pending). Make a backup, then run: /opt/gamewe/collector/bin/gamewe db migrate
+gamewe run: the database structure does not match the layout this collector needs (schema version 0, needs 4; 8 steps pending; database.auto_migrate is false). Make a backup, then run: /opt/gamewe/collector/bin/gamewe db migrate
 ```
 
-Only `gamewe db migrate` changes the structure:
+By hand (also to see the plan before an update starts the collector):
 
 ```bash
 gamewe db status        # schema version, pending and applied migrations
@@ -185,14 +203,15 @@ otherwise `auto` replaces the value at its next check.
 
 The same two steps: `schema/postgres/init/` (`/opt/gamewe/collector/doc/schema/postgres/init/`
 in the package) has `00_create_database.sql` and `init-db.sh`. Run it as a
-PostgreSQL superuser, then `gamewe db migrate` as the collector:
+PostgreSQL superuser, then start the collector (it creates the tables) or
+run `gamewe db migrate` as the collector:
 
 ```bash
 cd /opt/gamewe/collector/doc/schema/postgres/init
 COLLECTOR_PASSWORD='...' WEB_PASSWORD='...' WEB_ADMIN_PASSWORD='...' ./init-db.sh -U postgres -h db.example.org
 # other name: DB_NAME=stats ./init-db.sh ...   (lower-case letters, digits, _)
 # in a container: PSQL='docker exec -i postgres psql' ./init-db.sh -U postgres
-sudo -u gamewe /opt/gamewe/collector/bin/gamewe db migrate
+sudo -u gamewe /opt/gamewe/collector/bin/gamewe db migrate   # or: start the collector
 ```
 
 `init-db.sh` creates the roles `gamewe`, `gamewe_web` and `gamewe_web_admin`
@@ -202,7 +221,7 @@ all and CREATE for `gamewe`. Passwords are passed to psql as variables, so
 they may contain any character. Like the MariaDB script it stops without
 changing anything if the database already has tables.
 
-`gamewe db migrate` then creates the tables as `gamewe`, which therefore owns
+The migration then creates the tables as `gamewe`, which therefore owns
 them (only the owner may alter a table) and grants the web roles their
 rights:
 
@@ -213,7 +232,7 @@ rights:
 | `gamewe_web_admin` | SELECT on all tables and USAGE on all sequences; INSERT, UPDATE, DELETE on the same tables as on MariaDB; on `hlstats_Players` only UPDATE of `skill`, `hideranking`, `clan` |
 
 A database created with the init scripts before this version belongs to
-`postgres`: `gamewe db migrate` stops and prints what a superuser runs once
+`postgres`: the migration (at the start or `gamewe db migrate`) stops and prints what a superuser runs once
 (`GRANT USAGE, CREATE ON SCHEMA public TO gamewe;` and a `DO` block that
 makes `gamewe` the owner of the `hlstats_*` tables).
 

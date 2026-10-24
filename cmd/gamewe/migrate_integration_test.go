@@ -57,6 +57,7 @@ database:
   user: %s
   password_file: %s
   name: %s
+  auto_migrate: %v
   tls:
     mode: disable
 geoip:
@@ -67,7 +68,7 @@ features:
   log_address: false
   daily_awards:
     enabled: false
-`, port, d.Type, d.Host, d.Port, d.User, pwFile, d.Name, filepath.Join(t.TempDir(), "none.mmdb"))
+`, port, d.Type, d.Host, d.Port, d.User, pwFile, d.Name, d.AutoMigrate, filepath.Join(t.TempDir(), "none.mmdb"))
 	p := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(p, []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
@@ -104,8 +105,9 @@ func expect(t *testing.T, out string, code, wantCode int, wants ...string) {
 	}
 }
 
-// runStarts starts "gamewe run", waits until it listens and stops it.
-func runStarts(t *testing.T, bin, cfg string) {
+// runStarts starts "gamewe run", waits until it listens, stops it and
+// returns its log.
+func runStarts(t *testing.T, bin, cfg string) string {
 	t.Helper()
 	cmd := exec.Command(bin, "run", "-config", cfg)
 	stderr, _ := cmd.StderrPipe()
@@ -141,6 +143,7 @@ func runStarts(t *testing.T, bin, cfg string) {
 	if !strings.Contains(log.String(), "database schema up to date") {
 		t.Errorf("no schema line:\n%s", log.String())
 	}
+	return log.String()
 }
 
 // The way of an old HLstatsX database (MariaDB; on PostgreSQL a new one):
@@ -171,10 +174,11 @@ func TestMigrateBinary(t *testing.T) {
 	}
 	bin := buildGamewe(t)
 	d := database.TestConfig(name, "gamewe", database.TestPassword("gamewe"))
+	d.AutoMigrate = false
 	cfg := writeConfig(t, d)
 
 	out, code := gw(t, bin, "run", "-config", cfg)
-	expect(t, out, code, 1, "does not match the layout this collector needs", "Make a backup, then run: ", "gamewe db migrate -config "+cfg)
+	expect(t, out, code, 1, "does not match the layout this collector needs", "database.auto_migrate is false", "Make a backup, then run: ", "gamewe db migrate -config "+cfg)
 	out, code = gw(t, bin, "check", "-config", cfg)
 	expect(t, out, code, 1, "migration steps pending, the collector does not start", "db migrate -config "+cfg)
 	out, code = gw(t, bin, "db")
@@ -184,7 +188,10 @@ func TestMigrateBinary(t *testing.T) {
 	out, code = gw(t, bin, "db", "migrate", "--dry-run", "-config", cfg)
 	expect(t, out, code, 2, "plan (", "Dry run: nothing changed")
 	out, code = gw(t, bin, "db", "migrate", "-config", cfg)
-	expect(t, out, code, 1, "plan (", "Make a backup before migrating", "no interactive confirmation possible", "-force")
+	expect(t, out, code, 1, "plan (", "no interactive confirmation possible", "-force")
+	if typ == config.MySQL && !strings.Contains(out, "Make a backup before migrating") { // PostgreSQL: a new database, nothing to back up
+		t.Error("no backup advice")
+	}
 	out, code = gw(t, bin, "db", "status", "-config", cfg)
 	expect(t, out, code, 0, "NOT up to date", "pending:   v1 baseline")
 	if typ == config.MySQL {
@@ -246,4 +253,67 @@ func TestMigrateQuestion(t *testing.T) {
 	if !strings.Contains(out.String(), "Backup made? Migrate now? [y/N]") {
 		t.Errorf("no question:\n%s", out.String())
 	}
+}
+
+// database.auto_migrate (the default): gamewe run creates the tables of a
+// new database itself and starts; with auto_migrate: false it refuses; an
+// HLstatsX database without versions is never migrated automatically; a
+// user without the rights stops the start with the GRANT to run.
+func TestMigrateAuto(t *testing.T) {
+	typ := database.MigrateTestEnv()
+	if typ == "" {
+		t.Skip("set GAMEWE_TEST_MIGRATE_* to run (creates and drops databases mig_*)")
+	}
+	ctx := context.Background()
+	bin := buildGamewe(t)
+	newDB := func(name string, oldRights bool) config.Database {
+		if err := database.CreateTestDatabase(ctx, name, oldRights); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { database.DropTestDatabase(context.Background(), name) })
+		return database.TestConfig(name, "gamewe", database.TestPassword("gamewe"))
+	}
+
+	d := newDB("mig_auto", false)
+	off := d
+	off.AutoMigrate = false
+	out, code := gw(t, bin, "run", "-config", writeConfig(t, off))
+	expect(t, out, code, 1, "database.auto_migrate is false", "db migrate")
+	cfg := writeConfig(t, d)
+	out, _ = gw(t, bin, "check", "-config", cfg)
+	expect(t, out, 0, 0, "gamewe run migrates at start (database.auto_migrate)")
+	log := runStarts(t, bin, cfg)
+	for _, want := range []string{"migrating automatically (database.auto_migrate)", "migrate: [1/", "create all", "database migrated"} {
+		if !strings.Contains(log, want) {
+			t.Errorf("log lacks %q:\n%s", want, log)
+		}
+	}
+	out, code = gw(t, bin, "db", "status", "-config", cfg)
+	expect(t, out, code, 0, ": up to date", "pending:   none")
+	if log := runStarts(t, bin, cfg); strings.Contains(log, "migrating automatically") {
+		t.Errorf("second start migrated again:\n%s", log)
+	}
+
+	if typ == config.MySQL {
+		d := newDB("mig_auto_hlx", true)
+		admin, err := database.AdminDB(d.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer admin.Close()
+		for _, f := range []string{"internal/database/testdata/hlstatsx-old.sql", "internal/database/testdata/hlstatsx-old-data.sql"} {
+			if err := database.LoadTestFile(ctx, admin, f); err != nil {
+				t.Fatal(err)
+			}
+		}
+		out, code = gw(t, bin, "run", "-config", writeConfig(t, d))
+		expect(t, out, code, 1, "not migrated automatically", "taken over once by hand", "db migrate")
+		if p, _ := database.PlanMigrations(ctx, admin); p == nil || p.Versions {
+			t.Error("the HLstatsX database was changed")
+		}
+	}
+
+	d = newDB("mig_auto_rights", true)
+	out, code = gw(t, bin, "run", "-config", writeConfig(t, d))
+	expect(t, out, code, 1, "automatic migration (database.auto_migrate) failed", "may not change the table structure")
 }

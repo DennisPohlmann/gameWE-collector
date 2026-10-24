@@ -106,11 +106,13 @@ the audit summary of `security-privacy-audit`.
   (`internal/schema/mysql/grants.sql` and the generated Postgres file). A
   new table needs a grant decision there (a test checks this).
 - The schema is compiled in (`internal/schema`, go:embed); the collector
-  never reads SQL files from disk. Only `gamewe db migrate` changes the
-  structure (`internal/database/migrate.go`, `migrations.go`), never the
-  running collector, which refuses to start on an old schema. Migrations
-  only add (tables, columns, indexes, missing seed rows), are idempotent,
-  never delete rows or drop tables/columns; released migrations are never
+  never reads SQL files from disk. Only `database.Migrate`
+  (`internal/database/migrate.go`, `migrations.go`) changes the structure:
+  `gamewe db migrate`, or `gamewe run` at start before anything else when
+  `database.auto_migrate` is true (the default; never an HLstatsX database
+  without versions); with it false `run` refuses to start on an old
+  schema. Migrations only add (tables, columns, indexes, missing seed
+  rows), are idempotent, never delete rows or drop tables/columns; released migrations are never
   changed. How to add one: `docs/DEVELOPMENT.md`, "Adding a migration".
 - Secrets stay out of git: `config.yaml`, `*.pem`, `*.key`, real
   `docker-compose.yml` values are ignored; examples use `change-me`.

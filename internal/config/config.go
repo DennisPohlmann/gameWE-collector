@@ -265,6 +265,11 @@ type Database struct {
 	MaxOpenConns   int    `yaml:"max_open_conns"`
 	ConnectTimeout int    `yaml:"connect_timeout"`
 	TLS            TLS    `yaml:"tls"`
+	// AutoMigrate lets `gamewe run` bring an outdated schema up to date
+	// itself (what `gamewe db migrate -f` does) instead of refusing to
+	// start. An HLstatsX database without schema versions is always
+	// taken over by hand.
+	AutoMigrate bool `yaml:"auto_migrate"`
 }
 
 type TLS struct {
@@ -282,6 +287,7 @@ func Defaults() Config {
 		MaxOpenConns:   8,
 		ConnectTimeout: 10,
 		TLS:            TLS{Mode: TLSDisable},
+		AutoMigrate:    true,
 	}, GeoIP: GeoIP{AutoUpdate: true}, Features: Features{RconStatus: RconStatus{Enabled: true, Interval: "10s"},
 		LogAddress:  LogAddress{Enabled: true, Interval: "1m"},
 		LogSecret:   LogSecret{Enabled: SecretAuto, Interval: "24h"},

@@ -81,6 +81,7 @@ The RCON load data of `hlstats_server_load` (CPU, FPS, uptime) are switched with
 | `tls.ca_file` | system CAs | CA certificate(s), PEM |
 | `tls.cert_file`, `tls.key_file` | – | client certificate and key, PEM (set both or neither) |
 | `tls.server_name` | `host` | name expected in the server certificate |
+| `auto_migrate` | `true` | `gamewe run` brings an outdated schema up to date at start (as `gamewe db migrate -f`, steps in the log); `false`: it refuses to start until `gamewe db migrate` ran. An HLstatsX database without schema versions is always taken over by hand. See [DATABASE.md](DATABASE.md#schema-versions-and-upgrades) |
 
 With `mode: disable`, setting any certificate option is an error. This stops a
 config from looking encrypted when it is not.

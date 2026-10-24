@@ -111,8 +111,7 @@ docker compose --profile postgres up -d
 (cd schema/postgres/init && PSQL='docker compose -f ../../../docker-compose.yml exec -T postgres psql' \
   ./init-db.sh -U postgres)
 
-docker compose run --rm collector db migrate -f   # creates the tables (the collector does not start before)
-docker compose up -d collector
+docker compose up -d collector               # creates the tables at the first start (database.auto_migrate)
 docker compose run --rm collector check     # config, database, schema, servers
 ```
 
@@ -261,7 +260,7 @@ database users:
 
 | User | For | Rights |
 |------|-----|--------|
-| `gamewe` | the collector (`config.yaml`) and `gamewe db migrate` | read and write rows; create and alter tables (never drop); grant the web users their table rights |
+| `gamewe` | the collector (`config.yaml`), its migration at start and `gamewe db migrate` | read and write rows; create and alter tables (never drop); grant the web users their table rights |
 | `gamewe_web` | the public web pages | SELECT, without users, RCON events, chat, `hlstats_Servers.rcon_password` and `log_secret`, `hlstats_Events_Connects.ipAddress` |
 | `gamewe_web_admin` | the web admin pages | SELECT on all; writes settings, games, servers, definitions, admin users; queues ranking resets |
 
@@ -269,9 +268,10 @@ database users:
 
 Two steps. The init script creates the database and the three users with
 their passwords (it stops without changing anything if the database already
-has tables); `gamewe db migrate` then creates the tables, the reference data
+has tables); the collector then creates the tables, the reference data
 (games, teams, roles, actions, weapons, awards, ranks, settings) and the web
-users' rights. The collector does not start before.
+users' rights at its first start (`database.auto_migrate`, the default), or
+before with `gamewe db migrate`.
 
 ```bash
 # MariaDB, as a database admin
@@ -283,7 +283,7 @@ cd /opt/gamewe/collector/doc/schema/postgres/init
 COLLECTOR_PASSWORD='change-me' WEB_PASSWORD='change-me' WEB_ADMIN_PASSWORD='change-me' ./init-db.sh -U postgres
 
 # then, with database.* set in /etc/gamewe/collector/config.yaml:
-sudo -u gamewe /opt/gamewe/collector/bin/gamewe db migrate      # shows the plan, asks; -f: no question
+sudo -u gamewe /opt/gamewe/collector/bin/gamewe db migrate      # the tables (or let the first start do it); shows the plan, asks; -f: no question
 sudo -u gamewe /opt/gamewe/collector/bin/gamewe check
 systemctl enable --now gamewe-collector
 ```
@@ -299,18 +299,21 @@ does that (`npm run create-admin -- <name>`).
 
 The database schema is built into the binary. At every start the collector
 compares the database with it; if the database is older (or something is
-missing), the collector **does not start** (exit code 1, `systemctl status
-gamewe-collector` and the journal name the command) until
-`gamewe db migrate` brought it up. Only that command changes the
-structure, never the running collector. `gamewe db status` shows the version,
-`gamewe db migrate -n` the plan; details, what a migration may do and the
-list of versions are in [DATABASE.md](DATABASE.md#schema-versions-and-upgrades).
+missing), it **migrates it itself** before it starts working
+(`database.auto_migrate: true`, the default; the steps are in the journal).
+With `auto_migrate: false` it **does not start** (exit code 1, `systemctl
+status gamewe-collector` and the journal name the command) until `gamewe db
+migrate` brought it up. `gamewe db status` shows the version, `gamewe db
+migrate -n` the plan; details, what a migration may do and the list of
+versions are in [DATABASE.md](DATABASE.md#schema-versions-and-upgrades).
 
 A database created before this version (with `01_schema.sql`, or an older
-HLstatsX database of the variant gameWE uses) is upgraded the same way. Its
-collector user has no CREATE / ALTER rights yet: the first
-`gamewe db migrate` stops and prints the `GRANT` (MariaDB) or the
-ownership change (PostgreSQL) to run once as a database admin.
+HLstatsX database of the variant gameWE uses) is upgraded the same way; an
+HLstatsX database without schema versions only by hand, once, with `gamewe
+db migrate` (the start refuses it, also with `auto_migrate`). Its collector
+user has no CREATE / ALTER rights yet: the first migration stops and prints
+the `GRANT` (MariaDB) or the ownership change (PostgreSQL) to run once as a
+database admin.
 
 The SQL files `hlstatsx.sql`, `01_schema.sql`, `02_seed.sql`, `03_grants.sql`
 and `upgrade-*.sql` of older releases are obsolete (`gamewe check` lists the
@@ -388,9 +391,12 @@ from the collector host with the sample game:
 ## E. Update
 
 Read the release's entry in [CHANGELOG.md](../CHANGELOG.md) first. An update
-is: make a backup, replace the binary, `gamewe db migrate`, start the
-collector. New tables, columns, indexes and reference data come with the
-binary; the collector refuses to start until the migration ran.
+is: make a backup, replace the binary, start the collector. New tables,
+columns, indexes and reference data come with the binary; the collector
+migrates the database at start (`database.auto_migrate`). With
+`auto_migrate: false` run `gamewe db migrate` before the start (the collector
+refuses to start until then). To see the plan first: `gamewe db migrate -n`
+before the start.
 
 ```bash
 # backup first (MariaDB / PostgreSQL)
@@ -401,14 +407,14 @@ mariadb-dump -u root -p --single-transaction --routines gamewe > gamewe-before-u
 systemctl stop gamewe-collector
 mkdir gamewe && tar -xzf gamewe-collector-<version>-linux-amd64.tar.gz -C gamewe && cd gamewe
 cp -r etc opt / && cp -rn var / && chown -R gamewe:gamewe /var/lib/gamewe
-sudo -u gamewe /opt/gamewe/collector/bin/gamewe db migrate      # plan, question; "up to date" if nothing changed
-systemctl daemon-reload && systemctl start gamewe-collector
+sudo -u gamewe /opt/gamewe/collector/bin/gamewe db migrate -n   # optional: the plan (exit code 2: migration pending)
+systemctl daemon-reload && systemctl start gamewe-collector      # migrates at start
+journalctl -u gamewe-collector -n 50 | grep -i migrat
 sudo -u gamewe /opt/gamewe/collector/bin/gamewe check
 
 # container
 docker compose pull
-docker compose stop collector && docker compose run --rm collector db migrate -f
-docker compose up -d
+docker compose up -d                          # migrates at start; auto_migrate: false: "docker compose run --rm collector db migrate -f" first
 ```
 
 `config.yaml` is never in the archive, so it is kept.

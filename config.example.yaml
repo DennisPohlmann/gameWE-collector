@@ -45,6 +45,10 @@ database:
     # cert_file: /etc/gamewe/collector/client.pem   # client certificate (optional)
     # key_file: /etc/gamewe/collector/client.key
     # server_name: db.internal                      # name expected in the certificate
+  # At start, bring an outdated database schema up to date (as
+  # "gamewe db migrate -f"; make a backup before installing a new version).
+  # false: the collector refuses to start until "gamewe db migrate" ran.
+  auto_migrate: true
 
 # Player and server locations: the DB-IP City Lite database (CC BY 4.0) is
 # shipped at path; auto_update replaces it there monthly. For MaxMind
