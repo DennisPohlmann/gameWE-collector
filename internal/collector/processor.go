@@ -111,8 +111,13 @@ type serverState struct {
 	// server load (hlstats_server_load)
 	loadSince        time.Time // start of the current interval
 	minPlay, maxPlay int       // players in the interval
-	lastLine         time.Time // last log line
-	lastStatus       time.Time // last RCON status
+	// Map change: the players connect again and the bots are added anew,
+	// so for a while after it the count from before the change stands (see
+	// online): no drop to 0, no old and new bots counted at once.
+	heldCount   int
+	activeCount int       // hlstats_Servers.act_players as last written
+	lastLine    time.Time // last log line
+	lastStatus  time.Time // last RCON status
 
 	// RCON status
 	statusMap  string // map set by a status, not by a log line yet
@@ -465,6 +470,7 @@ func (p *Processor) Discard() {
 	srv.players = map[string]*playerState{}
 	srv.gone, srv.pendingKill, srv.pendingLoc = nil, nil, nil
 	srv.minPlay, srv.maxPlay = 0, 0
+	srv.heldCount, srv.activeCount = 0, 0 // the reset clears act_players too
 	srv.lastRaw, srv.lastTwin = "", false
 }
 
@@ -516,6 +522,7 @@ func (p *Processor) changeMap(ctx context.Context, ev stats.Ev, name string) err
 	if err := p.endStreaks(ctx, ev); err != nil {
 		return err
 	}
+	held := p.online(ev.Time)
 	if err := p.endVisits(ctx, ev); err != nil {
 		return err
 	}
@@ -524,7 +531,9 @@ func (p *Processor) changeMap(ctx context.Context, ev stats.Ev, name string) err
 		return err
 	}
 	p.srv.mapID, p.srv.info.Map, p.srv.mapAt = id, name, ev.Time
-	return nil
+	p.srv.heldCount = held
+	p.counted(ev.Time)
+	return p.setActive(ctx, ev.Time)
 }
 
 // endVisits ends the visits of all players on the server and clears its
@@ -536,7 +545,7 @@ func (p *Processor) endVisits(ctx context.Context, ev stats.Ev) error {
 			return err
 		}
 	}
-	p.counted()
+	p.srv.activeCount = 0
 	return p.store.ResetLive(ctx, p.srv.info.ID)
 }
 
@@ -682,10 +691,10 @@ func (p *Processor) Status(ctx context.Context, st Status, at time.Time) error {
 		}
 	}
 	if left > 0 {
-		p.counted()
-		if err := p.store.SetActivePlayers(ctx, srv.info.ID, len(srv.players)); err != nil {
-			return err
-		}
+		p.counted(at)
+	}
+	if err := p.setActive(ctx, at); err != nil {
+		return err
 	}
 	return p.statusServer(ctx, st, pings)
 }
@@ -886,8 +895,8 @@ func (p *Processor) join(ctx context.Context, ev stats.Ev, ref logparse.Player, 
 	if err := p.trim(ctx, ev); err != nil {
 		return nil, err
 	}
-	p.counted()
-	return st, p.store.SetActivePlayers(ctx, ev.Srv.ID, len(p.srv.players))
+	p.counted(ev.Time)
+	return st, p.setActive(ctx, ev.Time)
 }
 
 // absent returns a player who is not (any more) on the server without
@@ -919,11 +928,11 @@ func (p *Processor) disconnect(ctx context.Context, ev stats.Ev, ref logparse.Pl
 		p.srv.gone = map[string]time.Time{}
 	}
 	p.srv.gone[key] = ev.Time
-	p.counted()
+	p.counted(ev.Time)
 	if err := p.leave(ctx, ev, st, true); err != nil {
 		return err
 	}
-	return p.store.SetActivePlayers(ctx, ev.Srv.ID, len(p.srv.players))
+	return p.setActive(ctx, ev.Time)
 }
 
 // Tick ends the visits of players without any line for gamewe_idle_timeout
@@ -939,6 +948,11 @@ func (p *Processor) Tick(ctx context.Context, now time.Time) error {
 	}
 	if err := p.flushPlayTime(ctx, now); err != nil {
 		return err
+	}
+	if p.srv.ready {
+		if err := p.setActive(ctx, now); err != nil { // the end of a map change's hold
+			return err
+		}
 	}
 	return p.serverLoad(ctx, now)
 }
@@ -966,10 +980,53 @@ func (p *Processor) flushPlayTime(ctx context.Context, now time.Time) error {
 	return nil
 }
 
+// mapSettle is how long after a map change the player count from before
+// it stands while RCON status polls arrive: the map loads, the players
+// connect again, the bots are added anew, and bots of the old map that
+// came back with late lines or a late status are gone after the first
+// status that misses them. Without status the old bots end only
+// after botIdle, so the count stands until then (mapSettleNoStatus).
+const (
+	mapSettle         = mapRepeat
+	mapSettleNoStatus = botIdle + MonitorInterval
+)
+
+// online is the number of players on the server at now: the tracked
+// players (one per identity, Player.Key), but during a map change's settle
+// time the count from before the change. A drop to 0 is only counted once
+// the players are really gone after the map change.
+func (p *Processor) online(now time.Time) int {
+	srv := &p.srv
+	if srv.heldCount > 0 {
+		settle := mapSettleNoStatus
+		if srv.lastStatus.After(srv.mapAt) {
+			settle = mapSettle
+		}
+		if now.Sub(srv.mapAt) < settle {
+			return srv.heldCount
+		}
+		srv.heldCount = 0
+	}
+	return len(srv.players)
+}
+
 // counted updates the lowest and highest player count of the load interval.
-func (p *Processor) counted() {
-	n := len(p.srv.players)
+func (p *Processor) counted(now time.Time) {
+	n := p.online(now)
 	p.srv.minPlay, p.srv.maxPlay = min(p.srv.minPlay, n), max(p.srv.maxPlay, n)
+}
+
+// setActive writes hlstats_Servers.act_players when the count changed.
+func (p *Processor) setActive(ctx context.Context, now time.Time) error {
+	n := p.online(now)
+	if n == p.srv.activeCount {
+		return nil
+	}
+	if err := p.store.SetActivePlayers(ctx, p.srv.info.ID, n); err != nil {
+		return err
+	}
+	p.srv.activeCount = n
+	return nil
 }
 
 // serverLoad writes a row of hlstats_server_load every LoadInterval while
@@ -981,7 +1038,7 @@ func (p *Processor) serverLoad(ctx context.Context, now time.Time) error {
 	if !srv.ready || now.Sub(srv.loadSince) < LoadInterval {
 		return nil
 	}
-	n := len(srv.players)
+	n := p.online(now)
 	l := stats.Load{ServerID: srv.info.ID, Time: now.Unix(), Players: n, MinPlayers: min(srv.minPlay, n), MaxPlayers: max(srv.maxPlay, n),
 		MapID: srv.mapID, Uptime: int(now.Sub(srv.upSince).Minutes())}
 	active := now.Sub(srv.lastLine) <= LoadInterval || now.Sub(srv.lastStatus) <= LoadInterval
@@ -1027,8 +1084,8 @@ func (p *Processor) idle(ctx context.Context, now time.Time) error {
 	if len(p.srv.players) == n {
 		return nil
 	}
-	p.counted()
-	return p.store.SetActivePlayers(ctx, ev.Srv.ID, len(p.srv.players))
+	p.counted(now)
+	return p.setActive(ctx, now)
 }
 
 // endStreak ends the player's kill streak: as HLstatsX, one action

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"gamewe-collector/internal/settings"
 )
 
 func keys(m map[string]*playerState) []string {
@@ -136,5 +138,90 @@ func TestBotIdle(t *testing.T) {
 	}
 	if got := keys(p.srv.players); len(got) != 1 || got[0] != "0:1" {
 		t.Errorf("players %v, want only the human", got)
+	}
+}
+
+// Map change with 32 bots: the players connect again and new bots come,
+// while late lines of the old bots bring them back for a moment. The count stays at 32 meanwhile, neither 0 nor up to
+// the slots, and follows the server again once status settled it.
+func TestMapChangeHoldsPlayerCount(t *testing.T) {
+	p, st := newTestProcessor(t)
+	s := settings.Defaults()
+	s.IdleTimeout = 0
+	p.set.Set(s)
+	ctx := context.Background()
+	t0 := time.Now()
+	bots := func(prefix string) string {
+		out := strings.Replace(statusHead, "24 max", "48 max", 1)
+		for i := 0; i < 32; i++ {
+			out += fmt.Sprintf("# %d \"%s %d\" BOT active\n", 10+i, prefix, i)
+		}
+		return out
+	}
+	status := func(at time.Time, out string) {
+		t.Helper()
+		if err := p.Status(ctx, statusOf(t, out), at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tick := func(at time.Time) {
+		t.Helper()
+		if err := p.Tick(ctx, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	handleAll(t, p, t0, `Started map "de_dust2" (CRC "1")`)
+	status(t0.Add(time.Second), bots("Old"))
+	if n := p.online(t0.Add(time.Second)); n != 32 {
+		t.Fatalf("online %d, want 32", n)
+	}
+
+	start := t0.Add(LoadInterval + 2*time.Second)
+	tick(start) // starts the interval of the map change (no row: no line or status for an interval)
+	change := start.Add(LoadInterval - 5*time.Second)
+	handleAll(t, p, change, `Loading map "de_nuke"`)
+	if n := p.online(change); n != 32 {
+		t.Errorf("online right after the map change %d, want 32 (held)", n)
+	}
+	// Late lines of the old bots, then the new bots.
+	for i := 0; i < 32; i++ {
+		handleAll(t, p, change.Add(time.Second), fmt.Sprintf(`"Old %d<%d><BOT><CT>" killed "Old %d<%d><BOT><TERRORIST>" with "ak47"`, i, 10+i, (i+1)%32, 10+(i+1)%32))
+	}
+	for i := 0; i < 32; i++ {
+		handleAll(t, p, change.Add(3*time.Second), fmt.Sprintf(`"New %d<%d><BOT><CT>" entered the game`, i, 50+i))
+	}
+	tick(change.Add(10 * time.Second)) // load row inside the settle time
+	newStatus := strings.Replace(bots("New"), "de_dust2", "de_nuke", 1)
+	status(change.Add(10*time.Second), newStatus) // misses the old bots
+	if got := len(p.srv.players); got != 32 {
+		t.Errorf("%d players tracked after the first status, want 32", got)
+	}
+
+	// After the settle time the real count: everyone left.
+	empty := strings.Replace(statusHead, "de_dust2", "de_nuke", 1)
+	later := change.Add(mapSettle + time.Second)
+	status(later, empty)
+	status(later.Add(10*time.Second), empty)
+	tick(change.Add(LoadInterval + 15*time.Second))
+
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if len(st.loads) != 2 {
+		t.Fatalf("%d load rows: %+v", len(st.loads), st.loads)
+	}
+	if l := st.loads[0]; l.Players != 32 || l.MinPlayers != 32 || l.MaxPlayers != 32 {
+		t.Errorf("load row during the map change %+v, want 32 players (32-32)", l)
+	}
+	if l := st.loads[1]; l.Players != 0 || l.MaxPlayers != 32 {
+		t.Errorf("load row after everyone left %+v, want 0 players", l)
+	}
+	for _, n := range st.active {
+		if n > 32 {
+			t.Errorf("act_players written as %d, more than the 32 bots: %v", n, st.active)
+			break
+		}
+	}
+	if len(st.active) == 0 || st.active[len(st.active)-1] != 0 {
+		t.Errorf("act_players writes %v, want 0 last", st.active)
 	}
 }

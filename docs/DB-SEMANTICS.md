@@ -209,6 +209,13 @@ lines in that interval:
 
 The values are capped to the column types (players 255, the rest 65535).
 
+Map change: the players connect again and the bots are added anew, so for
+2 minutes after a map change (4 minutes without RCON status) the player count
+from before the change stands, in `act_players`, `min_players`/`max_players`
+and `hlstats_Servers.act_players`. A sample during the change shows neither 0
+nor old and new bots counted at once; a server that really emptied shows 0
+once that time is over.
+
 ## Daily awards, ribbons, ranks
 
 The collector decides the awards of `hlstats_Awards` for every calendar day
