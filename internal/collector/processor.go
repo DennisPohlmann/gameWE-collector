@@ -124,6 +124,10 @@ type serverState struct {
 	statusHost string // hostname and max players of the last status
 	statusMax  int
 	gone       map[string]time.Time // players whose disconnect was logged, by key
+	// Players whose connect is stored (connect line, or status for those
+	// already on the server), by key, until their disconnect line. Kept over
+	// map changes: the players stay connected, only their visits restart.
+	connected map[string]bool
 
 	// Duplicate lines: the game server sends every line twice when the
 	// collector is registered twice (logaddress_list).
@@ -307,6 +311,7 @@ func (p *Processor) Handle(ctx context.Context, line string, now time.Time) erro
 		if err := p.store.Connect(ctx, ev, st.live, stored); err != nil {
 			return err
 		}
+		p.markConnected(e.Player.Key())
 		st.locatedIP = netip.Addr{} // a new connect: store the location again
 		return p.locate(ctx, ev, st, ip)
 	case logparse.Entered:
@@ -468,7 +473,7 @@ func (p *Processor) Handle(ctx context.Context, line string, now time.Time) erro
 func (p *Processor) Discard() {
 	srv := &p.srv
 	srv.players = map[string]*playerState{}
-	srv.gone, srv.pendingKill, srv.pendingLoc = nil, nil, nil
+	srv.gone, srv.connected, srv.pendingKill, srv.pendingLoc = nil, nil, nil, nil
 	srv.minPlay, srv.maxPlay = 0, 0
 	srv.heldCount, srv.activeCount = 0, 0 // the reset clears act_players too
 	srv.lastRaw, srv.lastTwin = "", false
@@ -658,6 +663,9 @@ func (p *Processor) Status(ctx context.Context, st Status, at time.Time) error {
 			ps.ping = sp.Ping
 			pings[ps.live.UniqueID] = sp.Ping
 		}
+		if err := p.statusConnect(ctx, ev, key, ps, sp.Address); err != nil {
+			return err
+		}
 		if err := p.locate(ctx, ev, ps, sp.Address); err != nil {
 			return err
 		}
@@ -698,6 +706,38 @@ func (p *Processor) Status(ctx context.Context, st Status, at time.Time) error {
 	}
 	return p.statusServer(ctx, st, pings)
 }
+
+// statusConnect stores the connect of a player whose "connected" line the
+// collector never saw (it started, or the server was added, while the
+// player was already on it), with the address from status: otherwise the
+// player has no connection and no IP. Once until the player's disconnect
+// line; bots and players without an address (loopback, LAN) are skipped.
+func (p *Processor) statusConnect(ctx context.Context, ev stats.Ev, key string, ps *playerState, ip netip.Addr) error {
+	if p.srv.connected[key] || !ip.IsValid() || stats.IsBot(ps.live.UniqueID) {
+		return nil
+	}
+	var stored netip.Addr
+	if p.set.Get().StorePlayerIP {
+		stored = ip
+	}
+	if err := p.store.Connect(ctx, ev, ps.live, stored); err != nil {
+		return err
+	}
+	p.markConnected(key)
+	return nil
+}
+
+// markConnected notes that key's connect is stored. The set is bounded:
+// when it is full it starts over (at worst a player gets a second connect
+// from status).
+func (p *Processor) markConnected(key string) {
+	if p.srv.connected == nil || len(p.srv.connected) >= connectedSize {
+		p.srv.connected = map[string]bool{}
+	}
+	p.srv.connected[key] = true
+}
+
+const connectedSize = 4096
 
 // statusServer writes hostname, max players and pings of a status answer
 // when they changed.
@@ -916,6 +956,7 @@ func (p *Processor) absent(ctx context.Context, ev stats.Ev, ref logparse.Player
 
 func (p *Processor) disconnect(ctx context.Context, ev stats.Ev, ref logparse.Player) error {
 	key := ref.Key()
+	delete(p.srv.connected, key)
 	st := p.srv.players[key]
 	if st == nil {
 		return nil

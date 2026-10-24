@@ -185,6 +185,54 @@ func TestStatusLocation(t *testing.T) {
 	}
 }
 
+// A player first seen in a kill line (on the server before the collector
+// started) gets his connect with the address from status, once per visit;
+// a player whose connect line was seen gets no second one.
+func TestStatusStoresMissedConnect(t *testing.T) {
+	p, st := newTestProcessor(t)
+	ctx, now := context.Background(), time.Now()
+	for _, l := range []string{
+		`"Bob<3><STEAM_0:1:2><>" connected, address "198.51.100.3:27005"`,
+		`"Alice<2><STEAM_0:1:1><CT>" killed "Bob<3><STEAM_0:1:2><TERRORIST>" with "ak47"`,
+	} {
+		if err := p.Handle(ctx, l, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out := statusHead + `#  2 "Alice" STEAM_0:1:1 10:00 50 0 active 203.0.113.2:27005
+#  3 "Bob" STEAM_0:1:2 10:00 50 0 active 198.51.100.3:27005
+#  4 "Bot Ann" BOT active
+`
+	// The first poll also changes the map (de_dust2): the visits restart,
+	// but nobody connected again.
+	for i := 1; i <= 3; i++ {
+		if err := p.Status(ctx, statusOf(t, out), now.Add(time.Duration(i)*10*time.Second)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	alice, bob := p.srv.players["1:1"].live.ID, p.srv.players["1:2"].live.ID
+	want := []string{fmt.Sprintf("%d:198.51.100.3", bob), fmt.Sprintf("%d:203.0.113.2", alice)}
+	st.mu.Lock()
+	got := strings.Join(st.connects, ",")
+	st.mu.Unlock()
+	if got != strings.Join(want, ",") {
+		t.Errorf("connects %v, want %v", got, want)
+	}
+	// After her disconnect line Alice's next visit is a new connection.
+	later := now.Add(time.Minute)
+	if err := p.Handle(ctx, `"Alice<2><STEAM_0:1:1><CT>" disconnected (reason "bye")`, later); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Status(ctx, statusOf(t, out), later.Add(2*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if n := len(st.connects); n != 3 || st.connects[2] != fmt.Sprintf("%d:203.0.113.2", alice) {
+		t.Errorf("connects after reconnect %v", st.connects)
+	}
+}
+
 func TestConnectType(t *testing.T) {
 	p, st := newTestProcessor(t)
 	ctx, now := context.Background(), time.Now()

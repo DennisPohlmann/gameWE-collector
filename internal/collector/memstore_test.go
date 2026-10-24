@@ -40,6 +40,7 @@ type memStore struct {
 	active       []int // SetActivePlayers values
 	status       []string
 	maps         []string // MapStarted calls
+	connects     []string // "player:ip" of each Connect
 	connectTypes map[int64]int
 	latency      []string         // "player:ping" samples
 	teams        map[int64]string // live row team by player id
@@ -132,9 +133,14 @@ func (m *memStore) ResetLive(_ context.Context, server int64) error {
 	return nil
 }
 
-func (m *memStore) MapID(context.Context, string, string) (int, error)              { return 1, nil }
-func (m *memStore) Connect(context.Context, stats.Ev, stats.Live, netip.Addr) error { return nil }
-func (m *memStore) Enter(context.Context, stats.Ev, stats.Live) error               { return nil }
+func (m *memStore) MapID(context.Context, string, string) (int, error) { return 1, nil }
+func (m *memStore) Connect(_ context.Context, _ stats.Ev, p stats.Live, ip netip.Addr) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.connects = append(m.connects, fmt.Sprintf("%d:%v", p.ID, ip))
+	return nil
+}
+func (m *memStore) Enter(context.Context, stats.Ev, stats.Live) error { return nil }
 func (m *memStore) ChangeTeam(_ context.Context, _ stats.Ev, p stats.Live, team string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
