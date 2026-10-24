@@ -27,7 +27,7 @@ LABEL org.opencontainers.image.title="gameWE - collector" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.licenses="GPL-3.0-or-later"
 COPY --from=build /out/gamewe /opt/gamewe/collector/bin/gamewe
-COPY README.md INSTALLATION.md CHANGELOG.md LICENSE docs/ /opt/gamewe/collector/doc/
+COPY README.md CHANGELOG.md LICENSE docs/ /opt/gamewe/collector/doc/
 COPY schema/ /opt/gamewe/collector/doc/schema/
 COPY config.example.yaml /opt/gamewe/collector/doc/config.example.yaml
 COPY geoip-data/NOTICE /opt/gamewe/collector/doc/GEOIP-NOTICE

@@ -154,7 +154,7 @@ gets its rows too. Nothing is written when a poll changes nothing. Without
 
 ## Locations (GeoIP)
 
-With the city database (bundled DB-IP Lite or config.yaml `geoip.path`, README) the collector looks up the
+With the city database (bundled DB-IP Lite or config.yaml `geoip.path`, see CONFIG.md) the collector looks up the
 address of a `connected, address "ip:port"` line or of RCON status (also when
 `gamewe_store_player_ip` = 0; the IP itself is stored only with that setting)
 and the game server's address when the server becomes active:

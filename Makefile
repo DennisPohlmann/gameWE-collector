@@ -56,7 +56,7 @@ package: build geoip
 	install -m 0644 geoip-data/NOTICE $(STAGE)/$(OPT)/doc/GEOIP-NOTICE
 	install -m 0644 THIRD-PARTY-LICENSES.md $(STAGE)/$(OPT)/doc/
 	cp -r licenses $(STAGE)/$(OPT)/doc/licenses && chmod -R u=rwX,go=rX $(STAGE)/$(OPT)/doc/licenses
-	install -m 0644 README.md INSTALLATION.md docs/DATABASE.md docs/DB-SEMANTICS.md docs/CONFIG.md docs/INSTALL-ARCH.md docs/GAMES.md CHANGELOG.md LICENSE $(STAGE)/$(OPT)/doc/
+	install -m 0644 README.md CHANGELOG.md LICENSE docs/*.md $(STAGE)/$(OPT)/doc/
 	install -m 0644 schema/hlstatsx.sql $(STAGE)/$(OPT)/doc/schema/
 	install -m 0644 schema/init/00_create_database.sql schema/init/02_seed.sql schema/init/03_grants.sql $(STAGE)/$(OPT)/doc/schema/init/
 	install -m 0644 schema/hlstatsx.sql $(STAGE)/$(OPT)/doc/schema/init/01_schema.sql

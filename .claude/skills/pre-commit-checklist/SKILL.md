@@ -10,10 +10,10 @@ Run this before every commit, also for small fixes, together with the
 (`git status --short`, `git diff HEAD`). Do the steps, then commit; in the
 answer report one line per step (done / nothing to do / suggestion).
 
-## 1. README.md (and INSTALLATION.md)
+## 1. README.md and docs/
 
-- Read the parts of `README.md` and `INSTALLATION.md` that the diff
-  touches: features, configuration tables, commands, defaults, build and
+- Read the parts of `README.md` and `docs/*.md` (INSTALLATION, CONFIG,
+  USAGE, INTERFACE, DEVELOPMENT, ...) that the diff touches: features, configuration tables, commands, defaults, build and
   install steps, version numbers, examples.
 - Update them in the same commit when the behaviour, a setting, a default,
   a command, a path or a requirement changed. New settings get a row in the

@@ -3,11 +3,12 @@
 Two ways to run the collector:
 
 - [A. Container](#a-container-docker--podman) (Docker / Podman, optional database in the same Compose project)
-- [B. Release archive](#b-release-archive-targz) (tar.gz with systemd; on Arch Linux also as a package, [docs/INSTALL-ARCH.md](docs/INSTALL-ARCH.md))
+- [B. Release archive](#b-release-archive-targz) (tar.gz with systemd)
 
 Both need a database ([C](#c-database)) and game servers that send their logs
 to the collector ([D](#d-game-servers)). [E](#e-update) and
-[F](#f-uninstall) cover updates and removal.
+[F](#f-uninstall) cover updates and removal, [G](#g-troubleshooting) the
+usual problems.
 
 All addresses and passwords below are placeholders: `203.0.113.5` is the
 collector host, `198.51.100.7` a game server, `change-me` stands for your own
@@ -29,7 +30,7 @@ passwords.
 | PostgreSQL | 17, 18 | `schema/postgres/init/` |
 | MySQL 8.x | not tested | the collector speaks the MySQL protocol, but `03_grants.sql` uses MariaDB syntax (`BEGIN NOT ATOMIC`) and does not run on MySQL. Use MariaDB or PostgreSQL. |
 
-**Folder layout** (archive and Arch package; the container has the same paths inside):
+**Folder layout** (release archive; the container has the same paths inside):
 
 | Path | Owner | Mode | Content |
 |------|-------|------|---------|
@@ -41,7 +42,7 @@ passwords.
 | `/opt/gamewe/collector/doc/` | `root:root` | `0755` / files `0644` | docs, licenses, SQL |
 | `/var/lib/gamewe/` | `gamewe:gamewe` | `0755` | state |
 | `/var/lib/gamewe/collector/` | `gamewe:gamewe` | `0755` | GeoIP database and its monthly update (systemd `StateDirectory`) |
-| `/etc/systemd/system/gamewe-collector.service` | `root:root` | `0644` | the unit (Arch: `/usr/lib/systemd/system/`) |
+| `/etc/systemd/system/gamewe-collector.service` | `root:root` | `0644` | the unit |
 
 ## A. Container (Docker / Podman)
 
@@ -137,7 +138,14 @@ Every received log line goes to the container log (`gamewe_log_lines`), hence
 the log limits. Other commands run the same way, e.g.
 `docker run --rm --network host -v ...config.yaml:ro ghcr.io/dennispohlmann/gamewe-collector:latest check`.
 
-Open the port on the host's firewall for your game servers only: UDP 41337.
+Open the port on the host's firewall for your game servers only: UDP 41337,
+for example:
+
+```bash
+ufw allow from 198.51.100.7 to any port 41337 proto udp            # ufw
+firewall-cmd --permanent --add-rich-rule='rule family=ipv4 source address=198.51.100.7 port port=41337 protocol=udp accept' \
+  && firewall-cmd --reload                                          # firewalld
+```
 
 ## B. Release archive (tar.gz)
 
@@ -148,7 +156,8 @@ static binary) is a tree for `/`:
 etc/gamewe/collector/config.example.yaml        the config to copy to config.yaml (none is shipped: copying never overwrites yours)
 etc/systemd/system/gamewe-collector.service     systemd unit (hardened, user gamewe, StateDirectory=gamewe/collector)
 opt/gamewe/collector/bin/gamewe                 the binary
-opt/gamewe/collector/doc/                       README, INSTALLATION, CONFIG, DATABASE, DB-SEMANTICS, GAMES, CHANGELOG,
+opt/gamewe/collector/doc/                       README, CHANGELOG, INSTALLATION, CONFIG, USAGE, INTERFACE, DATABASE,
+                                                DB-SEMANTICS, GAMES, DEVELOPMENT,
                                                 LICENSE, THIRD-PARTY-LICENSES.md, licenses/, GEOIP-NOTICE
 opt/gamewe/collector/doc/schema/                MariaDB: hlstatsx.sql, init/ (00_create_database, 01_schema, 02_seed, 03_grants, init-db.sh)
 opt/gamewe/collector/doc/schema/postgres/       PostgreSQL: hlstatsx.sql, init/ (the same files)
@@ -178,7 +187,7 @@ Step by step, the commands above do:
 4. set owners and modes as in the folder layout table at the top.
 
 Then edit `/etc/gamewe/collector/config.yaml`. All keys, with their defaults
-([docs/CONFIG.md](docs/CONFIG.md) explains each one):
+([CONFIG.md](CONFIG.md) explains each one):
 
 ```yaml
 # /etc/gamewe/collector/config.yaml  (root:gamewe 0640)
@@ -241,12 +250,6 @@ journalctl -u gamewe-collector -f
 The unit is in `/etc/systemd/system/` (units installed by hand); change it with
 `systemctl edit gamewe-collector`, not in place.
 
-**Arch Linux:** `packaging/arch/PKGBUILD` builds a package from the release
-archive (`makepkg -si`, it puts the unit into `/usr/lib/systemd/system/` and
-creates the user and directories with sysusers / tmpfiles). The complete steps,
-also for MariaDB / PostgreSQL and the firewall on Arch, are in
-[docs/INSTALL-ARCH.md](docs/INSTALL-ARCH.md).
-
 ## C. Database
 
 MariaDB / MySQL (tested: MariaDB 11.4 and 12.3) or PostgreSQL (tested: 17 and
@@ -306,7 +309,7 @@ The rights (`03_grants.sql`; the collector user gets
 `DB_NAME=name` chooses another database name. On MariaDB the users are created
 for the host `'%'`: restrict them to the collector's and the web server's
 addresses, and require TLS (`REQUIRE SSL`) when the database is on another host
-([docs/DATABASE.md](docs/DATABASE.md), also for doing the four steps by hand).
+([DATABASE.md](DATABASE.md), also for doing the four steps by hand).
 No web admin login is created; the web frontend does that
 (`npm run create-admin -- <name>`).
 
@@ -331,12 +334,13 @@ existing rows or rankings of your own (such as `css1`).
 
 ### GeoIP
 
-Nothing to do: the DB-IP City Lite database comes with the archive, the package
-and the image (`/var/lib/gamewe/collector/dbip-city-lite.mmdb`) and the
+Nothing to do: the DB-IP City Lite database comes with the archive and the
+image (`/var/lib/gamewe/collector/dbip-city-lite.mmdb`) and the
 collector replaces it there monthly (`geoip.auto_update`, through
 `HTTPS_PROXY` if set). Pages that show locations must credit DB-IP ("IP
 Geolocation by DB-IP", https://db-ip.com). Another database (MaxMind
-GeoLite2): `geoip.path` and `auto_update: false` (README, GeoIP).
+GeoLite2): `geoip.path` and `auto_update: false`
+([CONFIG.md](CONFIG.md#geoip-database-player-and-server-locations)).
 
 ## D. Game servers
 
@@ -372,7 +376,7 @@ for the in-game replies (`!rank`, `!top10`, menus) and the extra statistics
 
 **GoldSrc (CS 1.6, DoD, TFC, HL1, NS)**: `log on`,
 `logaddress_add 203.0.113.5 41337` and `rcon_password`; in-game replies through
-the gameWE AMX Mod X plugin ([docs/GAMES.md](docs/GAMES.md)).
+the gameWE AMX Mod X plugin ([GAMES.md](GAMES.md)).
 
 Counter-Strike 2 is not supported (no UDP logs, no SourceMod).
 
@@ -387,7 +391,7 @@ from the collector host with the sample game:
 
 ## E. Update
 
-Read the release's entry in [CHANGELOG.md](CHANGELOG.md) first. New reference
+Read the release's entry in [CHANGELOG.md](../CHANGELOG.md) first. New reference
 data of a release (games, awards, ...) comes with `init/02_seed.sql`: run it
 after the update (C, "New reference data"); `gamewe check` says if the schema
 itself lacks something.
@@ -398,8 +402,6 @@ mkdir gamewe && tar -xzf gamewe-collector-<version>-linux-amd64.tar.gz -C gamewe
 cp -r etc opt / && cp -rn var / && chown -R gamewe:gamewe /var/lib/gamewe
 systemctl daemon-reload && systemctl restart gamewe-collector
 sudo -u gamewe /opt/gamewe/collector/bin/gamewe check
-
-# Arch: copy the new archive next to the PKGBUILD, set pkgver and its sha256, makepkg -si
 
 # container
 docker compose pull && docker compose up -d        # or docker pull + docker run again
@@ -417,7 +419,44 @@ rm -r /etc/gamewe/collector /var/lib/gamewe     # config (with the database pass
 userdel gamewe
 ```
 
-On Arch: `pacman -R gamewe-collector-bin` (the config stays as a `.pacsave`).
 Container: `docker compose down` (add `-v` to delete the volumes, also a
 database volume of the example). The statistics stay in the database until you
 drop it (`DROP DATABASE gamewe;` and the three users).
+
+## G. Troubleshooting
+
+| Symptom | Cause / fix |
+|---------|-------------|
+| `gamewe check` fails with `certificate signed by unknown authority` | Set `database.tls.ca_file` to the CA that signed the database certificate. |
+| `... certificate is valid for X, not Y` | Connect by the name in the certificate, set `tls.server_name`, or use `verify-ca`. |
+| `server refused TLS connection` / `server does not support TLS` | TLS is not enabled on the database server, see [DATABASE.md](DATABASE.md). gameWE never falls back to plaintext. |
+| `table hlstats_...: ...` | Wrong database (`database.name`), or the DB user lacks rights on it. |
+| `config key "servers" is no longer used` | An old-style config: keep only `listen:`, `database:`, `geoip:` and `features:`, register the servers in the web admin. |
+| `hlstats_Servers serverId N is ignored: ...` | The row's address is not an IP, the port is invalid, or its game is not in `hlstats_Games`. Fix it in the web admin. |
+| No `game server active` in the log | Check `logaddress_add` and the firewall (UDP port). |
+| `rejected log packet ... not in hlstats_Servers` | Register the shown source `IP:port` in the web admin. |
+| Commands get no answer | `rcon_password` is empty or wrong (`rcon authentication failed`), the plugin is missing, or the RCON port is blocked (TCP). `gamewe check` shows servers without a password. |
+| Service does not start, `status=31/SYS` | A hardening option in the unit blocks something on your system. See `journalctl -u gamewe-collector` and relax `SystemCallFilter` with `systemctl edit gamewe-collector`. |
+
+**What you see in `journalctl -u gamewe-collector -f`:** every log line a game
+server sends, as `[name ip:port] L 10/22/2026 - 12:00:00: "Player<2><STEAM_1:0:123><CT>" killed …`.
+If those lines appear, data arrives and is accepted. Control characters in
+player names are shown as `\xNN`. Besides those:
+
+- `game servers loaded from hlstats_Servers`: after start and when servers change
+- `game server active`: the first accepted line of a server
+- `rejected log packet … source=IP:port`: a sender that is not in `hlstats_Servers`
+  (first time, then every 1000th)
+- `processing log line failed`: a database error
+
+Every line in the journal can be a lot: a busy server sends several lines per
+second. Set `gamewe_log_lines` to `0` in `hlstats_Options` to switch it off (within
+a minute, no restart), and limit the journal size, e.g. `SystemMaxUse=1G` in
+`/etc/systemd/journald.conf`.
+
+Use `systemctl edit gamewe-collector` to add `-log-level debug` to `ExecStart` for
+details about every reply. Test against your database with `gamewe check` and
+`gamewe simulate`. `simulate` without `-send` writes the sample game into the
+database (`-game css` by default): test players `STEAM_1:x:900000x` and server
+`127.0.0.1:27015`, which it adds to `hlstats_Servers` itself. It prints the RCON
+commands it would send.

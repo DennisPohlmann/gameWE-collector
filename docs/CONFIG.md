@@ -82,6 +82,50 @@ The RCON load data of `hlstats_server_load` (CPU, FPS, uptime) are switched with
 With `mode: disable`, setting any certificate option is an error. This stops a
 config from looking encrypted when it is not.
 
+## GeoIP database (player and server locations)
+
+The collector fills the locations of players (country, flag, city, state,
+coordinates) and of the game servers from a MaxMind-format city database
+(`.mmdb`). **It comes with one:** the free DB-IP "IP to City Lite" database
+is part of the tar.gz and the Docker image, in one place:
+`/var/lib/gamewe/collector/dbip-city-lite.mmdb`. The collector replaces it
+there with the new month's file (checked daily until it is out) and notices a
+new file within 10 minutes. The journal says `GeoIP database loaded` and
+`GeoIP database updated`.
+
+Licence: DB-IP Lite is CC BY 4.0. Pages that show these locations must credit
+DB-IP, e.g. with the link "IP Geolocation by DB-IP" to https://db-ip.com
+(`/opt/gamewe/collector/doc/GEOIP-NOTICE`).
+
+config.yaml:
+
+```yaml
+geoip:
+  path: /var/lib/gamewe/collector/dbip-city-lite.mmdb   # default
+  auto_update: true   # monthly update of that file (default)
+```
+
+The download honours `HTTPS_PROXY`; it is limited in size, checked (a city
+database that opens) and replaces the old file in one step (a new file in the
+same directory, renamed over it). A missing file is downloaded at start. A
+`path` with another database (MaxMind GeoLite2) is never overwritten. With
+`auto_update: false` and no file the collector runs without locations and
+says so once in the journal. Update by hand:
+
+```bash
+sudo -u gamewe /opt/gamewe/collector/bin/gamewe geoip-update
+```
+
+For MaxMind's GeoLite2-City (free account, `geoipupdate`) set `path` to its
+file and `auto_update: false`. `path` wins over `gamewe_geoip_db` of
+`hlstats_Options` (a legacy setting, still read when config.yaml has no
+`geoip.path` and it is not the old default `/var/lib/gamewe/GeoLite2-City.mmdb`).
+
+With Docker the database is in the volume `/var/lib/gamewe` (owned by the
+image's user `nonroot`, uid 65532; a host directory must be writable by it).
+A new named volume gets the file from the image; a volume without it gets it
+downloaded on start.
+
 ## Command-line flags of `gamewe run`
 
 | Flag | Default | Meaning |
@@ -148,13 +192,13 @@ values that are already set.
 | `gamewe_commands` | `1` | 1 = answer `!rank`, `!top10`, ... in game |
 | `gamewe_menu_time` | `15` | seconds the panels (`!top10`, `!rank`, ...) stay open |
 | `gamewe_rcon_timeout` | `5` | seconds for RCON connect, send and receive |
-| `gamewe_log_lines` | `1` | 1 = write every received game-server log line to the collector's log (the journal), as `[name ip:port] L 10/22/2026 - …`. That can be many lines; see README, Troubleshooting. |
+| `gamewe_log_lines` | `1` | 1 = write every received game-server log line to the collector's log (the journal), as `[name ip:port] L 10/22/2026 - …`. That can be many lines; see [INSTALLATION.md](INSTALLATION.md#g-troubleshooting). |
 | `gamewe_idle_timeout` | `300` | seconds without any log line of a player after which the collector ends the visit, as for a disconnect but without an `hlstats_Events_Disconnects` row: the connection time up to now is stored and the live row deleted. Catches lost disconnect lines (server crash or restart, lost packets). A player who shows up again starts a new visit. Bots end after at most 3 minutes without a line (bot_quota kicks them without a disconnect line; RCON status keeps listed bots). 0 = never |
 | `gamewe_command_display` | `panel` | how `!rank`, `!statsme`, `!session`, `!status` and `!next` are answered: `panel` = a menu panel on the left of the screen for `gamewe_menu_time` seconds (as gameME showed it), `chat` = private chat lines, `both` |
 | `gamewe_command_prefix` | `gamewe` | prefix of the plugin's server commands: `gamewe` (the gameWE plugin also knows `gameme_`), or `gameme` for a server that still runs the original gameME plugin |
-| `gamewe_raw_messages` | `0` | 1 = answer `!rank`, `!session`, `!top10` and `!next` with `gamewe_raw_message` (types 1, 4, 5, 6) for a plugin that shows them, instead of chat text (README, Plugin interface) |
+| `gamewe_raw_messages` | `0` | 1 = answer `!rank`, `!session`, `!top10` and `!next` with `gamewe_raw_message` (types 1, 4, 5, 6) for a plugin that shows them, instead of chat text ([INTERFACE.md](INTERFACE.md#queries-of-other-plugins-raw-messages)) |
 | `gamewe_store_locations` | `1` | 1 = store the kill and death positions of the plugin's location lines in `hlstats_Events_Locations` (one row per position; the plugin's `gamewe_log_locations` must be 1) |
-| `gamewe_geoip_db` | `/var/lib/gamewe/GeoLite2-City.mmdb` | **Legacy.** Used only when config.yaml has no `geoip.path` and the value is not this old default; otherwise the DB-IP database of `geoip.path` is used (README, GeoIP). Old meaning: | MaxMind-format city database for player and server locations (README, GeoIP); skipped with one warning if missing |
+| `gamewe_geoip_db` | `/var/lib/gamewe/GeoLite2-City.mmdb` | **Legacy.** Used only when config.yaml has no `geoip.path` and the value is not this old default; otherwise the DB-IP database of `geoip.path` is used ([GeoIP database](#geoip-database-player-and-server-locations)). Old meaning: MaxMind-format city database for player and server locations, skipped with one warning if missing |
 | `gamewe_server_load` | `1` | 1 = write a row of `hlstats_server_load` every 10 minutes per server (DB-SEMANTICS.md) |
 | `gamewe_heartbeat` | – | **written by the collector** (Unix time, every 60 s), not a setting: the web and `gamewe reset` see from it whether a collector runs |
 
