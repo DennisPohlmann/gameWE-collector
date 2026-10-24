@@ -46,14 +46,21 @@ GitHub release with the archive (+ sha256) and the image tags `<version>`,
    the `release-security-gate` skill over the whole repo, without asking
    first. Never tag by hand or edit version files / `CHANGELOG.md`; report
    the gate result and ask Dennis for the go before the push.
-3. A finding you cannot fix in scope goes into the answer with file:line,
+3. **Sensitive data, every task (standing rule from Dennis):** before you
+   call a task done, commit or publish anything, run the
+   `security-privacy-audit` skill (credentials, personal data, IPs and
+   hostnames, Steam IDs and other account identifiers, private files) over
+   the working tree, the diff, docs and the commit message, and end the
+   answer with its audit summary. A `BLOCKED` finding stops the commit;
+   report only category and location, never the value.
+4. A finding you cannot fix in scope goes into the answer with file:line,
    impact and a proposed fix. Never silence a check, skip a test or weaken
    a validation to get green.
 
 ## Before every commit (mandatory, standing rule from Dennis)
 
 Run the `pre-commit-checklist` skill before every `git commit`, together
-with `security-check`, also for small fixes:
+with `security-check` and `security-privacy-audit`, also for small fixes:
 
 1. Check `README.md` and the files in `docs/` against the change and
    update them in the same commit.
@@ -64,8 +71,11 @@ with `security-check`, also for small fixes:
    updates (do not update on your own).
 4. Check the licenses of third-party code and keep the license list
    complete and current.
+5. Run the `security-privacy-audit` skill on the staged changes and the
+   commit message; do not commit while a check is `BLOCKED`.
 
-Report the result of each step in one line in your answer.
+Report the result of each step in one line in your answer and end with
+the audit summary of `security-privacy-audit`.
 
 ## Invariants that must not break
 

@@ -1,12 +1,12 @@
 ---
 name: pre-commit-checklist
-description: Mandatory checklist before EVERY commit in the gameWE collector: README check, Conventional Commit message, dependency/toolchain update check (suggest only), third-party license check. Use before every git commit, together with security-check.
+description: Mandatory checklist before EVERY commit in the gameWE collector: README check, Conventional Commit message, dependency/toolchain update check (suggest only), third-party license check. Use before every git commit, together with security-check and security-privacy-audit.
 ---
 
 # Pre-commit checklist (the gameWE collector)
 
 Run this before every commit, also for small fixes, together with the
-`security-check` skill. Scope is the diff that goes into the commit
+`security-check` and `security-privacy-audit` skills. Scope is the diff that goes into the commit
 (`git status --short`, `git diff HEAD`). Do the steps, then commit; in the
 answer report one line per step (done / nothing to do / suggestion).
 
@@ -82,3 +82,13 @@ semantic-release in CI from the commit messages. Never edit `CHANGELOG.md`,
   updates the version in the list.
 - Code taken over from other projects keeps its copyright header and is
   named in README.md (section License or Credits).
+
+## 5. Security and privacy audit
+
+- Run the `security-privacy-audit` skill over the working tree, the
+  staged diff (`git diff --cached`), touched docs and the commit message.
+- Use `gitleaks protect --staged` if gitleaks is installed; otherwise say
+  that it was not available and rely on the targeted searches.
+- A `BLOCKED` finding stops the commit. Report only category and
+  location, never the value.
+- End the answer with the audit summary from that skill.
