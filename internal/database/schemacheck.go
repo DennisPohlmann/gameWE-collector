@@ -41,6 +41,8 @@ var Requirements = []Requirement{
 	{Table: "hlstats_Awards_History", Index: "award_id", For: "daily awards speed"},
 	{Table: "hlstats_gamewe_jobs", For: "ranking resets by the running collector (web admin, gamewe reset)"},
 	{Table: "hlstats_Events_Frags", Column: "server_id", For: "the server of each event (latest events per server); events are stored without it"},
+	{Table: "hlstats_Events_Frags", Index: "killer_time", For: "speed of a player's latest kills on the web profile"},
+	{Table: "hlstats_Events_Frags", Index: "victim_time", For: "speed of a player's latest deaths on the web profile"},
 }
 
 // SchemaHint is what to do about a database with an incomplete schema.

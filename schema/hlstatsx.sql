@@ -201,8 +201,8 @@ CREATE TABLE `hlstats_Events_Frags` (
   `pos_victim_y` int(11) DEFAULT NULL,
   `pos_victim_z` int(11) DEFAULT NULL,
   KEY `timestamp_id` (`timestamp_id`),
-  KEY `killerId` (`killerId`),
-  KEY `victimId` (`victimId`),
+  KEY `killer_time` (`killerId`,`timestamp_id`),
+  KEY `victim_time` (`victimId`,`timestamp_id`),
   KEY `map` (`map`),
   KEY `server_id` (`server_id`,`timestamp_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;

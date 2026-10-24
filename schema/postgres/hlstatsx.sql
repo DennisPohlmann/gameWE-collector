@@ -205,8 +205,8 @@ CREATE TABLE hlstats_Events_Frags (
   pos_victim_z integer
 );
 CREATE INDEX hlstats_Events_Frags_timestamp_id ON hlstats_Events_Frags (timestamp_id);
-CREATE INDEX hlstats_Events_Frags_killerId ON hlstats_Events_Frags (killerId);
-CREATE INDEX hlstats_Events_Frags_victimId ON hlstats_Events_Frags (victimId);
+CREATE INDEX hlstats_Events_Frags_killer_time ON hlstats_Events_Frags (killerId, timestamp_id);
+CREATE INDEX hlstats_Events_Frags_victim_time ON hlstats_Events_Frags (victimId, timestamp_id);
 CREATE INDEX hlstats_Events_Frags_map ON hlstats_Events_Frags (map);
 CREATE INDEX hlstats_Events_Frags_server_id ON hlstats_Events_Frags (server_id, timestamp_id);
 CREATE TABLE hlstats_Events_Latency (

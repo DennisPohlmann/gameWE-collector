@@ -138,6 +138,14 @@ root; the table is rebuilt):
 `ALTER TABLE hlstats_Events_Frags ADD COLUMN server_id smallint(5) unsigned NOT NULL DEFAULT 0 AFTER game_id, ADD KEY server_id (server_id, timestamp_id);`
 and the same for the other eight tables.
 
+Databases created before 0.2.1 index `hlstats_Events_Frags` by `killerId`
+and `victimId` alone; the web profile's latest kills and deaths then scan
+the table by time. `gamewe check` reports the missing `killer_time` and
+`victim_time`. To replace the indexes by hand (as root; the table is
+rebuilt, which takes a while on large tables):
+MariaDB: `ALTER TABLE hlstats_Events_Frags ADD KEY killer_time (killerId, timestamp_id), ADD KEY victim_time (victimId, timestamp_id), DROP KEY killerId, DROP KEY victimId;`
+PostgreSQL: `CREATE INDEX IF NOT EXISTS hlstats_Events_Frags_killer_time ON hlstats_Events_Frags (killerId, timestamp_id); CREATE INDEX IF NOT EXISTS hlstats_Events_Frags_victim_time ON hlstats_Events_Frags (victimId, timestamp_id); DROP INDEX IF EXISTS hlstats_Events_Frags_killerId; DROP INDEX IF EXISTS hlstats_Events_Frags_victimId;`
+
 Existing HLstatsX:CE or gameME databases are not upgraded in place: create a
 new gameWE database and copy the data into it, as described in
 [MIGRATION-HLSTATSX.md](MIGRATION-HLSTATSX.md) and
