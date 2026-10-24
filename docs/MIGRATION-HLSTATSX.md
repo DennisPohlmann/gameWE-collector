@@ -131,11 +131,11 @@ or rename one of them in the copy and run the command again.
 cd /opt/gamewe/collector/doc/schema/init
 COLLECTOR_PASSWORD='change-me' WEB_PASSWORD='change-me' WEB_ADMIN_PASSWORD='change-me' ./init-db.sh -u root -p
 # database.* of /etc/gamewe/collector/config.yaml pointing to this database:
-sudo -u gamewe /opt/gamewe/collector/bin/gamewe db migrate -f
+sudo -u gamewe /opt/gamewe/collector/bin/gamewe db init
 ```
 
 `init-db.sh` creates the database `gamewe` with its three users,
-`gamewe db migrate` the tables, the gameWE reference data (games, teams,
+`gamewe db init` the tables, the gameWE reference data (games, teams,
 roles, actions with rewards, weapons with modifiers, awards, ranks, ribbons,
 settings) and the rights ([INSTALLATION.md](INSTALLATION.md), section C). The
 script needs this new, empty database.

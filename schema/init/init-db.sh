@@ -8,7 +8,7 @@
 # Runs 00_create_database.sql (database, users and their database rights)
 # with a MySQL / MariaDB admin account, e.g.  ./init-db.sh -u root -p
 # The tables, the reference data and the web users' table rights are then
-# created by the collector:  gamewe db migrate
+# created by the collector:  gamewe db init (or at its first start)
 #
 # Environment:
 #   DB_NAME             database name (default gamewe)
@@ -52,4 +52,4 @@ sed -e "s|\`gamewe\`|\`$db\`|g" \
 	-e "s|CHANGE_ME_WEB|$(esc "$WEB_PASSWORD")|g" \
 	"$dir/00_create_database.sql" | $mysql "$@"
 echo "database $db and users created"
-echo "next: set database.name: $db, user gamewe and its password in /etc/gamewe/collector/config.yaml, then run: gamewe db migrate (creates the tables), register the game servers in the web admin and run: gamewe check"
+echo "next: set database.name: $db, user gamewe and its password in /etc/gamewe/collector/config.yaml, then run: gamewe db init (creates the tables; or the first start of the collector does it), register the game servers in the web admin and run: gamewe check"

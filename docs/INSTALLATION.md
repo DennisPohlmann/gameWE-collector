@@ -260,7 +260,7 @@ database users:
 
 | User | For | Rights |
 |------|-----|--------|
-| `gamewe` | the collector (`config.yaml`), its migration at start and `gamewe db migrate` | read and write rows; create and alter tables (never drop); grant the web users their table rights |
+| `gamewe` | the collector (`config.yaml`), its migration at start and `gamewe db` | read and write rows; create and alter tables (never drop); grant the web users their table rights |
 | `gamewe_web` | the public web pages | SELECT, without users, RCON events, chat, `hlstats_Servers.rcon_password` and `log_secret`, `hlstats_Events_Connects.ipAddress` |
 | `gamewe_web_admin` | the web admin pages | SELECT on all; writes settings, games, servers, definitions, admin users; queues ranking resets |
 
@@ -271,7 +271,7 @@ their passwords (it stops without changing anything if the database already
 has tables); the collector then creates the tables, the reference data
 (games, teams, roles, actions, weapons, awards, ranks, settings) and the web
 users' rights at its first start (`database.auto_migrate`, the default), or
-before with `gamewe db migrate`.
+before with `gamewe db init`.
 
 ```bash
 # MariaDB, as a database admin
@@ -283,7 +283,7 @@ cd /opt/gamewe/collector/doc/schema/postgres/init
 COLLECTOR_PASSWORD='change-me' WEB_PASSWORD='change-me' WEB_ADMIN_PASSWORD='change-me' ./init-db.sh -U postgres
 
 # then, with database.* set in /etc/gamewe/collector/config.yaml:
-sudo -u gamewe /opt/gamewe/collector/bin/gamewe db migrate      # the tables (or let the first start do it); shows the plan, asks; -f: no question
+sudo -u gamewe /opt/gamewe/collector/bin/gamewe db init         # the tables (or let the first start do it)
 sudo -u gamewe /opt/gamewe/collector/bin/gamewe check
 systemctl enable --now gamewe-collector
 ```
@@ -306,6 +306,8 @@ status gamewe-collector` and the journal name the command) until `gamewe db
 migrate` brought it up. `gamewe db status` shows the version, `gamewe db
 migrate -n` the plan; details, what a migration may do and the list of
 versions are in [DATABASE.md](DATABASE.md#schema-versions-and-upgrades).
+Emptying, dropping and cleaning up old events: `gamewe db reset`, `drop`,
+`purge`, `optimize` ([DATABASE.md](DATABASE.md#maintenance-gamewe-db)).
 
 A database created before this version (with `01_schema.sql`, or an older
 HLstatsX database of the variant gameWE uses) is upgraded the same way; an

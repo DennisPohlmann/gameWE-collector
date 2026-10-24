@@ -3,6 +3,7 @@
 package database
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -176,5 +177,38 @@ func TestDetectCE(t *testing.T) {
 	}
 	if !strings.Contains(ErrHLstatsXCE.Error(), "MIGRATION-HLSTATSX.md") {
 		t.Error(ErrHLstatsXCE)
+	}
+}
+
+func TestDropSQL(t *testing.T) {
+	for _, dialect := range []string{schema.MySQL, schema.Postgres} {
+		q, err := DropSQL(dialect)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tables, _ := schema.Tables(dialect)
+		if !strings.HasPrefix(q, "DROP TABLE IF EXISTS ") || strings.Count(q, ",") != len(tables) || !strings.Contains(q, MigrationsTable) {
+			t.Errorf("%s: %s", dialect, q)
+		}
+		if dialect == schema.MySQL && !strings.Contains(q, "`hlstats_Events_Frags`") {
+			t.Errorf("mysql quoting: %s", q)
+		}
+	}
+}
+
+func TestPurgeTables(t *testing.T) {
+	for _, dialect := range []string{schema.MySQL, schema.Postgres} {
+		tables, err := PurgeTables(dialect)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(tables) < 15 || !slices.Contains(tables, "hlstats_Events_Frags") || slices.ContainsFunc(tables, func(s string) bool {
+			return !strings.HasPrefix(s, "hlstats_Events_")
+		}) {
+			t.Errorf("%s: %v", dialect, tables)
+		}
+	}
+	if !isOwnTable(schema.MySQL, "hlstats_Players") || !isOwnTable(schema.MySQL, MigrationsTable) || isOwnTable(schema.MySQL, "mysql.user") || isOwnTable(schema.MySQL, "hlstats_Players`; DROP") {
+		t.Error("isOwnTable")
 	}
 }

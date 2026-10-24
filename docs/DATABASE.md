@@ -13,7 +13,8 @@ disk: at its start (`database.auto_migrate`, the default) or with `gamewe db
 migrate` it creates the tables of a new database and brings an older one to
 the current version ([Schema versions and
 upgrades](#schema-versions-and-upgrades)). The only SQL you run by hand is
-the init script (database, users, rights).
+the init script (database, users, rights). Emptying, dropping and cleaning up
+the database: [Maintenance](#maintenance-gamewe-db).
 
 What the collector writes into which table and column is described in
 [DB-SEMANTICS.md](DB-SEMANTICS.md).
@@ -28,7 +29,7 @@ PostgreSQL schema differs (types, names, zero dates) is listed in
 Two steps: the init script creates the database and its users (as a MySQL /
 MariaDB admin), then the collector creates the tables, loads the reference
 data and grants the web users their table rights (as the collector's user):
-at its first start (`database.auto_migrate`), or before with `gamewe db migrate`.
+at its first start (`database.auto_migrate`), or before with `gamewe db init`.
 
 ```bash
 cd /opt/gamewe/collector/doc/schema/init
@@ -36,7 +37,7 @@ COLLECTOR_PASSWORD='...' WEB_PASSWORD='...' WEB_ADMIN_PASSWORD='...' ./init-db.s
 # other name: DB_NAME=stats ./init-db.sh ...
 # set database.name, user gamewe and its password in /etc/gamewe/collector/config.yaml, then:
 sudo systemctl start gamewe-collector                      # creates the tables at the first start
-# or first by hand: sudo -u gamewe /opt/gamewe/collector/bin/gamewe db migrate
+# or first by hand: sudo -u gamewe /opt/gamewe/collector/bin/gamewe db init
 ```
 
 `init-db.sh` runs `00_create_database.sql` with the passwords and the name
@@ -59,7 +60,9 @@ The collector itself only reads and writes rows (`DELETE` is needed for
 `hlstats_Livestats`, `hlstats_PlayersInactive` and a rare race when two
 servers register the same new player). CREATE, ALTER and INDEX are for
 the migration (at the start with `database.auto_migrate`, or `gamewe db
-migrate`); it has no DROP right, so it cannot drop a table. The
+migrate`); it has no DROP right, so it cannot drop a table (`gamewe db drop`
+is then run as a database admin with `-print`, see
+[Maintenance](#maintenance-gamewe-db)). The
 web users' rights are per table, and MariaDB only grants them on tables that
 exist: `gamewe db migrate` grants them after it created or changed tables,
 which needs `WITH GRANT OPTION` (it gives only the rights listed above). If
@@ -173,6 +176,37 @@ For developers: a new column, index or table goes into
 `internal/database/migrations.go` (`Sync: true`); a new table also needs its
 grant decision in `grants.sql`. Released migrations are never changed.
 
+## Maintenance (gamewe db)
+
+All take `-config FILE`; the destructive ones show what they would do first
+(`-dry-run` only that), ask, and accept `-yes` for scripts (without a
+terminal on stdin they stop unless `-yes` is given). They only touch the
+tables of the gameWE schema (`hlstats_*` of the compiled schema and
+`gamewe_schema_migrations`); other tables in the database, e.g. left over
+from an old HLstatsX, are listed and left alone.
+
+| Command | What it does | Rights |
+|---------|--------------|--------|
+| `gamewe db init` | creates the tables, the reference data and the web users' rights of a **new, empty** database (what the first start does with `auto_migrate`); refuses a database that has tables | the collector user |
+| `gamewe db purge -older-than 90d` | deletes the **events** (`hlstats_Events_*`: frags, connects, chat, actions, ...) older than that many days (at least 7, plain `90` works too). Players, their totals, rankings, awards, the history per day and the server statistics stay; the event lists of the web pages get shorter. Asks `[y/N]`; on MariaDB in chunks of 20,000 rows, so a table is locked only shortly and the collector can keep running | the collector user |
+| `gamewe db optimize` | gives the space of deleted rows back to the disk and renews the table statistics (MariaDB `OPTIMIZE TABLE`, PostgreSQL `VACUUM ANALYZE`), e.g. after `purge`. MyISAM tables are locked while they are rebuilt: run it at a quiet time | the collector user |
+| `gamewe db reset` | **empties every table** and loads the reference data again, the AUTO_INCREMENT / identity counters start at 1: the database is as new. Everything goes, also the game servers, the settings (`hlstats_Options`), the admin logins (`hlstats_Users`) and own games or changed definitions; the tables and schema versions stay. Asks to type the database name. For one ranking only: `gamewe reset GAME -mode all` | the collector user (PostgreSQL: owner of the tables, for `TRUNCATE`) |
+| `gamewe db drop` | **drops all tables** of the gameWE schema. Afterwards `gamewe db init` (or the next start) creates them again. Asks to type the database name | DROP: on MariaDB a database admin, `gamewe db drop -print \| mariadb -u root -p gamewe` (`-print` only prints the `DROP TABLE IF EXISTS ...`); on PostgreSQL the collector (owner) |
+
+`reset` and `drop` refuse while a collector runs on the database (its
+heartbeat in `hlstats_Options` is less than 2 minutes old): stop it first.
+Make a backup before them; they print an example `mariadb-dump` /
+`pg_dump` command.
+
+```bash
+gamewe db purge -older-than 180d -dry-run    # rows per table, nothing changed
+gamewe db purge -older-than 180d             # the same, then "Delete N rows? [y/N]"
+gamewe db optimize
+systemctl stop gamewe-collector
+gamewe db reset                              # "Type the database name (gamewe) to reset it:"
+systemctl start gamewe-collector
+```
+
 ## Game servers and settings
 
 The collector reads its game servers from `hlstats_Servers` and its settings
@@ -204,14 +238,14 @@ otherwise `auto` replaces the value at its next check.
 The same two steps: `schema/postgres/init/` (`/opt/gamewe/collector/doc/schema/postgres/init/`
 in the package) has `00_create_database.sql` and `init-db.sh`. Run it as a
 PostgreSQL superuser, then start the collector (it creates the tables) or
-run `gamewe db migrate` as the collector:
+run `gamewe db init` as the collector:
 
 ```bash
 cd /opt/gamewe/collector/doc/schema/postgres/init
 COLLECTOR_PASSWORD='...' WEB_PASSWORD='...' WEB_ADMIN_PASSWORD='...' ./init-db.sh -U postgres -h db.example.org
 # other name: DB_NAME=stats ./init-db.sh ...   (lower-case letters, digits, _)
 # in a container: PSQL='docker exec -i postgres psql' ./init-db.sh -U postgres
-sudo -u gamewe /opt/gamewe/collector/bin/gamewe db migrate   # or: start the collector
+sudo -u gamewe /opt/gamewe/collector/bin/gamewe db init   # or: start the collector
 ```
 
 `init-db.sh` creates the roles `gamewe`, `gamewe_web` and `gamewe_web_admin`

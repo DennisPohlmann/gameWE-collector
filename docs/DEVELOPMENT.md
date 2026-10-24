@@ -59,7 +59,9 @@ same time, and the binary end to end (`run` refuses an old schema with exit
 code 1 with `database.auto_migrate: false`, `db migrate -n` / `-f` / the
 question, `run` starts afterwards; `run` migrates a new database itself with
 `auto_migrate`, refuses an HLstatsX database without versions and stops on
-missing rights). They
+missing rights). `TestMigrateMaintenance` and `TestMigrateDBCommands` cover
+`gamewe db init`, `purge`, `optimize`, `reset` and `drop` (questions, `-yes`,
+`-dry-run`, a running collector, the missing DROP right on MariaDB). They
 also set the passwords of the users `gamewe`, `gamewe_web` and
 `gamewe_web_admin` (`COLLECTOR_PASSWORD`, `WEB_PASSWORD`,
 `WEB_ADMIN_PASSWORD`): only point them at a throwaway server.

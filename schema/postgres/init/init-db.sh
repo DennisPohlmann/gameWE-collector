@@ -8,7 +8,7 @@
 # Runs 00_create_database.sql (roles, database, schema rights) as a
 # PostgreSQL superuser, e.g.  ./init-db.sh -U postgres -h db.example.org
 # The tables, the reference data and the web roles' table rights are then
-# created by the collector:  gamewe db migrate
+# created by the collector:  gamewe db init (or at its first start)
 #
 # Environment:
 #   DB_NAME             database name (default gamewe)
@@ -53,4 +53,4 @@ fi
 	cat "$dir/00_create_database.sql"
 } | $psql "$@" -d postgres -q -v ON_ERROR_STOP=1
 echo "database $db and roles created"
-echo "next: set database.type: postgres, name: $db, user gamewe and its password in /etc/gamewe/collector/config.yaml, then run: gamewe db migrate (creates the tables) and gamewe check"
+echo "next: set database.type: postgres, name: $db, user gamewe and its password in /etc/gamewe/collector/config.yaml, then run: gamewe db init (creates the tables; or the first start of the collector does it) and gamewe check"

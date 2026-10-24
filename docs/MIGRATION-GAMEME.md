@@ -93,7 +93,7 @@ tables, the reference data and the web users' rights with the collector
 (`database.*` in its config pointing to this database):
 
 ```bash
-sudo -u gamewe /opt/gamewe/collector/bin/gamewe db migrate -f
+sudo -u gamewe /opt/gamewe/collector/bin/gamewe db init
 ```
 
 Use a new, empty database; the import replaces the content of most tables.

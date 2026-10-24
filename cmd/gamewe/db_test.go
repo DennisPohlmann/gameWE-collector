@@ -182,9 +182,44 @@ func TestDBCmdUsage(t *testing.T) {
 	if err := dbCmd([]string{"frobnicate"}); !errors.As(err, &ee) || ee.code != 2 || !strings.Contains(ee.msg, "db migrate") {
 		t.Errorf("unknown: %v", err)
 	}
-	for _, want := range []string{"migrate", "status", "grants", "seed", "-f|--force", "-n|--dry-run", "2: migration pending", "database.auto_migrate"} {
+	for _, want := range []string{"migrate", "status", "grants", "seed", "-f|--force", "-n|--dry-run", "2: migration pending",
+		"db init", "db drop", "db reset", "db purge", "-older-than DAYS", "db optimize", "database.auto_migrate", "-yes"} {
 		if !strings.Contains(dbUsage, want) {
 			t.Errorf("usage lacks %q", want)
 		}
+	}
+}
+
+func TestParseDays(t *testing.T) {
+	for in, want := range map[string]int{"90": 90, "90d": 90, " 7 ": 7, "365d": 365, "6": 0, "0": 0, "-30": 0, "": 0, "3m": 0, "1w": 0} {
+		got, err := parseDays(in)
+		if got != want || (want == 0) != (err != nil) {
+			t.Errorf("%q: %d, %v; want %d", in, got, err, want)
+		}
+	}
+}
+
+func TestTyped(t *testing.T) {
+	for in, want := range map[string]bool{"gamewe\n": true, " gamewe \n": true, "gamewe": true, "y\n": false, "GAMEWE\n": false, "\n": false, "": false} {
+		var out bytes.Buffer
+		got, err := typed(dbIO{strings.NewReader(in), &out, true}, "Type it: ", "gamewe")
+		if err != nil || got != want || out.String() != "Type it: " {
+			t.Errorf("%q: %v, %v, %q", in, got, err, out.String())
+		}
+	}
+	var out bytes.Buffer
+	if got, err := typed(dbIO{strings.NewReader("gamewe\n"), &out, false}, "Type it: ", "gamewe"); got || !errors.Is(err, errNoTTYYes) || out.Len() != 0 {
+		t.Errorf("no tty: %v, %v, %q", got, err, out.String())
+	}
+}
+
+func TestBackupFor(t *testing.T) {
+	d := config.Database{Type: config.MySQL, Host: "db", Name: "gamewe"}
+	if s := backupFor(d, "reset", "x"); !strings.Contains(s, "before resetting") || !strings.Contains(s, "gamewe-before-reset-x.sql") {
+		t.Errorf("reset: %s", s)
+	}
+	d.Type = config.Postgres
+	if s := backupFor(d, "drop", "x"); !strings.Contains(s, "before dropping") || !strings.Contains(s, "gamewe-before-drop-x.dump") {
+		t.Errorf("drop: %s", s)
 	}
 }

@@ -86,6 +86,7 @@ sudo -u gamewe /opt/gamewe/collector/bin/gamewe awards -date 2026-10-21
 | `gamewe check` | config, database connection and TLS, schema version and pending migrations, game servers and settings |
 | `gamewe db migrate` | create the tables of a new database, bring an older one to this version (below); `gamewe run` does it at start with `database.auto_migrate` |
 | `gamewe db status`, `gamewe db grants`, `gamewe db seed` | schema version and migrations; the web users' rights again; missing reference data |
+| `gamewe db init`, `purge`, `optimize`, `reset`, `drop` | tables of a new database; delete old events; give the space back; empty everything; drop the tables (below) |
 | `gamewe -V` / `--version` / `version` | the version |
 | `gamewe status`, `gamewe logaddress`, `gamewe rcon` | RCON status, log address registration, any RCON command (below) |
 | `gamewe game`, `gamewe server`, `gamewe option` | games, servers and settings like the web admin (below) |
@@ -110,7 +111,16 @@ gamewe db migrate -f             # --force: no question (scripts, CI); the plan 
 gamewe db grants                 # grant the web users their table rights again
 gamewe db grants -print | mariadb -u root -p gamewe   # the same SQL, run as a database admin
 gamewe db seed                   # add missing reference data; existing rows stay as they are
+gamewe db init                   # a new, empty database: tables, reference data, rights
+gamewe db purge -older-than 90d  # delete the events older than 90 days (-dry-run: count only; asks [y/N], -yes)
+gamewe db optimize               # give the space of deleted rows back (OPTIMIZE TABLE / VACUUM ANALYZE)
+gamewe db reset                  # empty every table, reference data again: as new (asks for the database name, -yes)
+gamewe db drop                   # drop all gameWE tables (-print: the SQL for a database admin; MariaDB needs DROP)
 ```
+
+`reset` and `drop` refuse while a collector runs on the database; `purge`
+keeps players, totals, rankings and awards. What each one touches and the
+rights they need: [DATABASE.md](DATABASE.md#maintenance-gamewe-db).
 
 `-f` and `-n` together are an error. Without a terminal on stdin (cron,
 scripts, `docker compose run -T`) `gamewe db migrate` does not wait for an

@@ -110,9 +110,12 @@ the audit summary of `security-privacy-audit`.
   (`internal/database/migrate.go`, `migrations.go`) changes the structure:
   `gamewe db migrate`, or `gamewe run` at start before anything else when
   `database.auto_migrate` is true (the default; never an HLstatsX database
-  without versions); with it false `run` refuses to start on an old
-  schema. Migrations only add (tables, columns, indexes, missing seed
-  rows), are idempotent, never delete rows or drop tables/columns; released migrations are never
+  without versions); with it false `run` refuses to start on an old schema.
+  Besides that only the explicit maintenance commands `gamewe db drop` /
+  `reset` / `purge` (`internal/database/maintenance.go`) remove tables or
+  rows, only of the compiled schema's tables, with confirmation. Migrations
+  only add (tables, columns, indexes, missing seed rows), are idempotent,
+  never delete rows or drop tables/columns; released migrations are never
   changed. How to add one: `docs/DEVELOPMENT.md`, "Adding a migration".
 - Secrets stay out of git: `config.yaml`, `*.pem`, `*.key`, real
   `docker-compose.yml` values are ignored; examples use `change-me`.

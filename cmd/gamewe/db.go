@@ -34,17 +34,37 @@ const dbUsage = `usage:
         true), except for an HLstatsX database without schema versions
   gamewe db status  [-config FILE]
         schema version, pending and applied migrations (with date)
+  gamewe db init    [-config FILE]
+        create the tables, the reference data and the web users' rights of a
+        new, empty database; refuses a database that has tables
   gamewe db grants  [-config FILE] [-print]
         grant the web users their table rights again (runs after every
         migration); -print only prints the SQL, to run it as a database admin
   gamewe db seed    [-config FILE] [-print]
         add the missing reference data (games, teams, actions, weapons,
         awards, ranks, options); existing rows stay as they are
-
+  gamewe db purge   -older-than DAYS [-config FILE] [-dry-run] [-yes]
+        delete the events (hlstats_Events_*) older than DAYS days (at least
+        7, e.g. 90 or 90d); players, totals, rankings, awards and the history
+        per day stay. Asks [y/N] unless -yes; -dry-run only counts
+  gamewe db optimize [-config FILE]
+        give the space of deleted rows back to the disk (OPTIMIZE TABLE,
+        PostgreSQL: VACUUM ANALYZE), e.g. after purge
+  gamewe db reset   [-config FILE] [-dry-run] [-yes]
+        empty every table and load the reference data again: the database is
+        as new (players, statistics, servers, settings, admin logins go; the
+        tables stay). One ranking only: gamewe reset GAME -mode all
+  gamewe db drop    [-config FILE] [-dry-run] [-yes] [-print]
+        drop all tables of the gameWE schema (other tables stay); needs the
+        DROP right, which the collector user has not on MariaDB: -print only
+        prints the SQL, to run it as a database admin. Afterwards db init
+        (or the next start) creates them again
+reset and drop ask to type the database name unless -yes, and refuse while a
+collector runs on the database. Make a backup first.
 
 A new database: create it with schema/init/init-db.sh (database, users,
 rights), then start the collector (it creates the tables) or run gamewe db
-migrate. An upgrade: make a backup, replace the binary, start the collector (or
+init. An upgrade: make a backup, replace the binary, start the collector (or
 first gamewe db migrate with database.auto_migrate: false).`
 
 // exitError ends the program with code (and msg on stderr if not empty).
@@ -173,6 +193,16 @@ func dbCmd(args []string) error {
 		return dbGrantsCmd(args[1:], os.Stdout)
 	case "seed":
 		return dbSeedCmd(args[1:], os.Stdout)
+	case "init":
+		return dbInitCmd(args[1:], stdIO())
+	case "drop":
+		return dbDropCmd(args[1:], stdIO())
+	case "reset":
+		return dbResetCmd(args[1:], stdIO())
+	case "purge":
+		return dbPurgeCmd(args[1:], stdIO())
+	case "optimize":
+		return dbOptimizeCmd(args[1:], stdIO())
 	}
 	return exitError{2, fmt.Sprintf("unknown command %q\n\n%s", "db "+args[0], dbUsage)}
 }
@@ -272,11 +302,15 @@ func describeKind(p *database.Plan) string {
 }
 
 // backupAdvice is the backup recommendation with an example command.
-func backupAdvice(d config.Database, stamp string) string {
+func backupAdvice(d config.Database, stamp string) string { return backupFor(d, "migrate", stamp) }
+
+// backupFor is the backup recommendation before gamewe db what.
+func backupFor(d config.Database, what, stamp string) string {
+	ing := map[string]string{"migrate": "migrating", "drop": "dropping", "reset": "resetting"}[what]
 	if d.Type == config.Postgres {
-		return fmt.Sprintf("Make a backup before migrating, e.g.:\n  pg_dump -U postgres -h %s -Fc %s > %s-before-migrate-%s.dump", d.Host, d.Name, d.Name, stamp)
+		return fmt.Sprintf("Make a backup before %s, e.g.:\n  pg_dump -U postgres -h %s -Fc %s > %s-before-%s-%s.dump", ing, d.Host, d.Name, d.Name, what, stamp)
 	}
-	return fmt.Sprintf("Make a backup before migrating, e.g.:\n  mariadb-dump -u root -p -h %s --single-transaction --routines %s > %s-before-migrate-%s.sql", d.Host, d.Name, d.Name, stamp)
+	return fmt.Sprintf("Make a backup before %s, e.g.:\n  mariadb-dump -u root -p -h %s --single-transaction --routines %s > %s-before-%s-%s.sql", ing, d.Host, d.Name, d.Name, what, stamp)
 }
 
 func openChecked(ctx context.Context, d config.Database) (*database.DB, error) {

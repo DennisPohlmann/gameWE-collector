@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"testing"
@@ -316,4 +317,111 @@ func TestMigrateAuto(t *testing.T) {
 	d = newDB("mig_auto_rights", true)
 	out, code = gw(t, bin, "run", "-config", writeConfig(t, d))
 	expect(t, out, code, 1, "automatic migration (database.auto_migrate) failed", "may not change the table structure")
+}
+
+// gamewe db init, purge, optimize, reset and drop: the questions, -yes,
+// -dry-run, the refusal while a collector runs and the DROP right.
+func TestMigrateDBCommands(t *testing.T) {
+	typ := database.MigrateTestEnv()
+	if typ == "" {
+		t.Skip("set GAMEWE_TEST_MIGRATE_* to run (creates and drops databases mig_*)")
+	}
+	ctx := context.Background()
+	name := "mig_cmds"
+	if err := database.CreateTestDatabase(ctx, name, false); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.DropTestDatabase(context.Background(), name) })
+	admin, err := database.AdminDB(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Close()
+	sql := func(q string, args ...any) {
+		t.Helper()
+		if _, err := admin.Exec(admin.Q(q), args...); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	bin := buildGamewe(t)
+	d := database.TestConfig(name, "gamewe", database.TestPassword("gamewe"))
+	d.AutoMigrate = false
+	cfg := writeConfig(t, d)
+
+	out, code := gw(t, bin, "db", "init", "-config", cfg)
+	expect(t, out, code, 0, "create all", "done: the database has schema version")
+	if strings.Contains(out, "Make a backup") {
+		t.Error("backup advice for a new database")
+	}
+	out, code = gw(t, bin, "db", "init", "-config", cfg)
+	expect(t, out, code, 1, "is not empty", "db migrate", "db reset")
+
+	out, code = gw(t, bin, "db", "purge", "-config", cfg)
+	expect(t, out, code, 2, "-older-than", "at least 7")
+	out, code = gw(t, bin, "db", "purge", "-older-than", "3d", "-config", cfg)
+	expect(t, out, code, 2, "at least 7")
+	out, code = gw(t, bin, "db", "purge", "-older-than", "30", "-dry-run", "-config", cfg)
+	expect(t, out, code, 0, "nothing to delete")
+	old := time.Now().AddDate(0, 0, -40).Unix()
+	sql(`INSERT INTO hlstats_Events_Frags (timestamp_id, killerId, victimId) VALUES (?, 1, 2)`, old)
+	sql(`INSERT INTO hlstats_Events_Frags (timestamp_id, killerId, victimId) VALUES (?, 1, 2)`, time.Now().Unix())
+	out, code = gw(t, bin, "db", "purge", "-older-than", "30d", "-dry-run", "-config", cfg)
+	expect(t, out, code, 0, "dry run: nothing changed")
+	oneFrag(t, out)
+	out, code = gw(t, bin, "db", "purge", "-older-than", "30d", "-config", cfg)
+	expect(t, out, code, 1, "no interactive confirmation possible", "-yes")
+	out, code = gw(t, bin, "db", "purge", "-older-than", "30d", "-yes", "-config", cfg)
+	expect(t, out, code, 0, "done: 1 rows deleted", "db optimize")
+	out, code = gw(t, bin, "db", "optimize", "-config", cfg)
+	expect(t, out, code, 0, "optimize hlstats_Events_Frags", "tables optimized")
+
+	out, code = gw(t, bin, "db", "reset", "-dry-run", "-config", cfg)
+	expect(t, out, code, 0, "dry run: nothing changed")
+	oneFrag(t, out)
+	out, code = gw(t, bin, "db", "reset", "-config", cfg)
+	expect(t, out, code, 1, "Make a backup before resetting", "no interactive confirmation possible")
+	sql(`UPDATE hlstats_Options SET value = ? WHERE keyname = 'gamewe_heartbeat'`, fmt.Sprint(time.Now().Unix()))
+	sql(`INSERT INTO hlstats_Options (keyname, value) SELECT 'gamewe_heartbeat', ? WHERE NOT EXISTS (SELECT 1 FROM hlstats_Options WHERE keyname = 'gamewe_heartbeat')`, fmt.Sprint(time.Now().Unix()))
+	out, code = gw(t, bin, "db", "reset", "-yes", "-config", cfg)
+	expect(t, out, code, 1, "a collector is running on this database")
+	out, code = gw(t, bin, "db", "drop", "-yes", "-config", cfg)
+	expect(t, out, code, 1, "a collector is running on this database")
+	sql(`UPDATE hlstats_Options SET value = '1' WHERE keyname = 'gamewe_heartbeat'`)
+	out, code = gw(t, bin, "db", "reset", "-yes", "-config", cfg)
+	expect(t, out, code, 0, "done: the database is as new")
+	var n int
+	if err := admin.QueryRow(`SELECT COUNT(*) FROM hlstats_Events_Frags`).Scan(&n); err != nil || n != 0 {
+		t.Errorf("frags after reset: %d %v", n, err)
+	}
+
+	out, code = gw(t, bin, "db", "drop", "-print", "-config", cfg)
+	expect(t, out, code, 0, "DROP TABLE IF EXISTS ", "hlstats_Events_Frags", database.MigrationsTable)
+	drop := out
+	out, code = gw(t, bin, "db", "drop", "-dry-run", "-config", cfg)
+	expect(t, out, code, 0, "drop ", "tables of the database "+name, "dry run: nothing changed")
+	if typ == config.MySQL {
+		out, code = gw(t, bin, "db", "drop", "-yes", "-config", cfg)
+		expect(t, out, code, 1, "may not drop tables", "nothing was dropped", "db drop -config "+cfg+" -print | mariadb -u root -p "+name)
+		if err := database.RunTestScript(ctx, admin, drop); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		out, code = gw(t, bin, "db", "drop", "-yes", "-config", cfg)
+		expect(t, out, code, 0, "tables dropped", "db init")
+	}
+	out, code = gw(t, bin, "db", "drop", "-yes", "-config", cfg)
+	expect(t, out, code, 0, "nothing to drop")
+	out, code = gw(t, bin, "db", "reset", "-yes", "-config", cfg)
+	expect(t, out, code, 1, "no gameWE tables yet", "db init")
+	out, code = gw(t, bin, "db", "init", "-config", cfg)
+	expect(t, out, code, 0, "done: the database has schema version")
+	runStarts(t, bin, cfg)
+}
+
+// oneFrag checks the row count line of hlstats_Events_Frags.
+func oneFrag(t *testing.T, out string) {
+	t.Helper()
+	if !regexp.MustCompile(`(?m)^\s*1\s+hlstats_Events_Frags$`).MatchString(out) {
+		t.Errorf("no line with 1 row of hlstats_Events_Frags")
+	}
 }
