@@ -1,6 +1,0 @@
-# The DB-IP database and its monthly update (the service's StateDirectory)
-d /var/lib/gamewe 0755 gamewe gamewe -
-d /var/lib/gamewe/collector 0755 gamewe gamewe -
-# The config holds the database password.
-z /etc/gamewe/collector 0750 root gamewe -
-z /etc/gamewe/collector/config.yaml 0640 root gamewe -
