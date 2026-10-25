@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"time"
 
@@ -488,6 +489,28 @@ type MigrateOptions struct {
 	LockWait time.Duration
 	// Waiting is called once if another migration holds the lock.
 	Waiting func()
+	// LockTimeout is how long a step waits for a table another session
+	// holds (lock_wait_timeout, PostgreSQL lock_timeout; default 30 s)
+	// before it fails with ErrTableLocked.
+	LockTimeout time.Duration
+	// Progress is how often a long step prints that it still runs
+	// (default 15 s).
+	Progress time.Duration
+}
+
+// ErrTableLocked is returned when a step waited longer than
+// MigrateOptions.LockTimeout for a table.
+var ErrTableLocked = errors.New("the table is locked by another session (a running collector, the web, a database client with an open transaction): stop the collector (systemctl stop gamewe-collector, docker compose stop collector), end the other sessions (SHOW PROCESSLIST / pg_stat_activity) and migrate again")
+
+// isLockTimeout reports a lock wait timeout (MariaDB 1205, PostgreSQL
+// 55P03 lock_not_available).
+func isLockTimeout(err error) bool {
+	var me *mysql.MySQLError
+	if errors.As(err, &me) {
+		return me.Number == 1205
+	}
+	var pe *pgconn.PgError
+	return errors.As(err, &pe) && pe.Code == "55P03"
 }
 
 // MigrateResult is what Migrate did.
@@ -507,6 +530,12 @@ func Migrate(ctx context.Context, db *DB, opt MigrateOptions) (*MigrateResult, e
 	if opt.LockWait == 0 {
 		opt.LockWait = 10 * time.Minute
 	}
+	if opt.LockTimeout == 0 {
+		opt.LockTimeout = 30 * time.Second
+	}
+	if opt.Progress == 0 {
+		opt.Progress = 15 * time.Second
+	}
 	conn, err := db.Conn(ctx)
 	if err != nil {
 		return nil, Explain(err)
@@ -517,6 +546,37 @@ func Migrate(ctx context.Context, db *DB, opt MigrateOptions) (*MigrateResult, e
 		return nil, err
 	}
 	defer unlock()
+	// No collector may write while the tables change; holding its lock
+	// also keeps one from starting meanwhile (it migrates first and waits
+	// for the migration lock).
+	got, err := tryRunLock(ctx, conn, db.Postgres())
+	if err != nil {
+		return nil, fmt.Errorf("collector lock: %w", err)
+	}
+	if !got {
+		return nil, ErrCollectorRunning
+	}
+	defer releaseRunLock(conn, db.Postgres())
+	setLock := `SET SESSION lock_wait_timeout = ` + fmt.Sprint(max(1, int(opt.LockTimeout.Seconds())))
+	if db.Postgres() {
+		setLock = fmt.Sprintf(`SET lock_timeout = '%dms'`, max(1, opt.LockTimeout.Milliseconds()))
+	}
+	if _, err := conn.ExecContext(ctx, setLock); err != nil {
+		return nil, fmt.Errorf("lock timeout: %w", err)
+	}
+	defer func() { // the connection goes back to the pool (gamewe run goes on with it)
+		reset := `SET SESSION lock_wait_timeout = DEFAULT`
+		if db.Postgres() {
+			reset = `RESET lock_timeout`
+		}
+		conn.ExecContext(context.Background(), reset)
+	}()
+	var connID int64 // MariaDB: the session to stop on Ctrl-C (PostgreSQL's driver cancels itself)
+	if !db.Postgres() {
+		if err := conn.QueryRowContext(ctx, `SELECT CONNECTION_ID()`).Scan(&connID); err != nil {
+			return nil, err
+		}
+	}
 
 	p, err := plan(ctx, conn, db.Type)
 	if err != nil {
@@ -530,7 +590,7 @@ func Migrate(ctx context.Context, db *DB, opt MigrateOptions) (*MigrateResult, e
 		return res, err
 	}
 	var tx bool // PostgreSQL: each migration in one transaction
-	cur := -1
+	cur, txFirst := -1, 0
 	commit := func() error {
 		if tx {
 			tx = false
@@ -550,7 +610,7 @@ func Migrate(ctx context.Context, db *DB, opt MigrateOptions) (*MigrateResult, e
 				if _, err := conn.ExecContext(ctx, "BEGIN"); err != nil {
 					return res, err
 				}
-				tx = true
+				tx, txFirst = true, i
 			}
 		}
 		label := s.Name
@@ -566,12 +626,29 @@ func Migrate(ctx context.Context, db *DB, opt MigrateOptions) (*MigrateResult, e
 			fmt.Fprintf(opt.Out, "        %s\n", slowNote(s.Rows))
 		}
 		start := time.Now()
-		warn, err := runStep(ctx, conn, db.Type, s)
+		warn, err := runStepProgress(ctx, conn, db.Type, s, opt)
 		if err != nil {
 			if tx {
 				conn.ExecContext(context.Background(), "ROLLBACK") // before rightsHint: an aborted transaction answers nothing
 			}
-			return res, fmt.Errorf("step %d (%s: %s): %w", i+1, label, s.What, rightsHint(ctx, conn, db.Postgres(), err))
+			switch {
+			case ctx.Err() != nil:
+				done := i
+				if tx {
+					done = txFirst // rolled back with the transaction
+				}
+				conn.Close() // broken by the cancel; frees its place in the pool for killQuery
+				state := "are not"
+				if !killQuery(db, connID) {
+					state = "are not (step " + fmt.Sprint(done+1) + " may still finish on the database server)"
+				}
+				err = fmt.Errorf("cancelled (%s): steps 1 to %d are done, step %d and the rest %s; every step is idempotent: migrate again to go on", ctx.Err(), done, done+1, state)
+			case isLockTimeout(err):
+				err = fmt.Errorf("%w (waited %s)", ErrTableLocked, opt.LockTimeout)
+			default:
+				err = rightsHint(ctx, conn, db.Postgres(), err)
+			}
+			return res, fmt.Errorf("step %d (%s: %s): %w", i+1, label, s.What, err)
 		}
 		res.Warnings = append(res.Warnings, warn...)
 		if d := time.Since(start); d > 2*time.Second {
@@ -582,6 +659,57 @@ func Migrate(ctx context.Context, db *DB, opt MigrateOptions) (*MigrateResult, e
 		return res, err
 	}
 	return res, nil
+}
+
+// runStepProgress is runStep that writes every opt.Progress that the step
+// still runs, so a wait is visible.
+func runStepProgress(ctx context.Context, conn *sql.Conn, dialect string, s Step, opt MigrateOptions) ([]string, error) {
+	done := make(chan struct{})
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		start := time.Now()
+		t := time.NewTicker(opt.Progress)
+		defer t.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-t.C:
+				fmt.Fprintf(opt.Out, "        still running after %s ...\n", time.Since(start).Round(time.Second))
+			}
+		}
+	}()
+	warn, err := runStep(ctx, conn, dialect, s)
+	close(done)
+	<-stopped // opt.Out is written by one goroutine at a time
+	return warn, err
+}
+
+// killQuery stops the statement of the MariaDB session id: the driver
+// only closes the connection on Ctrl-C, and a statement that waits for a
+// table lock would still run on the server once the table is free. A user
+// may stop its own sessions. It reports whether the statement is stopped
+// (always on PostgreSQL, whose driver sends a cancel request itself).
+func killQuery(db *DB, id int64) bool {
+	if db.Postgres() {
+		return true
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	// KILL takes no placeholder; id is the number CONNECTION_ID() returned.
+	_, err := db.ExecContext(ctx, `KILL QUERY `+strconv.FormatInt(id, 10))
+	var me *mysql.MySQLError
+	return err == nil || errors.As(err, &me) && me.Number == 1094 // unknown thread: the session is gone already
+}
+
+// releaseRunLock gives the collector lock back that Migrate held.
+func releaseRunLock(conn *sql.Conn, postgres bool) {
+	if postgres {
+		conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock($1)`, int64(runLockKey))
+	} else {
+		conn.ExecContext(context.Background(), `SELECT RELEASE_LOCK(LEFT(CONCAT(?, DATABASE()), 64))`, runLockPrefix)
+	}
 }
 
 // slowNote is the warning before a step on a big table.

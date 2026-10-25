@@ -323,7 +323,8 @@ Emptying, dropping and cleaning up old events: `gamewe db reset`, `drop`,
 A database created before this version (with `01_schema.sql`, or an older
 HLstatsX database of the variant gameWE uses) is upgraded the same way; an
 HLstatsX database without schema versions only by hand, once, with `gamewe
-db migrate` (the start refuses it, also with `auto_migrate`). Its collector
+db migrate` (the start refuses it, also with `auto_migrate`); stop the
+collector before `gamewe db migrate`, it refuses while one runs. Its collector
 user has no CREATE / ALTER rights yet: the first migration stops and prints
 the `GRANT` (MariaDB) or the ownership change (PostgreSQL) to run once as a
 database admin.
@@ -477,7 +478,10 @@ drop it (`DROP DATABASE gamewe;` and the three users).
 | `rejected log packet ... missing or wrong log secret` | The server has a secret in `hlstats_Servers.log_secret` and the game server sends no or another `sv_logsecret`: set the same number in `server.cfg` and with `gamewe server set <id> -logsecret <n>` (or the web admin), or clear it with `-logsecret ""` to accept all its packets. |
 | Commands get no answer | `rcon_password` is empty or wrong (`rcon authentication failed`), the plugin is missing, or the RCON port is blocked (TCP). `gamewe check` shows servers without a password. |
 | `systemctl start` fails, `status=78/CONFIG` | The config file (or a `-` flag in `ExecStart`) is wrong, or the schema is not migrated automatically: the journal names it. Fix it, then `systemctl start gamewe-collector` (it is not restarted by itself). `gamewe check` tests the config without the service. |
-| `systemctl start` fails, `status=1/FAILURE`, `activating (auto-restart)` | Usually the database is not reachable; it is retried every 5 seconds. The journal has the error. |
+| `systemctl start` fails, `status=1/FAILURE`, `activating (auto-restart)` | Usually the database is not reachable; it is retried every 5 seconds. The journal has the error. With `automatic migration ... a collector is running on this database`: another collector (another host, a container) runs on the same database and the schema needs a migration; stop the other one. |
+| `gamewe db migrate` (or `reset`, `drop`): `a collector is running on this database` | Stop it first: `systemctl stop gamewe-collector` (container: `docker compose stop collector`), also one on another host that uses the same database. After stopping a collector up to 0.7.1 the command waits up to 2 minutes for its heartbeat to expire. |
+| `gamewe db migrate`: `the table is locked by another session` | A session holds the table (a collector, the web, a `mariadb` / `psql` client with an open transaction or `LOCK TABLES`). Stop the collector, find the session with `SHOW PROCESSLIST` (PostgreSQL: `SELECT * FROM pg_stat_activity`), end it, migrate again. Nothing is half done: every step is idempotent. |
+| The question `Backup made? Migrate now? [y/N]` (or another `[y/N]`) does not take Enter, the terminal shows `^M`, Ctrl-C does nothing (0.7.1 and older) | The terminal sends CR for Enter (`icrnl` off, left so by another program). Press `Ctrl-\` (quits without changing anything; not Ctrl-J or Ctrl-D, they would send the typed `y`), then `stty sane`. Newer versions switch `icrnl` on for the question (with a note) and stop on Ctrl-C. |
 | `systemctl restart` does not report a broken config (units from 0.5.3 and older, `Type=simple`) | Install the unit of the current archive (section E) and `systemctl daemon-reload`. |
 | Service does not start, `status=31/SYS` | A hardening option in the unit blocks something on your system. See `journalctl -u gamewe-collector` and relax `SystemCallFilter` with `systemctl edit gamewe-collector`. |
 

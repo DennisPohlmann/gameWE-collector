@@ -98,7 +98,10 @@ missing, or a table, column or index of the current schema):
   new version: the start does not ask. If the migration fails (e.g. missing
   rights), the collector does not start and logs what to do; every step is
   idempotent, so the next start (or `gamewe db migrate`) goes on from there.
-  Several collectors on one database wait for each other (lock).
+  Several collectors starting at once wait for each other (lock); a
+  collector does not migrate while another one runs on the database (the
+  start fails with "a collector is running on this database" and is
+  retried): stop the other one for the update.
 - **An HLstatsX database without schema versions** (taken over from an old
   HLstatsX) is never migrated automatically: that is done once by hand, with
   a backup ([MIGRATION-HLSTATSX.md](MIGRATION-HLSTATSX.md)); afterwards it has
@@ -118,6 +121,16 @@ gamewe db migrate -n    # the plan only (exit code 0: up to date, 2: pending)
 gamewe db migrate       # plan, backup advice, "Backup made? Migrate now? [y/N]"
 gamewe db migrate -f    # no question (scripts); without a terminal -f is required
 ```
+
+`gamewe db migrate` refuses (and changes nothing) while a collector runs on
+the database: stop it first. A running collector holds the *collector lock*
+on a connection of its own (MariaDB `GET_LOCK('gamewe_collector.<database>')`,
+PostgreSQL a session advisory lock; the database releases it when the
+process ends or the connection breaks), so this also works for a collector on
+another host or in a container; collectors up to 0.7.1 are recognised by
+their heartbeat. Each step waits at most 30 seconds for a table another
+session holds (`lock_wait_timeout`, PostgreSQL `lock_timeout`), Ctrl-C stops
+the migration (the waiting statement too) and says which steps are done.
 
 What it does:
 
@@ -194,8 +207,9 @@ from an old HLstatsX, are listed and left alone.
 | `gamewe db reset` | **empties every table** and loads the reference data again, the AUTO_INCREMENT / identity counters start at 1: the database is as new. Everything goes, also the game servers, the settings (`hlstats_Options`), the admin logins (`hlstats_Users`) and own games or changed definitions; the tables and schema versions stay. Asks to type the database name. For one ranking only: `gamewe reset GAME -mode all` | the collector user (PostgreSQL: owner of the tables, for `TRUNCATE`) |
 | `gamewe db drop` | **drops all tables** of the gameWE schema. Afterwards `gamewe db init` (or the next start) creates them again. Asks to type the database name | DROP: on MariaDB a database admin, `gamewe db drop -print \| mariadb -u root -p gamewe` (`-print` only prints the `DROP TABLE IF EXISTS ...`); on PostgreSQL the collector (owner) |
 
-`reset` and `drop` refuse while a collector runs on the database (its
-heartbeat in `hlstats_Options` is less than 2 minutes old): stop it first.
+`migrate`, `reset` and `drop` refuse while a collector runs on the database
+(it holds the collector lock, or, up to 0.7.1, its heartbeat in
+`hlstats_Options` is still written): stop it first.
 Make a backup before them; they print an example `mariadb-dump` /
 `pg_dump` command.
 

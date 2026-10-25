@@ -61,7 +61,15 @@ question, `run` starts afterwards; `run` migrates a new database itself with
 `auto_migrate`, refuses an HLstatsX database without versions and stops on
 missing rights). `TestMigrateMaintenance` and `TestMigrateDBCommands` cover
 `gamewe db init`, `purge`, `optimize`, `reset` and `drop` (questions, `-yes`,
-`-dry-run`, a running collector, the missing DROP right on MariaDB). They
+`-dry-run`, a running collector, the missing DROP right on MariaDB).
+`TestMigrateCollectorLock` (`internal/database/running_integration_test.go`)
+and `TestMigrateRefusesRunningCollector` cover the collector lock (migrate
+refuses while `gamewe run` or an old collector's heartbeat runs, waits out a
+heartbeat that stopped, the lock comes back after its connection was
+killed), the lock timeout on a table another session holds, the progress
+lines and Ctrl-C while a step waits. `TestAskTerminalWithoutICRNL`
+(`cmd/gamewe/term_linux_test.go`) answers a question on a pseudo terminal
+with `icrnl` off. They
 also set the passwords of the users `gamewe`, `gamewe_web` and
 `gamewe_web_admin` (`COLLECTOR_PASSWORD`, `WEB_PASSWORD`,
 `WEB_ADMIN_PASSWORD`): only point them at a throwaway server.

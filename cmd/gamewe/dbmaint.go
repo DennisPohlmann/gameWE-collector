@@ -3,7 +3,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"flag"
@@ -42,12 +41,15 @@ var errNoTTYYes = errors.New("no interactive confirmation possible (stdin is not
 
 // typed asks to type want to confirm; only exactly want (spaces around
 // ignored) says yes.
-func typed(c dbIO, prompt, want string) (bool, error) {
+func typed(ctx context.Context, c dbIO, prompt, want string) (bool, error) {
 	if !c.interactive {
 		return false, errNoTTYYes
 	}
-	fmt.Fprint(promptOut(c.out), prompt)
-	line, _ := bufio.NewReader(c.in).ReadString('\n')
+	line, err := ask(ctx, c.in, promptOut(c.out), prompt)
+	if ctx.Err() != nil {
+		fmt.Fprintln(promptOut(c.out))
+		return false, err
+	}
 	return strings.TrimSpace(line) == want, nil
 }
 
@@ -65,25 +67,52 @@ func connect(d config.Database, extra time.Duration) (context.Context, func(), *
 	return ctx, func() { db.Close(); done() }, db, nil
 }
 
-// collectorRunning returns the age of the heartbeat of a collector that
-// runs on this database (heartbeat younger than 2 minutes), or 0.
-func collectorRunning(ctx context.Context, db *database.DB) time.Duration {
-	beat, err := stats.NewStore(db, settings.NewLive(settings.Defaults())).LastHeartbeat(ctx)
-	if err != nil || beat.IsZero() { // no hlstats_Options: no collector either
-		return 0
-	}
-	if age := time.Since(beat); age < stats.HeartbeatFresh {
-		return max(age, time.Second)
-	}
-	return 0
-}
+// heartbeatPoll is how often refuseRunning reads the heartbeat while it
+// waits for it to expire.
+var heartbeatPoll = 5 * time.Second
 
-// refuseRunning is the error for a destructive command while a collector
-// writes into the database.
-func refuseRunning(ctx context.Context, db *database.DB, what string) error {
-	if age := collectorRunning(ctx, db); age > 0 {
-		return fmt.Errorf("a collector is running on this database (heartbeat %s ago): stop it first (systemctl stop gamewe-collector, docker compose stop collector), then %s", age.Round(time.Second), what)
+// refuseRunning returns an error while a collector runs on the database:
+// one that holds the collector lock, or one whose heartbeat is still
+// written (collectors up to 0.7.1 hold no lock). A fresh heartbeat without
+// the lock can also be a collector stopped a moment ago: it waits (telling
+// out) until the heartbeat is written again (running) or older than
+// stats.HeartbeatFresh (stopped).
+func refuseRunning(ctx context.Context, db *database.DB, out io.Writer, what string) error {
+	stopIt := "stop it first (systemctl stop gamewe-collector, docker compose stop collector), then " + what
+	running, err := database.CollectorRunning(ctx, db)
+	if err != nil {
+		return fmt.Errorf("is a collector running? %w", database.Explain(err))
 	}
+	if running {
+		return fmt.Errorf("a collector is running on this database (it holds the collector lock): %s", stopIt)
+	}
+	store := stats.NewStore(db, settings.NewLive(settings.Defaults()))
+	beat, err := store.LastHeartbeat(ctx)
+	if err != nil || beat.IsZero() || time.Since(beat) >= stats.HeartbeatFresh { // no hlstats_Options: no collector either
+		return nil
+	}
+	// at most HeartbeatFresh, also for a heartbeat from a clock ahead
+	deadline := time.Now().Add(min(stats.HeartbeatFresh-time.Since(beat), stats.HeartbeatFresh))
+	fmt.Fprintf(out, "the collector heartbeat is %s old, but no collector holds the collector lock: a collector up to 0.7.1 runs, or one stopped a moment ago; waiting up to %s to tell (Ctrl-C cancels) ...\n",
+		max(time.Since(beat), time.Second).Round(time.Second), time.Until(deadline).Round(time.Second))
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return errors.New("cancelled: nothing changed")
+		case <-time.After(max(min(heartbeatPoll, time.Until(deadline)), 0)):
+		}
+		now, err := store.LastHeartbeat(ctx)
+		if err != nil {
+			return fmt.Errorf("collector heartbeat: %w", err)
+		}
+		if now.After(beat) {
+			return fmt.Errorf("a collector is running on this database (it wrote its heartbeat %s ago): %s", max(time.Since(now), time.Second).Round(time.Second), stopIt)
+		}
+		if running, err := database.CollectorRunning(ctx, db); err == nil && running {
+			return fmt.Errorf("a collector is running on this database (it holds the collector lock): %s", stopIt)
+		}
+	}
+	fmt.Fprintln(out, "no collector is running")
 	return nil
 }
 
@@ -176,12 +205,12 @@ func dbDrop(ctx context.Context, db *database.DB, d config.Database, yes, dry bo
 		fmt.Fprintln(c.out, "dry run: nothing changed")
 		return nil
 	}
-	if err := refuseRunning(ctx, db, "drop the tables"); err != nil {
+	if err := refuseRunning(ctx, db, promptOut(c.out), "drop the tables"); err != nil {
 		return err
 	}
 	fmt.Fprintln(c.out, backupFor(d, "drop", time.Now().Format("20060102-1504")))
 	if !yes {
-		ok, err := typed(c, fmt.Sprintf("This deletes all %d rows and cannot be undone. Type the database name (%s) to drop the tables: ", total, d.Name), d.Name)
+		ok, err := typed(ctx, c, fmt.Sprintf("This deletes all %d rows and cannot be undone. Type the database name (%s) to drop the tables: ", total, d.Name), d.Name)
 		if err != nil {
 			return err
 		}
@@ -258,12 +287,12 @@ func dbReset(ctx context.Context, db *database.DB, d config.Database, yes, dry b
 		fmt.Fprintln(c.out, "dry run: nothing changed")
 		return nil
 	}
-	if err := refuseRunning(ctx, db, "reset the database"); err != nil {
+	if err := refuseRunning(ctx, db, promptOut(c.out), "reset the database"); err != nil {
 		return err
 	}
 	fmt.Fprintln(c.out, backupFor(d, "reset", time.Now().Format("20060102-1504")))
 	if !yes {
-		ok, err := typed(c, fmt.Sprintf("This deletes all %d rows and cannot be undone. Type the database name (%s) to reset it: ", total, d.Name), d.Name)
+		ok, err := typed(ctx, c, fmt.Sprintf("This deletes all %d rows and cannot be undone. Type the database name (%s) to reset it: ", total, d.Name), d.Name)
 		if err != nil {
 			return err
 		}
@@ -338,11 +367,9 @@ func dbPurge(ctx context.Context, db *database.DB, d config.Database, days int, 
 		if !c.interactive {
 			return errNoTTYYes
 		}
-		fmt.Fprintf(promptOut(c.out), "Delete %d rows? This cannot be undone. [y/N] ", total)
-		line, _ := bufio.NewReader(c.in).ReadString('\n')
-		switch strings.ToLower(strings.TrimSpace(line)) {
-		case "y", "yes", "j", "ja":
-		default:
+		line, _ := ask(ctx, c.in, promptOut(c.out), fmt.Sprintf("Delete %d rows? This cannot be undone. [y/N] ", total))
+		if !saysYes(line) {
+			fmt.Fprintln(promptOut(c.out))
 			return exitError{1, "not confirmed, nothing changed"}
 		}
 	}

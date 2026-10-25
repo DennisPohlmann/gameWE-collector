@@ -3,7 +3,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"flag"
@@ -126,8 +125,7 @@ func resetRun(pos []string, path, mode string, dry, yes, list bool, wait time.Du
 		return nil
 	}
 	if !yes {
-		fmt.Fprintf(promptOut(out), "This cannot be undone. Type the game code (%s) to reset it: ", game)
-		line, _ := bufio.NewReader(in).ReadString('\n')
+		line, _ := ask(ctx, in, promptOut(out), fmt.Sprintf("This cannot be undone. Type the game code (%s) to reset it: ", game))
 		if strings.TrimSpace(line) != game {
 			return errors.New("not confirmed, nothing changed")
 		}

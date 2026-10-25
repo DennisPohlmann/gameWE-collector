@@ -320,6 +320,12 @@ func runCmd(args []string) error {
 		return exitError{exitConfig, schemaOutdated(plan, cfg.Database.AutoMigrate).Error()}
 	}
 	log.Info("database schema up to date", "version", plan.Current)
+	// Taken after the migration above (which refuses while another
+	// collector holds it): gamewe db migrate, reset and drop refuse while
+	// this collector runs, also from another host or container.
+	if err := database.HoldCollectorLock(ctx, cfg.Database, 30*time.Second, log); err != nil {
+		return err
+	}
 
 	set := settings.NewLive(settings.Defaults())
 	store := stats.NewStore(db, set)

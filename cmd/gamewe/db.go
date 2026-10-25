@@ -3,7 +3,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -59,8 +58,9 @@ const dbUsage = `usage:
         DROP right, which the collector user has not on MariaDB: -print only
         prints the SQL, to run it as a database admin. Afterwards db init
         (or the next start) creates them again
-reset and drop ask to type the database name unless -yes, and refuse while a
-collector runs on the database. Make a backup first.
+migrate, reset and drop refuse while a collector runs on the database (stop
+it first: systemctl stop gamewe-collector); reset and drop ask to type the
+database name unless -yes. Make a backup first.
 Every db command takes -o text|json|yaml (status: the schema as a document;
 the others: ok, error, plan, rows per table, -print SQL and the text lines;
 questions then go to stderr).
@@ -289,21 +289,75 @@ var errNoTTY = errors.New("no interactive confirmation possible (stdin is not a 
 
 // confirm asks whether to migrate now; only y, yes, j or ja (any case)
 // say yes, everything else (also an empty line or end of input) is no.
-func confirm(in io.Reader, out io.Writer, interactive bool) (bool, error) {
+// Ctrl-C (ctx ending) is no as well.
+func confirm(ctx context.Context, in io.Reader, out io.Writer, interactive bool) (bool, error) {
 	if !interactive {
 		return false, errNoTTY
 	}
-	fmt.Fprint(out, "Backup made? Migrate now? [y/N] ")
-	line, err := bufio.NewReader(in).ReadString('\n')
+	line, err := ask(ctx, in, out, "Backup made? Migrate now? [y/N] ")
 	if err != nil && line == "" {
 		fmt.Fprintln(out)
 		return false, nil
 	}
+	return saysYes(line), nil
+}
+
+// saysYes reports whether an answer says yes: y, yes, j or ja (any case).
+func saysYes(line string) bool {
 	switch strings.ToLower(strings.TrimSpace(line)) {
 	case "y", "yes", "j", "ja":
-		return true, nil
+		return true
 	}
-	return false, nil
+	return false
+}
+
+// ask writes prompt to out and reads the answer line from in; on a
+// terminal Enter always ends the line (lineTerminal), Ctrl-C ends the
+// question (ctx).
+func ask(ctx context.Context, in io.Reader, out io.Writer, prompt string) (string, error) {
+	if f, ok := in.(*os.File); ok {
+		defer lineTerminal(f, out)()
+	}
+	fmt.Fprint(out, prompt)
+	return readAnswer(ctx, in)
+}
+
+// readAnswer reads one answer line from in. The line ends at LF or CR (a
+// terminal in raw mode, a script that sends CR). It
+// returns ctx.Err() when ctx ends first (Ctrl-C while the question waits),
+// io.EOF at the end of input; the read itself goes on in the background
+// until in ends or the program exits.
+func readAnswer(ctx context.Context, in io.Reader) (string, error) {
+	type answer struct {
+		line string
+		err  error
+	}
+	ch := make(chan answer, 1)
+	go func() {
+		var b [1]byte
+		var line []byte
+		for len(line) < 1024 {
+			n, err := in.Read(b[:])
+			if n == 1 {
+				if b[0] == '\n' || b[0] == '\r' {
+					ch <- answer{string(line), nil}
+					return
+				}
+				line = append(line, b[0])
+			}
+			if err != nil {
+				ch <- answer{string(line), err}
+				return
+			}
+		}
+		ch <- answer{string(line), nil}
+	}()
+	select {
+	case a := <-ch:
+		return a.line, a.err
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
 }
 
 // printPlan writes the plan of a migration.
@@ -420,12 +474,16 @@ func migrate(ctx context.Context, db *database.DB, d config.Database, f migrateF
 		return exitError{2, ""}
 	}
 	if p.Kind != database.KindEmpty { // a new database has nothing to back up
+		// A running collector writes into the tables a migration changes
+		// (MyISAM tables are locked while they change): stop it first.
+		if err := refuseRunning(ctx, db, promptOut(out), "migrate"); err != nil {
+			return err
+		}
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, backupAdvice(d, time.Now().Format("20060102-1504")))
-		fmt.Fprintln(out, "Stop the collector while migrating: MyISAM tables are locked while they are changed.")
 	}
 	if !f.force {
-		ok, err := confirm(in, promptOut(out), interactive)
+		ok, err := confirm(ctx, in, promptOut(out), interactive)
 		if err != nil {
 			return err
 		}

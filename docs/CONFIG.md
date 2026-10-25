@@ -76,7 +76,7 @@ The RCON load data of `hlstats_server_load` (CPU, FPS, uptime) are switched with
 | `user`, `name` | – | database user and database name |
 | `password` | – | password, or: |
 | `password_file` | – | file containing the password (one of the two) |
-| `max_open_conns` | `8` | connection pool size, shared by all game servers |
+| `max_open_conns` | `8` | connection pool size, shared by all game servers; the collector uses one connection more for its collector lock (see [DATABASE.md](DATABASE.md#schema-versions-and-upgrades)) |
 | `connect_timeout` | `10` | seconds |
 | `tls.mode` | `disable` | `disable`, `require`, `verify-ca`, `verify-full`, see DATABASE.md. Set `verify-full` for a database on another host. |
 | `tls.ca_file` | system CAs | CA certificate(s), PEM |

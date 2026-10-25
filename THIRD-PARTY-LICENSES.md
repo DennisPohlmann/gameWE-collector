@@ -24,7 +24,7 @@ Go version go1.27.3; modules as `go version -m gamewe` lists them.
 | `github.com/oschwald/maxminddb-golang` | v1.13.1 | ISC | https://github.com/oschwald/maxminddb-golang | reads the GeoIP city database (.mmdb) | [`LICENSE`](licenses/github.com_oschwald_maxminddb-golang/LICENSE) |
 | `go.yaml.in/yaml/v3` | v3.0.5 | MIT AND Apache-2.0 | https://github.com/yaml/go-yaml | reads config.yaml | [`LICENSE`](licenses/go.yaml.in_yaml_v3/LICENSE), [`NOTICE`](licenses/go.yaml.in_yaml_v3/NOTICE) |
 | `golang.org/x/sync` | v0.24.0 | BSD-3-Clause | https://pkg.go.dev/golang.org/x/sync | used by pgx (its connection pool puddle) | [`LICENSE`](licenses/golang.org_x_sync/LICENSE) |
-| `golang.org/x/sys` | v0.49.0 | BSD-3-Clause | https://pkg.go.dev/golang.org/x/sys | system calls (used by maxminddb-golang) | [`LICENSE`](licenses/golang.org_x_sys/LICENSE) |
+| `golang.org/x/sys` | v0.49.0 | BSD-3-Clause | https://pkg.go.dev/golang.org/x/sys | system calls: the terminal mode of the `gamewe` questions (Linux), used by maxminddb-golang | [`LICENSE`](licenses/golang.org_x_sys/LICENSE) |
 | `golang.org/x/text` | v0.43.0 | BSD-3-Clause | https://pkg.go.dev/golang.org/x/text | text encoding and Unicode handling of pgx | [`LICENSE`](licenses/golang.org_x_text/LICENSE) |
 
 `github.com/go-sql-driver/mysql` is under the Mozilla Public License 2.0: its

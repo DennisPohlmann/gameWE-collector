@@ -120,15 +120,37 @@ gamewe db reset                  # empty every table, reference data again: as n
 gamewe db drop                   # drop all gameWE tables (-print: the SQL for a database admin; MariaDB needs DROP)
 ```
 
-`reset` and `drop` refuse while a collector runs on the database; `purge`
-keeps players, totals, rankings and awards. What each one touches and the
+`migrate`, `reset` and `drop` refuse while a collector runs on the database,
+also one on another host or in a container (see below); `purge` keeps
+players, totals, rankings and awards. What each one touches and the
 rights they need: [DATABASE.md](DATABASE.md#maintenance-gamewe-db).
 
 `-f` and `-n` together are an error. Without a terminal on stdin (cron,
 scripts, `docker compose run -T`) `gamewe db migrate` does not wait for an
-answer: it stops with a message unless `-f` is given. Stop the collector
-while migrating; the migration takes a lock, so a second run at the same
-time waits and then finds nothing to do.
+answer: it stops with a message unless `-f` is given. The migration takes a
+lock, so a second run at the same time waits and then finds nothing to do.
+
+**Stop the collector first** (`systemctl stop gamewe-collector`, `docker
+compose stop collector`): a running collector writes into the tables a
+migration changes. `gamewe db migrate` (also with `-f`) checks this before it
+asks and changes nothing while one runs:
+
+- a running `gamewe run` holds the *collector lock* of its database
+  (MariaDB `GET_LOCK`, PostgreSQL advisory lock, on a connection of its
+  own); the database releases it when the collector ends;
+- a collector up to 0.7.1 holds no lock: its heartbeat (`gamewe_heartbeat`,
+  written every 60 s) tells it. A heartbeat younger than 2 minutes without
+  the lock can also be a collector stopped a moment ago: the command then
+  waits until the heartbeat is written again (running: it stops) or 2
+  minutes old (stopped: it goes on), and says so.
+
+While it migrates, every step is a line `[n/m] ...`; a step that takes long
+prints `still running after 15s ...` every 15 seconds. A step waits at most
+30 seconds for a table another session holds, then stops with "the table is
+locked by another session" (look at `SHOW PROCESSLIST` / `pg_stat_activity`).
+Ctrl-C stops it at any time: the waiting statement is cancelled on the
+server too, the message says which steps are done; every step is
+idempotent, so `gamewe db migrate` again goes on from there.
 
 ### RCON jobs and checks by hand
 

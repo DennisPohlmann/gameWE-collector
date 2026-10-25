@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"testing"
 	"testing/iotest"
+	"time"
 
 	"gamewe-collector/internal/config"
 	"gamewe-collector/internal/database"
@@ -19,10 +21,11 @@ import (
 func TestConfirm(t *testing.T) {
 	for in, want := range map[string]bool{
 		"y\n": true, "Y\n": true, "yes\n": true, " YES \n": true, "j\n": true, "ja\n": true, "Ja": true,
-		"\n": false, "n\n": false, "no\n": false, "nein\n": false, "yy\n": false, "": false, "ok\n": false,
+		"y\r": true, "y\r\n": true, "yes\rno\n": true, // Enter on a terminal with icrnl off
+		"\r": false, "n\ry\n": false, "\n": false, "n\n": false, "no\n": false, "nein\n": false, "yy\n": false, "": false, "ok\n": false,
 	} {
 		var out bytes.Buffer
-		got, err := confirm(strings.NewReader(in), &out, true)
+		got, err := confirm(context.Background(), strings.NewReader(in), &out, true)
 		if err != nil || got != want {
 			t.Errorf("answer %q: %v, %v; want %v", in, got, err, want)
 		}
@@ -31,16 +34,43 @@ func TestConfirm(t *testing.T) {
 		}
 	}
 	// A read error is no.
-	if got, err := confirm(iotest.ErrReader(errors.New("boom")), io.Discard, true); got || err != nil {
+	if got, err := confirm(context.Background(), iotest.ErrReader(errors.New("boom")), io.Discard, true); got || err != nil {
 		t.Errorf("read error: %v, %v", got, err)
 	}
 	// Without a terminal it does not wait for input.
 	var out bytes.Buffer
-	if got, err := confirm(strings.NewReader("y\n"), &out, false); got || !errors.Is(err, errNoTTY) || out.Len() != 0 {
+	if got, err := confirm(context.Background(), strings.NewReader("y\n"), &out, false); got || !errors.Is(err, errNoTTY) || out.Len() != 0 {
 		t.Errorf("no tty: %v, %v, %q", got, err, out.String())
 	}
 	if !strings.Contains(errNoTTY.Error(), "-force") {
 		t.Error("the no-tty message does not name -force")
+	}
+	// Ctrl-C (the context ending) while the question waits for a line
+	// that never ends is no, at once.
+	pr, pw := io.Pipe()
+	defer pw.Close()
+	go pw.Write([]byte("y")) // typed, Enter never arrives
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { time.Sleep(50 * time.Millisecond); cancel() }()
+	done := make(chan bool)
+	go func() {
+		got, err := confirm(ctx, pr, io.Discard, true)
+		done <- got || err != nil
+	}()
+	select {
+	case bad := <-done:
+		if bad {
+			t.Error("cancelled question: not a plain no")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the question does not end on Ctrl-C")
+	}
+}
+
+func TestReadAnswerLimit(t *testing.T) {
+	line, err := readAnswer(context.Background(), strings.NewReader(strings.Repeat("y", 5000)+"\n"))
+	if err != nil || len(line) != 1024 {
+		t.Errorf("long line: %d bytes, %v", len(line), err)
 	}
 }
 
@@ -200,15 +230,15 @@ func TestParseDays(t *testing.T) {
 }
 
 func TestTyped(t *testing.T) {
-	for in, want := range map[string]bool{"gamewe\n": true, " gamewe \n": true, "gamewe": true, "y\n": false, "GAMEWE\n": false, "\n": false, "": false} {
+	for in, want := range map[string]bool{"gamewe\n": true, " gamewe \n": true, "gamewe": true, "gamewe\r": true, "y\n": false, "GAMEWE\n": false, "\n": false, "": false} {
 		var out bytes.Buffer
-		got, err := typed(dbIO{in: strings.NewReader(in), out: &out, interactive: true}, "Type it: ", "gamewe")
+		got, err := typed(context.Background(), dbIO{in: strings.NewReader(in), out: &out, interactive: true}, "Type it: ", "gamewe")
 		if err != nil || got != want || out.String() != "Type it: " {
 			t.Errorf("%q: %v, %v, %q", in, got, err, out.String())
 		}
 	}
 	var out bytes.Buffer
-	if got, err := typed(dbIO{in: strings.NewReader("gamewe\n"), out: &out}, "Type it: ", "gamewe"); got || !errors.Is(err, errNoTTYYes) || out.Len() != 0 {
+	if got, err := typed(context.Background(), dbIO{in: strings.NewReader("gamewe\n"), out: &out}, "Type it: ", "gamewe"); got || !errors.Is(err, errNoTTYYes) || out.Len() != 0 {
 		t.Errorf("no tty: %v, %v, %q", got, err, out.String())
 	}
 }
