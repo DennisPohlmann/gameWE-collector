@@ -179,6 +179,7 @@ What it does:
 | 3 | `awards-indexes` | indexes for the awards page: `time_player` on `hlstats_Events_Latency` (timestamp_id, playerId, ping), `time_action` on `hlstats_Events_PlayerActions` (timestamp_id, actionId, playerId) |
 | 4 | `log-secret` | columns `hlstats_Servers.log_secret` (varchar(64), `''` = none) and `log_secret_changed` (Unix time the secret was last changed) for `features.log_secret`; `gamewe_web` cannot read them |
 | 5 | `server-info` | columns `hlstats_Servers.server_version` (varchar(64)), `server_os` (varchar(8): `linux`, `windows`, `mac`) and `server_vac` (varchar(8): `secure`, `insecure`), `''` = unknown, for `features.server_info`; `gamewe_web` may read them (the rights step of the migration grants them) |
+| 6 | `act-bots` | column `hlstats_Servers.act_bots` (int unsigned, default 0): the bots among `act_players`, per server; `gamewe_web` may read it (the rights step of the migration grants it) |
 
 The SQL files of older packages (`/opt/gamewe/collector/doc/schema/hlstatsx.sql`,
 `init/01_schema.sql`, `02_seed.sql`, `03_grants.sql` and the PostgreSQL
@@ -249,6 +250,12 @@ time it was last changed there (0 = unknown); it is informational only.
 `server_version`, `server_os` and `server_vac` are what the game server says
 about itself (`features.server_info`: `A2S_INFO`, RCON `status`), written by
 the collector only; public information that `gamewe_web` may read.
+
+`act_bots` is the number of bots among `act_players` on that server, written
+with it by the collector (see DB-SEMANTICS.md). The web shows real players
+as `act_players - act_bots`. It is per server, unlike the bots' rows in
+`hlstats_Livestats`: a bot is one player per name and game, so servers of one
+ranking with the same bot names share its live row.
 
 ## PostgreSQL
 

@@ -72,6 +72,11 @@ var Migrations = []Migration{
 		Desc: "hlstats_Servers.server_version, server_os and server_vac (features.server_info: A2S_INFO and RCON status; readable by gamewe_web)",
 		Sync: true,
 	},
+	{
+		Version: 6, Name: "act-bots",
+		Desc: "hlstats_Servers.act_bots: the bots among act_players (RCON status or the tracked players; readable by gamewe_web)",
+		Sync: true,
+	},
 }
 
 // Latest is the newest schema version this collector knows.

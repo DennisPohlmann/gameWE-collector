@@ -34,12 +34,13 @@ func waitRunning(t *testing.T, db *DB, want bool) {
 	}
 }
 
-// toVersion4 takes version 5 (server-info) back, as a database of 0.6.x.
+// toVersion4 takes versions 5 (server-info) and 6 (act-bots) back, as a
+// database of 0.6.x.
 func toVersion4(t *testing.T, admin *DB) {
 	t.Helper()
 	for _, q := range []string{
-		`ALTER TABLE hlstats_Servers DROP COLUMN server_version, DROP COLUMN server_os, DROP COLUMN server_vac`,
-		`DELETE FROM ` + MigrationsTable + ` WHERE version = 5`,
+		`ALTER TABLE hlstats_Servers DROP COLUMN server_version, DROP COLUMN server_os, DROP COLUMN server_vac, DROP COLUMN act_bots`,
+		`DELETE FROM ` + MigrationsTable + ` WHERE version >= 5`,
 	} {
 		if _, err := admin.Exec(q); err != nil {
 			t.Fatal(err)

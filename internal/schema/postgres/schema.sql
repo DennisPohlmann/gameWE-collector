@@ -880,6 +880,7 @@ CREATE TABLE hlstats_Servers (
   server_version varchar(64) NOT NULL DEFAULT '',
   server_os varchar(8) NOT NULL DEFAULT '',
   server_vac varchar(8) NOT NULL DEFAULT '',
+  act_bots bigint NOT NULL DEFAULT 0,
   PRIMARY KEY (serverId)
 );
 CREATE UNIQUE INDEX hlstats_Servers_address ON hlstats_Servers (address, port);

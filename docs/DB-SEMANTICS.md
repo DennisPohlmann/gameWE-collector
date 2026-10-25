@@ -46,13 +46,15 @@ variant are listed in [PostgreSQL](#postgresql) at the end.
   the player out of the rankings, rank numbers and awards; the value stays
   when the player comes back.
 - **Bots** (always recorded; `gamewe_rank_bots` decides only the rankings): uniqueId `BOT:<name>`, so one
-  row per bot name and game. They are in the live view, `act_players` and their
-  own statistics, and get `hideranking` = 1 when created. With `gamewe_rank_bots`
+  row per bot name and game. They are in the live view, `act_players` (and
+  `act_bots`) and their own statistics, and get `hideranking` = 1 when created. With `gamewe_rank_bots`
   = 0 kills with a bot (either side) and player-vs-player actions with a bot
   change nobody's skill (stored with 0 points, no headshot action, no kill
   streak); kills and deaths are still counted. Awards skip them (hideranking).
   Changing `gamewe_rank_bots` later does not change existing bot rows: set their
-  `hideranking` in the web admin. `hlstats_Servers.players` counts the game's players without
+  `hideranking` in the web admin. Servers of one game with the same bot names
+  share these rows, also the live row (one per player): the bot is live on the
+  server that saw it last; `act_bots` counts per server. `hlstats_Servers.players` counts the game's players without
   `hideranking = 2`.
 - **Day / week:** `hlstats_Players_History.eventTime` is the UTC date.
   `yearweek_id` is MySQL `YEARWEEK(date)` (default mode 0, weeks start on Sunday).
@@ -96,7 +98,7 @@ database without the column the collector writes the events without it
 
 | Table | Written when | Columns / meaning |
 |-------|--------------|-------------------|
-| `hlstats_Servers` | read every minute: the list of accepted game servers (`address`, `port`, `game`, `name`, `rcon_password`, `log_secret`). Never created by the collector (only `gamewe simulate` adds its test server). Counters written on kills, suicides, rounds, map change, weaponstats, connect/disconnect | `kills`, `headshots`, `suicides`, `rounds`, `ct_wins`, `ts_wins`, `bombs_planted`, `bombs_defused`, `act_players` (players currently tracked: one per SteamID / bot name, never more than `max_players` of the last RCON status; the longest silent visits end when more come), `players` (players of the game without `hideranking = 2`, every minute), `act_map`, `map_started` (Unix time), `map_changes`, `map_rounds`, `map_ct_wins`, `map_ts_wins`, `ct_shots`/`ct_hits`/`ts_shots`/`ts_hits` and the `map_` variants (from weaponstats, by the player's team; the `map_` values reset on map change). `server_version`, `server_os`, `server_vac` from `A2S_INFO` and RCON status (see "Server info" below). `name`, `game`, `address`, `port`, `rcon_password`, `log_secret` and `log_secret_changed` are never written (the log secret is set by hand, CONFIG.md, "Log secret"). |
+| `hlstats_Servers` | read every minute: the list of accepted game servers (`address`, `port`, `game`, `name`, `rcon_password`, `log_secret`). Never created by the collector (only `gamewe simulate` adds its test server). Counters written on kills, suicides, rounds, map change, weaponstats, connect/disconnect | `kills`, `headshots`, `suicides`, `rounds`, `ct_wins`, `ts_wins`, `bombs_planted`, `bombs_defused`, `act_players` (players currently tracked: one per SteamID / bot name, never more than `max_players` of the last RCON status; the longest silent visits end when more come), `act_bots` (the bots among them, counted the same way and written with `act_players`; held with it during a map change), `players` (players of the game without `hideranking = 2`, every minute), `act_map`, `map_started` (Unix time), `map_changes`, `map_rounds`, `map_ct_wins`, `map_ts_wins`, `ct_shots`/`ct_hits`/`ts_shots`/`ts_hits` and the `map_` variants (from weaponstats, by the player's team; the `map_` values reset on map change). `server_version`, `server_os`, `server_vac` from `A2S_INFO` and RCON status (see "Server info" below). `name`, `game`, `address`, `port`, `rcon_password`, `log_secret` and `log_secret_changed` are never written (the log secret is set by hand, CONFIG.md, "Log secret"). |
 | `hlstats_Games` | read only (`gamewe game` writes) | `code` → `id`; `realgame` → the base game and engine (GAMES.md) |
 | `hlstats_Options` | read every minute; `gamewe_heartbeat` written every 60 s | the collector's settings (`gamewe_*` keys); `gamewe_heartbeat` = Unix time of the running collector's last poll (fresh = less than 2 minutes: queued jobs will be done) |
 | `hlstats_gamewe_jobs` | queued by the web admin / `gamewe reset`, polled every 10 s | `job_type` `reset`, `game`, `mode` `player-stats`, `all-stats` or `all` (the old `stats` is run as `player-stats`; see [USAGE](USAGE.md#resetting-a-ranking) for the tables of each mode), `status` `pending` → `running` → `done` / `failed`, `started_at`, `finished_at` (Unix time), `result` (rows per table, or the error). A second job for a game with one pending or running is `failed` ("refused"); a job left `running` by a stopped collector is done again at the next start; finished jobs are deleted after 30 days |
@@ -144,6 +146,7 @@ order with the server's log lines:
 | `hlstats_Servers.max_players` | the `(N max)` of the players line, written when it changes |
 | `hlstats_Servers.name` | the hostname, only while the name is empty |
 | `hlstats_Servers.act_players` | humans and bots listed. While the last status is at most 2 minutes old and of the current map, its count is the player count (also for `hlstats_server_load`); players the log lines bring back between two polls do not add to it |
+| `hlstats_Servers.act_bots` | the listed players with uniqueid `BOT` (any case; Source, CS:GO and GoldSrc list bots so, and SourceTV too, as the engine's "N bots" does). Without a fresh status: the tracked players with the `BOT` tag of their log lines |
 | `hlstats_Livestats` | a row for every player and bot listed that has none yet, as on a first log line: `hlstats_Players` / `hlstats_PlayerUniqueIds` are created if needed (bots `BOT:<name>`), `connected` = now minus the connected time of status (bots: now). `ping` is written when it changes. `team` is not in status: it is empty until the player's next log line, whose player tag sets it. |
 | `hlstats_Events_Connects`, `hlstats_Players_Data.total_connects`, `last_connect` | a connect with the `adr` address for a player whose `connected` line was not seen (joined before the collector started or before the server was added), once until the player's disconnect line; bots and players without an address get none |
 | `hlstats_Events_Latency`, `hlstats_Players_Data.average_ping` | the ping, one sample per player and minute (see the table above) |
@@ -230,7 +233,8 @@ The values are capped to the column types (players 255, the rest 65535).
 Map change: the players connect again and the bots are added anew, so for
 2 minutes after a map change (4 minutes without RCON status) the player count
 from before the change stands, in `act_players`, `min_players`/`max_players`
-and `hlstats_Servers.act_players`. A sample during the change shows neither 0
+and `hlstats_Servers.act_players` (and its bots in `hlstats_Servers.act_bots`,
+while the server's live rows are already cleared). A sample during the change shows neither 0
 nor old and new bots counted at once; a server that really emptied shows 0
 once that time is over. After it, with RCON status, the count is what the
 last status listed: bots of the old map that late log lines bring back are

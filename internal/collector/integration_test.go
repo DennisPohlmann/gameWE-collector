@@ -709,6 +709,50 @@ func TestIntegrationDailyAwards(t *testing.T) {
 	}
 }
 
+// Two servers of one game with the same bot names (the engine's default
+// names): a bot is one player per name and game, and hlstats_Livestats has
+// one row per player, so the live row moves to the server that saw the bot
+// last. act_bots counts the bots of each server on its own.
+func TestIntegrationBotsPerServer(t *testing.T) {
+	db := testDB(t)
+	addrs := []string{"198.51.100.1:27015", "198.51.100.1:27016"}
+	hub := dbHub(t, db, &recorder{}, [][2]string{{addrs[0], "css"}, {addrs[1], "css"}})
+	for i, a := range addrs {
+		lines := []string{`"Bot Joe<3><BOT><CT>" entered the game`, `"Bot Ann<4><BOT><TERRORIST>" entered the game`}
+		if i == 0 {
+			lines = append(lines, `"Alice<2><STEAM_1:0:91><CT>" entered the game`)
+		}
+		for _, l := range lines {
+			if err := hub.Dispatch(netip.MustParseAddrPort(a), pkt(l), time.Now().UTC()); err != nil {
+				t.Fatal(err)
+			}
+		}
+		// The second server's bots come after the first server's.
+		deadline := time.Now().Add(10 * time.Second)
+		for count(t, db, `SELECT COALESCE(SUM(act_players), 0) FROM hlstats_Servers`) < 3+2*i && time.Now().Before(deadline) {
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+	first := `(SELECT serverId FROM hlstats_Servers WHERE port = 27015)`
+	second := `(SELECT serverId FROM hlstats_Servers WHERE port = 27016)`
+	for _, c := range []struct {
+		name      string
+		got, want int
+	}{
+		{"act_players first", count(t, db, `SELECT act_players FROM hlstats_Servers WHERE serverId = `+first), 3},
+		{"act_bots first", count(t, db, `SELECT act_bots FROM hlstats_Servers WHERE serverId = `+first), 2},
+		{"act_players second", count(t, db, `SELECT act_players FROM hlstats_Servers WHERE serverId = `+second), 2},
+		{"act_bots second", count(t, db, `SELECT act_bots FROM hlstats_Servers WHERE serverId = `+second), 2},
+		// The shared bots' live rows are on the second server only.
+		{"live bots first", count(t, db, `SELECT COUNT(*) FROM hlstats_Livestats WHERE unique_id LIKE 'BOT:%' AND server_id = `+first), 0},
+		{"live bots second", count(t, db, `SELECT COUNT(*) FROM hlstats_Livestats WHERE unique_id LIKE 'BOT:%' AND server_id = `+second), 2},
+	} {
+		if c.got != c.want {
+			t.Errorf("%s: got %d, want %d", c.name, c.got, c.want)
+		}
+	}
+}
+
 // Bots are recorded but hidden, GeoIP locations, hlstats_server_load.
 func TestIntegrationBotsGeoLoad(t *testing.T) {
 	db := testDB(t)

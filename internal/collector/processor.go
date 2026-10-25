@@ -51,7 +51,7 @@ type Store interface {
 	RecordPlayerPlayerAction(ctx context.Context, ev stats.Ev, p, victim stats.Live, code string, noSkill bool) (int, int, error)
 	RecordRoundWin(ctx context.Context, ev stats.Ev, team, trigger string, winners, losers []stats.Live, survivors map[int64]bool) (int, error)
 	AddWeaponStats(ctx context.Context, ev stats.Ev, p stats.Live, weapon string, w stats.WeaponStats) error
-	SetActivePlayers(ctx context.Context, serverID int64, n int) error
+	SetActivePlayers(ctx context.Context, serverID int64, n, bots int) error
 	RecordChat(ctx context.Context, ev stats.Ev, p stats.Live, team bool, msg string) error
 	RoundStart(ctx context.Context, ev stats.Ev) error
 	HideBanned(ctx context.Context, ev stats.Ev, uniqueID string) error
@@ -115,11 +115,11 @@ type serverState struct {
 	// Map change: the players connect again and the bots are added anew,
 	// so for a while after it the count from before the change stands (see
 	// online): no drop to 0, no old and new bots counted at once.
-	heldCount   int
-	activeCount int       // hlstats_Servers.act_players as last written
-	lastLine    time.Time // last log line
-	lastStatus  time.Time // last RCON status
-	statusCount int       // players and bots listed by the last status
+	heldCount, heldBots     int
+	activeCount, activeBots int       // hlstats_Servers.act_players and act_bots as last written
+	lastLine                time.Time // last log line
+	lastStatus              time.Time // last RCON status
+	statusCount, statusBots int       // players and bots, and the bots alone, listed by the last status
 
 	// RCON status
 	statusMap  string // map set by a status, not by a log line yet
@@ -488,6 +488,7 @@ func (p *Processor) Discard() {
 	srv.gone, srv.connected, srv.pendingKill, srv.pendingLoc = nil, nil, nil, nil
 	srv.minPlay, srv.maxPlay = 0, 0
 	srv.heldCount, srv.activeCount, srv.statusCount = 0, 0, 0 // the reset clears act_players too
+	srv.heldBots, srv.activeBots, srv.statusBots = 0, 0, 0
 	srv.lastRaw, srv.lastTwin = "", false
 }
 
@@ -539,7 +540,7 @@ func (p *Processor) changeMap(ctx context.Context, ev stats.Ev, name string) err
 	if err := p.endStreaks(ctx, ev); err != nil {
 		return err
 	}
-	held := p.online(ev.Time)
+	held, heldBots := p.online(ev.Time)
 	if err := p.endVisits(ctx, ev); err != nil {
 		return err
 	}
@@ -548,13 +549,13 @@ func (p *Processor) changeMap(ctx context.Context, ev stats.Ev, name string) err
 		return err
 	}
 	p.srv.mapID, p.srv.info.Map, p.srv.mapAt = id, name, ev.Time
-	p.srv.heldCount = held
+	p.srv.heldCount, p.srv.heldBots = held, heldBots
 	p.counted(ev.Time)
 	return p.setActive(ctx, ev.Time)
 }
 
 // endVisits ends the visits of all players on the server and clears its
-// live rows and act_players.
+// live rows, act_players and act_bots.
 func (p *Processor) endVisits(ctx context.Context, ev stats.Ev) error {
 	for key, st := range p.srv.players {
 		delete(p.srv.players, key)
@@ -562,7 +563,7 @@ func (p *Processor) endVisits(ctx context.Context, ev stats.Ev) error {
 			return err
 		}
 	}
-	p.srv.activeCount = 0
+	p.srv.activeCount, p.srv.activeBots = 0, 0
 	return p.store.ResetLive(ctx, p.srv.info.ID)
 }
 
@@ -710,7 +711,7 @@ func (p *Processor) Status(ctx context.Context, st Status, at time.Time) error {
 			return err
 		}
 	}
-	srv.statusCount = len(listed)
+	srv.statusCount, srv.statusBots = len(listed), countBots(listed)
 	p.counted(at)
 	if err := p.setActive(ctx, at); err != nil {
 		return err
@@ -1073,7 +1074,8 @@ const (
 // the server: a few missed polls (busy server) keep it.
 const statusFresh = 2 * MonitorInterval
 
-// online is the number of players on the server at now: the players the
+// online is the number of players on the server at now, and the bots among
+// them (act_bots): the players the
 // last RCON status listed, if it is recent and of the current map, else the
 // tracked players (one per identity, Player.Key). During a map change's
 // settle time it is the count from before the change. A drop to 0 is only
@@ -1083,7 +1085,7 @@ const statusFresh = 2 * MonitorInterval
 // more for a while: lines of the old map's bots that come after the map
 // change, or after the last status, bring them back until the next status
 // or botIdle ends them, next to the new bots (up to the slots).
-func (p *Processor) online(now time.Time) int {
+func (p *Processor) online(now time.Time) (players, bots int) {
 	srv := &p.srv
 	if srv.heldCount > 0 {
 		settle := mapSettleNoStatus
@@ -1091,32 +1093,44 @@ func (p *Processor) online(now time.Time) int {
 			settle = mapSettle
 		}
 		if now.Sub(srv.mapAt) < settle {
-			return srv.heldCount
+			return srv.heldCount, srv.heldBots
 		}
-		srv.heldCount = 0
+		srv.heldCount, srv.heldBots = 0, 0
 	}
 	if srv.lastStatus.After(srv.mapAt) && now.Sub(srv.lastStatus) <= statusFresh {
-		return srv.statusCount
+		return srv.statusCount, srv.statusBots
 	}
-	return len(srv.players)
+	return len(srv.players), countBots(srv.players)
+}
+
+// countBots counts the bots (keys BOT:<name>) among player keys.
+func countBots[V any](players map[string]V) int {
+	n := 0
+	for key := range players {
+		if stats.IsBot(key) {
+			n++
+		}
+	}
+	return n
 }
 
 // counted updates the lowest and highest player count of the load interval.
 func (p *Processor) counted(now time.Time) {
-	n := p.online(now)
+	n, _ := p.online(now)
 	p.srv.minPlay, p.srv.maxPlay = min(p.srv.minPlay, n), max(p.srv.maxPlay, n)
 }
 
-// setActive writes hlstats_Servers.act_players when the count changed.
+// setActive writes hlstats_Servers.act_players and act_bots when a count
+// changed.
 func (p *Processor) setActive(ctx context.Context, now time.Time) error {
-	n := p.online(now)
-	if n == p.srv.activeCount {
+	n, bots := p.online(now)
+	if n == p.srv.activeCount && bots == p.srv.activeBots {
 		return nil
 	}
-	if err := p.store.SetActivePlayers(ctx, p.srv.info.ID, n); err != nil {
+	if err := p.store.SetActivePlayers(ctx, p.srv.info.ID, n, bots); err != nil {
 		return err
 	}
-	p.srv.activeCount = n
+	p.srv.activeCount, p.srv.activeBots = n, bots
 	return nil
 }
 
@@ -1129,7 +1143,7 @@ func (p *Processor) serverLoad(ctx context.Context, now time.Time) error {
 	if !srv.ready || now.Sub(srv.loadSince) < LoadInterval {
 		return nil
 	}
-	n := p.online(now)
+	n, _ := p.online(now)
 	l := stats.Load{ServerID: srv.info.ID, Time: now.Unix(), Players: n, MinPlayers: min(srv.minPlay, n), MaxPlayers: max(srv.maxPlay, n),
 		MapID: srv.mapID, Uptime: int(now.Sub(srv.upSince).Minutes())}
 	active := now.Sub(srv.lastLine) <= LoadInterval || now.Sub(srv.lastStatus) <= LoadInterval

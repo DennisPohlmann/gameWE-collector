@@ -73,7 +73,7 @@ GRANT SELECT ON `hlstats_Players_Teams_History_Months` TO 'gamewe_web'@'%';
 GRANT SELECT ON `hlstats_Players_Weapons` TO 'gamewe_web'@'%';
 GRANT SELECT ON `hlstats_Players_Weapons_History_Months` TO 'gamewe_web'@'%';
 GRANT SELECT ON `hlstats_Roles` TO 'gamewe_web'@'%';
-GRANT SELECT (`serverId`, `address`, `port`, `name`, `game`, `publicaddress`, `statusurl`, `kills`, `players`, `rounds`, `suicides`, `headshots`, `bombs_planted`, `bombs_defused`, `ct_wins`, `ts_wins`, `act_players`, `max_players`, `act_map`, `map_rounds`, `map_ct_wins`, `map_ts_wins`, `map_started`, `map_changes`, `ct_shots`, `ct_hits`, `ts_shots`, `ts_hits`, `map_ct_shots`, `map_ct_hits`, `map_ts_shots`, `map_ts_hits`, `display_id`, `lat`, `lng`, `country_code`, `country_name`, `city`, `state`, `fixed_location`, `account_id`, `vac_status`, `steam_status`, `server_version`, `server_os`, `server_vac`) ON `hlstats_Servers` TO 'gamewe_web'@'%';
+GRANT SELECT (`serverId`, `address`, `port`, `name`, `game`, `publicaddress`, `statusurl`, `kills`, `players`, `rounds`, `suicides`, `headshots`, `bombs_planted`, `bombs_defused`, `ct_wins`, `ts_wins`, `act_players`, `max_players`, `act_map`, `map_rounds`, `map_ct_wins`, `map_ts_wins`, `map_started`, `map_changes`, `ct_shots`, `ct_hits`, `ts_shots`, `ts_hits`, `map_ct_shots`, `map_ct_hits`, `map_ts_shots`, `map_ts_hits`, `display_id`, `lat`, `lng`, `country_code`, `country_name`, `city`, `state`, `fixed_location`, `account_id`, `vac_status`, `steam_status`, `server_version`, `server_os`, `server_vac`, `act_bots`) ON `hlstats_Servers` TO 'gamewe_web'@'%';
 GRANT SELECT ON `hlstats_Style` TO 'gamewe_web'@'%';
 GRANT SELECT ON `hlstats_Teams` TO 'gamewe_web'@'%';
 GRANT SELECT ON `hlstats_Trend` TO 'gamewe_web'@'%';

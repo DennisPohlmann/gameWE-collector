@@ -354,11 +354,11 @@ func (s *Store) Options(ctx context.Context) (map[string]string, error) {
 }
 
 // ResetLive removes the server's rows from hlstats_Livestats (at start and
-// stop) and sets act_players to 0.
+// stop) and sets act_players and act_bots to 0.
 func (s *Store) ResetLive(ctx context.Context, serverID int64) error {
 	return s.run(ctx,
 		step{`DELETE FROM hlstats_Livestats WHERE server_id = ?`, []any{serverID}},
-		step{`UPDATE hlstats_Servers SET act_players = 0 WHERE serverId = ?`, []any{serverID}})
+		step{`UPDATE hlstats_Servers SET act_players = 0, act_bots = 0 WHERE serverId = ?`, []any{serverID}})
 }
 
 // refID looks up, and creates if missing, a (game, code) row of
@@ -1199,9 +1199,10 @@ func (s *Store) MapStarted(ctx context.Context, ev Ev, name string) (int, error)
 	return id, s.run(ctx, steps...)
 }
 
-// SetActivePlayers updates hlstats_Servers.act_players.
-func (s *Store) SetActivePlayers(ctx context.Context, serverID int64, n int) error {
-	return s.run(ctx, step{`UPDATE hlstats_Servers SET act_players = ? WHERE serverId = ?`, []any{n, serverID}})
+// SetActivePlayers updates hlstats_Servers.act_players (players and bots)
+// and act_bots (the bots among them).
+func (s *Store) SetActivePlayers(ctx context.Context, serverID int64, n, bots int) error {
+	return s.run(ctx, step{`UPDATE hlstats_Servers SET act_players = ?, act_bots = ? WHERE serverId = ?`, []any{n, bots, serverID}})
 }
 
 // RecordChat stores a chat line (only with gamewe_store_chat). message_mode

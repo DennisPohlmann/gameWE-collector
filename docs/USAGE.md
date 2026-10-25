@@ -159,7 +159,7 @@ to every server over RCON (switches in `features:` of the config file, all on by
 default):
 
 - **status** every 10 seconds (`features.rcon_status.interval`): players and
-  bots in the live view and `act_players` (also on an empty server and right
+  bots in the live view, `act_players` and `act_bots` (also on an empty server and right
   after a collector restart, without any log line), the map, maximum players,
   the name if none is set, pings. One connection per server stays open.
 - **log address** every minute (`features.log_address.interval`): `logaddress_list`; if the collector is missing,

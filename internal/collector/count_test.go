@@ -172,7 +172,7 @@ func TestMapChangeHoldsPlayerCount(t *testing.T) {
 	}
 	handleAll(t, p, t0, `Started map "de_dust2" (CRC "1")`)
 	status(t0.Add(time.Second), bots("Old"))
-	if n := p.online(t0.Add(time.Second)); n != 32 {
+	if n, _ := p.online(t0.Add(time.Second)); n != 32 {
 		t.Fatalf("online %d, want 32", n)
 	}
 
@@ -180,7 +180,7 @@ func TestMapChangeHoldsPlayerCount(t *testing.T) {
 	tick(start) // starts the interval of the map change (no row: no line or status for an interval)
 	change := start.Add(LoadInterval - 5*time.Second)
 	handleAll(t, p, change, `Loading map "de_nuke"`)
-	if n := p.online(change); n != 32 {
+	if n, _ := p.online(change); n != 32 {
 		t.Errorf("online right after the map change %d, want 32 (held)", n)
 	}
 	// Late lines of the old bots, then the new bots.
@@ -268,7 +268,7 @@ func TestStatusCountAfterMapChange(t *testing.T) {
 			for i := 0; i < 16; i++ {
 				handleAll(t, p, at.Add(time.Second), fmt.Sprintf(`"Old %d<%d><BOT><CT>" killed "New %d<%d><BOT><TERRORIST>" with "ak47"`, i, 10+i, i, 50+i))
 			}
-			if n := p.online(at.Add(2 * time.Second)); n != 32 {
+			if n, _ := p.online(at.Add(2 * time.Second)); n != 32 {
 				t.Fatalf("online %d with %d tracked, want the 32 of status", n, len(p.srv.players))
 			}
 		}

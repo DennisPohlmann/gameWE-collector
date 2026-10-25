@@ -38,6 +38,7 @@ type memStore struct {
 	geo          []string                        // "player:flag", "serverN:flag"
 	loads        []stats.Load
 	active       []int // SetActivePlayers values
+	activeBots   []int // and their bots
 	status       []string
 	infos        []stats.ServerInfo // ServerInfo writes
 	maps         []string           // MapStarted calls
@@ -164,10 +165,11 @@ func (m *memStore) liveTeam(id int64, team string) {
 	}
 	m.teams[id] = team
 }
-func (m *memStore) SetActivePlayers(_ context.Context, _ int64, n int) error {
+func (m *memStore) SetActivePlayers(_ context.Context, _ int64, n, bots int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.active = append(m.active, n)
+	m.activeBots = append(m.activeBots, bots)
 	return nil
 }
 func (m *memStore) RecordChat(context.Context, stats.Ev, stats.Live, bool, string) error {

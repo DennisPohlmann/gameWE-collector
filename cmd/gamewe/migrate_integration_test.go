@@ -209,8 +209,8 @@ func TestMigrateRefusesRunningCollector(t *testing.T) {
 	cfg := writeConfig(t, d)
 	stop := startRun(t, bin, cfg) // creates the tables (auto_migrate) and holds the collector lock
 	for _, q := range []string{
-		`ALTER TABLE hlstats_Servers DROP COLUMN server_version, DROP COLUMN server_os, DROP COLUMN server_vac`,
-		`DELETE FROM ` + database.MigrationsTable + ` WHERE version = 5`,
+		`ALTER TABLE hlstats_Servers DROP COLUMN server_version, DROP COLUMN server_os, DROP COLUMN server_vac, DROP COLUMN act_bots`,
+		`DELETE FROM ` + database.MigrationsTable + ` WHERE version >= 5`,
 	} {
 		if _, err := admin.Exec(q); err != nil {
 			t.Fatal(err)
