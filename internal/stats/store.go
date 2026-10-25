@@ -76,7 +76,30 @@ type Server struct {
 	// LogSecret is sv_logsecret (features.log_secret), set by hand in the
 	// CLI or the web admin; empty: packets are not checked.
 	LogSecret string
-	Err       error // why the row cannot be used
+	Info      ServerInfo // server_version, server_os, server_vac as stored
+	Err       error      // why the row cannot be used
+}
+
+// ServerInfo is what the game server says about itself (A2S_INFO, RCON
+// status; features.server_info): hlstats_Servers.server_version, server_os
+// ("linux", "windows", "mac") and server_vac ("secure", "insecure"). An
+// empty field is unknown.
+type ServerInfo struct {
+	Version, OS, VAC string
+}
+
+// Or fills the empty fields of i from o.
+func (i ServerInfo) Or(o ServerInfo) ServerInfo {
+	if i.Version == "" {
+		i.Version = o.Version
+	}
+	if i.OS == "" {
+		i.OS = o.OS
+	}
+	if i.VAC == "" {
+		i.VAC = o.VAC
+	}
+	return i
 }
 
 // Ev is the context of one event: server, current map and time.
@@ -231,13 +254,19 @@ func (s *Store) Servers(ctx context.Context) ([]Server, error) {
 	} else if ok {
 		secret = "s.log_secret"
 	}
+	info := "'', '', ''"
+	if ok, err := s.hasColumn(ctx, "hlstats_Servers", "server_version"); err != nil {
+		return nil, err
+	} else if ok {
+		info = "s.server_version, s.server_os, s.server_vac"
+	}
 	realgame := "''"
 	if ok, err := s.hasColumn(ctx, "hlstats_Games", "realgame"); err != nil {
 		return nil, err
 	} else if ok {
 		realgame = "COALESCE(g.realgame, '')"
 	}
-	rows, err := s.query(ctx, `SELECT s.serverId, s.address, s.port, s.name, s.game, s.act_map, s.max_players, COALESCE(g.id, 0), `+rcon+`, `+secret+`, `+realgame+`
+	rows, err := s.query(ctx, `SELECT s.serverId, s.address, s.port, s.name, s.game, s.act_map, s.max_players, COALESCE(g.id, 0), `+rcon+`, `+secret+`, `+realgame+`, `+info+`
 		FROM hlstats_Servers s LEFT JOIN hlstats_Games g ON g.code = s.game ORDER BY s.serverId`)
 	if err != nil {
 		return nil, err
@@ -249,7 +278,7 @@ func (s *Store) Servers(ctx context.Context) ([]Server, error) {
 		var host, realgame string
 		var port int
 		if err := rows.Scan(&srv.ID, &host, &port, &srv.Name, &srv.Game, &srv.Map, &srv.MaxPlayers, &srv.GameID, &srv.RconPassword,
-			&srv.LogSecret, &realgame); err != nil {
+			&srv.LogSecret, &realgame, &srv.Info.Version, &srv.Info.OS, &srv.Info.VAC); err != nil {
 			return nil, err
 		}
 		srv.Base, srv.Engine, srv.Warning = games.Resolve(realgame, srv.Game)

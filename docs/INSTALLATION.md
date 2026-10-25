@@ -224,6 +224,9 @@ features:
   log_address:
     enabled: true               # re-register the collector (logaddress_add, log on) when missing
     interval: 1m
+  server_info:
+    enabled: true               # version, OS, VAC of every server (A2S_INFO, no RCON needed)
+    interval: 5m
   daily_awards:
     enabled: true
     timezone: UTC               # IANA zone, e.g. Europe/Berlin

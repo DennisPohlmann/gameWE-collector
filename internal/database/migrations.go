@@ -67,6 +67,11 @@ var Migrations = []Migration{
 		Desc: "hlstats_Servers.log_secret and log_secret_changed for features.log_secret (sv_logsecret; not readable by gamewe_web)",
 		Sync: true,
 	},
+	{
+		Version: 5, Name: "server-info",
+		Desc: "hlstats_Servers.server_version, server_os and server_vac (features.server_info: A2S_INFO and RCON status; readable by gamewe_web)",
+		Sync: true,
+	},
 }
 
 // Latest is the newest schema version this collector knows.

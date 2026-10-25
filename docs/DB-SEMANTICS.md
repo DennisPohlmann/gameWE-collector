@@ -96,7 +96,7 @@ database without the column the collector writes the events without it
 
 | Table | Written when | Columns / meaning |
 |-------|--------------|-------------------|
-| `hlstats_Servers` | read every minute: the list of accepted game servers (`address`, `port`, `game`, `name`, `rcon_password`, `log_secret`). Never created by the collector (only `gamewe simulate` adds its test server). Counters written on kills, suicides, rounds, map change, weaponstats, connect/disconnect | `kills`, `headshots`, `suicides`, `rounds`, `ct_wins`, `ts_wins`, `bombs_planted`, `bombs_defused`, `act_players` (players currently tracked: one per SteamID / bot name, never more than `max_players` of the last RCON status; the longest silent visits end when more come), `players` (players of the game without `hideranking = 2`, every minute), `act_map`, `map_started` (Unix time), `map_changes`, `map_rounds`, `map_ct_wins`, `map_ts_wins`, `ct_shots`/`ct_hits`/`ts_shots`/`ts_hits` and the `map_` variants (from weaponstats, by the player's team; the `map_` values reset on map change). `name`, `game`, `address`, `port`, `rcon_password`, `log_secret` and `log_secret_changed` are never written (the log secret is set by hand, CONFIG.md, "Log secret"). |
+| `hlstats_Servers` | read every minute: the list of accepted game servers (`address`, `port`, `game`, `name`, `rcon_password`, `log_secret`). Never created by the collector (only `gamewe simulate` adds its test server). Counters written on kills, suicides, rounds, map change, weaponstats, connect/disconnect | `kills`, `headshots`, `suicides`, `rounds`, `ct_wins`, `ts_wins`, `bombs_planted`, `bombs_defused`, `act_players` (players currently tracked: one per SteamID / bot name, never more than `max_players` of the last RCON status; the longest silent visits end when more come), `players` (players of the game without `hideranking = 2`, every minute), `act_map`, `map_started` (Unix time), `map_changes`, `map_rounds`, `map_ct_wins`, `map_ts_wins`, `ct_shots`/`ct_hits`/`ts_shots`/`ts_hits` and the `map_` variants (from weaponstats, by the player's team; the `map_` values reset on map change). `server_version`, `server_os`, `server_vac` from `A2S_INFO` and RCON status (see "Server info" below). `name`, `game`, `address`, `port`, `rcon_password`, `log_secret` and `log_secret_changed` are never written (the log secret is set by hand, CONFIG.md, "Log secret"). |
 | `hlstats_Games` | read only (`gamewe game` writes) | `code` → `id`; `realgame` → the base game and engine (GAMES.md) |
 | `hlstats_Options` | read every minute; `gamewe_heartbeat` written every 60 s | the collector's settings (`gamewe_*` keys); `gamewe_heartbeat` = Unix time of the running collector's last poll (fresh = less than 2 minutes: queued jobs will be done) |
 | `hlstats_gamewe_jobs` | queued by the web admin / `gamewe reset`, polled every 10 s | `job_type` `reset`, `game`, `mode` `player-stats`, `all-stats` or `all` (the old `stats` is run as `player-stats`; see [USAGE](USAGE.md#resetting-a-ranking) for the tables of each mode), `status` `pending` → `running` → `done` / `failed`, `started_at`, `finished_at` (Unix time), `result` (rows per table, or the error). A second job for a game with one pending or running is `failed` ("refused"); a job left `running` by a stopped collector is done again at the next start; finished jobs are deleted after 30 days |
@@ -153,6 +153,22 @@ order with the server's log lines:
 Status counts as a sign of life for `hlstats_server_load`, so an empty server
 gets its rows too. Nothing is written when a poll changes nothing. Without
 `rcon_password` or with `rcon_status` off only the log lines fill these fields.
+
+## Server info
+
+With `features.server_info` (config file, default on) the collector sends an
+`A2S_INFO` query to every server's game port every 5 minutes (no RCON
+password needed) and reads the `version` / `os` lines of each RCON status:
+
+| Field | Values | From |
+|-------|--------|------|
+| `hlstats_Servers.server_version` | the version string up to the first `/`, printable ASCII, at most 64 characters (`9540945`, `1.40.2.2`, GoldSrc `1.1.2.7`) | `A2S_INFO` (Source answer); status `version :` line (GoldSrc: the part after the protocol number) |
+| `hlstats_Servers.server_os` | `linux`, `windows`, `mac` | `A2S_INFO` environment byte; status `os :` / `os/type :` line where the game lists one |
+| `hlstats_Servers.server_vac` | `secure`, `insecure` | `A2S_INFO` VAC byte; `secure` / `insecure` in the status `version :` line |
+
+`''` is unknown. Where both sources answer, `A2S_INFO` wins; a value no source
+reports any more stays as it is. The row is written only when a value
+changes. With `server_info` off nothing is written.
 
 ## Locations (GeoIP)
 

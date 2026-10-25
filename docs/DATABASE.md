@@ -165,6 +165,7 @@ What it does:
 | 2 | `gamewe-0.2.1` | tables `hlstats_Events_Latency`, `hlstats_gamewe_jobs`; columns `hlstats_Servers.rcon_password`, `hlstats_Games.realgame`, `server_id` on the nine event tables, kill positions on `hlstats_Events_Frags`; indexes `server_id` on the event tables, `map`, `killer_time`, `victim_time` on Frags (they replace `killerId`, `victimId`), `date` and `award_id` on `hlstats_Awards_History`; missing reference data |
 | 3 | `awards-indexes` | indexes for the awards page: `time_player` on `hlstats_Events_Latency` (timestamp_id, playerId, ping), `time_action` on `hlstats_Events_PlayerActions` (timestamp_id, actionId, playerId) |
 | 4 | `log-secret` | columns `hlstats_Servers.log_secret` (varchar(64), `''` = none) and `log_secret_changed` (Unix time the secret was last changed) for `features.log_secret`; `gamewe_web` cannot read them |
+| 5 | `server-info` | columns `hlstats_Servers.server_version` (varchar(64)), `server_os` (varchar(8): `linux`, `windows`, `mac`) and `server_vac` (varchar(8): `secure`, `insecure`), `''` = unknown, for `features.server_info`; `gamewe_web` may read them (the rights step of the migration grants them) |
 
 The SQL files of older packages (`/opt/gamewe/collector/doc/schema/hlstatsx.sql`,
 `init/01_schema.sql`, `02_seed.sql`, `03_grants.sql` and the PostgreSQL
@@ -230,6 +231,10 @@ The collector and `gamewe_web_admin` can read (and the web admin write) them.
 packets not checked), set by hand with `gamewe server set -logsecret` or in
 the web admin; the collector only reads it. `log_secret_changed` is the Unix
 time it was last changed there (0 = unknown); it is informational only.
+
+`server_version`, `server_os` and `server_vac` are what the game server says
+about itself (`features.server_info`: `A2S_INFO`, RCON `status`), written by
+the collector only; public information that `gamewe_web` may read.
 
 ## PostgreSQL
 

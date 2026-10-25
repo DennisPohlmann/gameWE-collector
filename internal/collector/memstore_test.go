@@ -39,8 +39,9 @@ type memStore struct {
 	loads        []stats.Load
 	active       []int // SetActivePlayers values
 	status       []string
-	maps         []string // MapStarted calls
-	connects     []string // "player:ip" of each Connect
+	infos        []stats.ServerInfo // ServerInfo writes
+	maps         []string           // MapStarted calls
+	connects     []string           // "player:ip" of each Connect
 	connectTypes map[int64]int
 	latency      []string         // "player:ping" samples
 	teams        map[int64]string // live row team by player id
@@ -209,6 +210,13 @@ func (m *memStore) ServerStatus(_ context.Context, id int64, _ string, maxPlayer
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.status = append(m.status, fmt.Sprintf("%d:%d:%d", id, maxPlayers, len(pings)))
+	return nil
+}
+
+func (m *memStore) ServerInfo(_ context.Context, _ int64, info stats.ServerInfo) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.infos = append(m.infos, info)
 	return nil
 }
 

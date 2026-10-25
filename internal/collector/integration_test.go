@@ -838,6 +838,35 @@ func TestIntegrationStatus(t *testing.T) {
 	}
 }
 
+// Server info from A2S_INFO and status lands in hlstats_Servers and is read
+// back with the server list.
+func TestIntegrationServerInfo(t *testing.T) {
+	db := testDB(t)
+	insertServer(t, db, "203.0.113.137:27015", "css")
+	set := settings.NewLive(settings.Defaults())
+	store := stats.NewStore(db, set)
+	ctx := context.Background()
+	servers, err := store.Servers(ctx)
+	if err != nil || len(servers) != 1 || servers[0].Info != (stats.ServerInfo{}) {
+		t.Fatalf("servers %+v %v", servers, err)
+	}
+	p := NewProcessor(store, set, servers[0], &recorder{}, strictLog(t))
+	if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "9540945", OS: OSLinux}); err != nil {
+		t.Fatal(err)
+	}
+	st, err := ParseStatus("hostname: x\nversion : 9540945/24 9540945 insecure\nmap     : de_dust2\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Status(ctx, st, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	servers, err = store.Servers(ctx)
+	if want := (stats.ServerInfo{Version: "9540945", OS: OSLinux, VAC: VACInsecure}); err != nil || servers[0].Info != want {
+		t.Errorf("info %+v %v, want %+v", servers[0].Info, err, want)
+	}
+}
+
 // A ranking cloned from css (another hlstats_Games code with copies of the
 // css rows, as the web admin creates css1, css2, ...) is a game of its own:
 // actions, weapons, teams, players and awards use its rows only.

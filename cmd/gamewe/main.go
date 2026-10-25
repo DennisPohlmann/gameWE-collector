@@ -343,7 +343,10 @@ func runCmd(args []string) error {
 	every, _ := rs.Every() // checked by config.Validate
 	la := cfg.Features.LogAddress
 	laEvery, _ := la.Every() // checked by config.Validate
+	si := cfg.Features.ServerInfo
+	siEvery, _ := si.Every() // checked by config.Validate
 	hub.Monitor = collector.MonitorConfig{Status: rs.Enabled, StatusInterval: every, LogAddress: la.Enabled, LogInterval: laEvery,
+		ServerInfo: si.Enabled, InfoInterval: siEvery,
 		PublicAddress: cfg.Listen.PublicAddress, ListenPort: listenPort(listen, cfg.Listen.Port)}
 	ls := cfg.Features.LogSecret
 	hub.Secret = collector.SecretConfig{Mode: secretMode(ls.Enabled)}
@@ -394,7 +397,7 @@ func runCmd(args []string) error {
 		go collector.RunDailyAwards(ctx, store, collector.Schedule{Loc: loc, Hour: h, Minute: m}, log)
 	}
 	log.Info("features", "rcon_status", rs.Enabled, "rcon_status_every", every.String(), "log_address", la.Enabled, "log_address_every", laEvery.String(),
-		"log_secret", ls.Enabled, "daily_awards", da.Enabled, "daily_awards_at", da.Time+" "+da.Timezone)
+		"log_secret", ls.Enabled, "server_info", si.Enabled, "server_info_every", siEvery.String(), "daily_awards", da.Enabled, "daily_awards_at", da.Time+" "+da.Timezone)
 
 	// Config, database and servers are fine; READY=1 once the UDP port is
 	// open, so that systemctl start / restart report every failure before.
@@ -445,6 +448,8 @@ type checkFeatures struct {
 	LogAddress          bool   `json:"log_address"`
 	LogAddressEvery     string `json:"log_address_every"`
 	LogSecret           bool   `json:"log_secret"`
+	ServerInfo          bool   `json:"server_info"`
+	ServerInfoEvery     string `json:"server_info_every"`
 	DailyAwards         bool   `json:"daily_awards"`
 	DailyAwardsTime     string `json:"daily_awards_time"`
 	DailyAwardsTimezone string `json:"daily_awards_timezone"`
@@ -527,10 +532,13 @@ func check(cfg config.Config, out io.Writer, rep *checkReport) error {
 	da := cfg.Features.DailyAwards
 	every, _ := cfg.Features.RconStatus.Every()
 	laEvery, _ := cfg.Features.LogAddress.Every()
-	fmt.Fprintf(out, "features:  rcon_status %v (every %v), log_address %v (every %v), log_secret %v, daily_awards %v (%s %s)\n",
-		cfg.Features.RconStatus.Enabled, every, cfg.Features.LogAddress.Enabled, laEvery, cfg.Features.LogSecret.Enabled, da.Enabled, da.Time, da.Timezone)
+	si := cfg.Features.ServerInfo
+	siEvery, _ := si.Every()
+	fmt.Fprintf(out, "features:  rcon_status %v (every %v), log_address %v (every %v), log_secret %v, server_info %v (every %v), daily_awards %v (%s %s)\n",
+		cfg.Features.RconStatus.Enabled, every, cfg.Features.LogAddress.Enabled, laEvery, cfg.Features.LogSecret.Enabled,
+		si.Enabled, siEvery, da.Enabled, da.Time, da.Timezone)
 	rep.Features = checkFeatures{cfg.Features.RconStatus.Enabled, every.String(), cfg.Features.LogAddress.Enabled, laEvery.String(),
-		cfg.Features.LogSecret.Enabled, da.Enabled, da.Time, da.Timezone}
+		cfg.Features.LogSecret.Enabled, si.Enabled, siEvery.String(), da.Enabled, da.Time, da.Timezone}
 	if o := cfg.Features.LogSecret.Obsolete; len(o) > 0 {
 		warn(fmt.Sprintf("features.log_secret: %s ignored, the automatic log secret was removed (set it per server with gamewe server set -logsecret)", strings.Join(o, ", ")))
 	}

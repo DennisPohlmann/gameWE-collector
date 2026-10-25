@@ -50,6 +50,18 @@ end (L4D, L4D2 and Insurgency also every 180 seconds). Each line therefore holds
 the counts since the previous line, and the collector adds them up per player and
 weapon. TF2 writes no `weaponstats2`.
 
+**Server query (A2S_INFO).** With `features.server_info` the collector sends
+Valve's `A2S_INFO` query (`FF FF FF FF 54 "Source Engine Query" 00`, plus the
+4 challenge bytes when the server answers with `S2C_CHALLENGE` `FF FF FF FF
+41 <challenge>`) over UDP to the game port of every server in
+`hlstats_Servers`, every `features.server_info.interval`. It reads the
+version string, the environment byte (`l` Linux, `w` Windows, `m`/`o` Mac)
+and the VAC byte of the Source answer (`FF FF FF FF 49 ...`), and environment
+and VAC of the old GoldSrc answer (`FF FF FF FF 6D ...`, no version). Only one
+packet of at most 1400 bytes from the server's own address is read (split
+answers are not supported); the strings are cut to printable ASCII. The game
+server needs nothing extra: the server browser uses the same query.
+
 Replies are console commands that the collector sends over **Source RCON** (TCP,
 to the server's `address` and `port` with `rcon_password` from `hlstats_Servers`).
 The plugin offers them. The collector uses the `gamewe_` prefix, which the gameWE

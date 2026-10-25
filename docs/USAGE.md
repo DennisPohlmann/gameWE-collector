@@ -147,6 +147,13 @@ default):
   `logaddress_add` in its config is back within that interval.
 - **stats** every 10 minutes for `hlstats_server_load` (`gamewe_server_load`).
 
+Without RCON, every 5 minutes (`features.server_info.interval`) the collector
+also sends an `A2S_INFO` query (the server browser's query) to each server's
+game port and stores the server version, operating system and VAC state
+(`hlstats_Servers.server_version`, `server_os`, `server_vac`, shown on the
+web's server lists); with RCON the `version` line of `status` fills in what
+`A2S_INFO` does not tell.
+
 Everything can be checked by hand (`-config` as for `run`):
 
 ```bash

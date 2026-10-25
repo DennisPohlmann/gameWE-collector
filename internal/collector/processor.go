@@ -62,6 +62,7 @@ type Store interface {
 	ServerLocation(ctx context.Context, serverID int64, loc stats.Location) error
 	RecordServerLoad(ctx context.Context, l stats.Load) error
 	ServerStatus(ctx context.Context, serverID int64, hostname string, maxPlayers int, pings map[string]int) error
+	ServerInfo(ctx context.Context, serverID int64, info stats.ServerInfo) error
 	SetConnectType(ctx context.Context, playerID int64, t int) error
 	RecordLatency(ctx context.Context, ev stats.Ev, p stats.Live, ping int) error
 	SetLiveTeam(ctx context.Context, ev stats.Ev, p stats.Live) error
@@ -124,7 +125,10 @@ type serverState struct {
 	statusMap  string // map set by a status, not by a log line yet
 	statusHost string // hostname and max players of the last status
 	statusMax  int
-	gone       map[string]time.Time // players whose disconnect was logged, by key
+	// Server info (features.server_info): the last answers of A2S_INFO and
+	// of status, and what hlstats_Servers holds.
+	a2sInfo, rconInfo, storedInfo stats.ServerInfo
+	gone                          map[string]time.Time // players whose disconnect was logged, by key
 	// Players whose connect is stored (connect line, or status for those
 	// already on the server), by key, until their disconnect line. Kept over
 	// map changes: the players stay connected, only their visits restart.
@@ -235,7 +239,7 @@ func NewProcessor(store Store, set *settings.Live, server stats.Server, reply Re
 		set:   set,
 		cmds:  Commands{set: set, store: store, reply: reply, log: log},
 		log:   log.With("server", server.Address, "server_id", server.ID),
-		srv:   serverState{info: server, players: map[string]*playerState{}},
+		srv:   serverState{info: server, players: map[string]*playerState{}, storedInfo: server.Info},
 
 		geoCache: map[netip.Addr]geoEntry{},
 
@@ -750,10 +754,36 @@ func (p *Processor) statusServer(ctx context.Context, st Status, pings map[strin
 	if st.MaxPlayers != srv.statusMax {
 		maxPlayers, srv.statusMax = st.MaxPlayers, st.MaxPlayers
 	}
+	srv.rconInfo = st.Info
+	if err := p.writeInfo(ctx); err != nil {
+		return err
+	}
 	if host == "" && maxPlayers == 0 && len(pings) == 0 {
 		return nil
 	}
 	return p.store.ServerStatus(ctx, srv.info.ID, host, maxPlayers, pings)
+}
+
+// ServerInfo applies an A2S_INFO answer (features.server_info).
+func (p *Processor) ServerInfo(ctx context.Context, info stats.ServerInfo) error {
+	p.srv.a2sInfo = info
+	return p.writeInfo(ctx)
+}
+
+// writeInfo stores version, OS and VAC state when they changed: A2S_INFO
+// first, status for what it does not tell; a value nobody reports any more
+// stays as it is.
+func (p *Processor) writeInfo(ctx context.Context) error {
+	srv := &p.srv
+	info := srv.a2sInfo.Or(srv.rconInfo).Or(srv.storedInfo)
+	if info == srv.storedInfo {
+		return nil
+	}
+	if err := p.store.ServerInfo(ctx, srv.info.ID, info); err != nil {
+		return err
+	}
+	srv.storedInfo = info
+	return nil
 }
 
 // Shutdown ends the visits of all players still on the server and clears

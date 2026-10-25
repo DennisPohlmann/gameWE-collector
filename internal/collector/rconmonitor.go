@@ -53,6 +53,7 @@ type Status struct {
 	Map        string
 	MaxPlayers int
 	Players    []StatusPlayer
+	Info       stats.ServerInfo // version, OS and VAC state where status lists them
 }
 
 var (
@@ -80,6 +81,7 @@ func ParseStatus(out string) (Status, error) {
 	if m := reStatusMax.FindStringSubmatch(out); m != nil {
 		st.MaxPlayers, _ = strconv.Atoi(m[1])
 	}
+	st.Info = parseStatusInfo(out)
 	if reStatusGoldSrcHead.MatchString(out) {
 		for _, m := range reStatusGoldSrc.FindAllStringSubmatch(out, -1) {
 			// # slot "name" userid uniqueid frag time ping loss [adr]
@@ -232,6 +234,8 @@ type MonitorConfig struct {
 	StatusInterval time.Duration // how often (default DefaultStatusInterval)
 	LogAddress     bool          // keep the collector registered with logaddress_add
 	LogInterval    time.Duration // how often (default DefaultLogAddressInterval)
+	ServerInfo     bool          // query A2S_INFO (version, OS, VAC); also read from status
+	InfoInterval   time.Duration // how often (default DefaultServerInfoInterval)
 	PublicAddress  string        // listen.public_address
 	ListenPort     int
 }
@@ -239,9 +243,11 @@ type MonitorConfig struct {
 // monitor polls one game server over RCON until ctx is done: "status" every
 // StatusInterval (handed to deliver; after errors the wait doubles up to
 // MonitorInterval) and the log address every LogInterval, over one
-// connection that is kept open. srv returns the current hlstats_Servers
-// row (the RCON password can change in the web admin).
-func monitor(ctx context.Context, srv func() stats.Server, cfg MonitorConfig, deliver func(Status, time.Time), timeout func() time.Duration, log *slog.Logger) {
+// connection that is kept open; and A2S_INFO on the game port every
+// InfoInterval (handed to info; no RCON needed). srv returns the current
+// hlstats_Servers row (the RCON password can change in the web admin).
+func monitor(ctx context.Context, srv func() stats.Server, cfg MonitorConfig, deliver func(Status, time.Time), info func(stats.ServerInfo),
+	timeout func() time.Duration, log *slog.Logger) {
 	var c rcon.Conn
 	var key connKey
 	defer func() {
@@ -273,16 +279,25 @@ func monitor(ctx context.Context, srv func() stats.Server, cfg MonitorConfig, de
 	if logEvery <= 0 {
 		logEvery = DefaultLogAddressInterval
 	}
+	infoEvery := cfg.InfoInterval
+	if infoEvery <= 0 {
+		infoEvery = DefaultServerInfoInterval
+	}
 	statusT := time.NewTimer(firstStatus) // first rounds shortly after start
 	logT := time.NewTimer(firstLogAddress)
+	infoT := time.NewTimer(firstServerInfo)
 	if !cfg.Status {
 		statusT.Stop()
 	}
 	if !cfg.LogAddress {
 		logT.Stop()
 	}
+	if !cfg.ServerInfo || info == nil {
+		infoT.Stop()
+	}
 	defer statusT.Stop()
 	defer logT.Stop()
+	defer infoT.Stop()
 	client := func() rcon.Conn {
 		s := srv()
 		if s.RconPassword == "" {
@@ -319,6 +334,20 @@ func monitor(ctx context.Context, srv func() stats.Server, cfg MonitorConfig, de
 				deliver(st, at)
 			}
 			statusT.Reset(wait)
+		case <-infoT.C:
+			infoT.Reset(infoEvery)
+			s := srv()
+			if !s.AddrPort.IsValid() {
+				continue
+			}
+			got, err := QueryServerInfo(ctx, s.AddrPort, timeout())
+			if ctx.Err() != nil {
+				return
+			}
+			report("server_info", err)
+			if err == nil {
+				info(got)
+			}
 		case <-logT.C:
 			logT.Reset(logEvery)
 			c := client()

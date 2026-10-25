@@ -95,6 +95,13 @@ func (s *Store) ServerStatus(ctx context.Context, serverID int64, hostname strin
 	return s.run(ctx, steps...)
 }
 
+// ServerInfo stores version, OS and VAC state of a game server
+// (hlstats_Servers.server_version, server_os, server_vac).
+func (s *Store) ServerInfo(ctx context.Context, serverID int64, info ServerInfo) error {
+	return s.run(ctx, step{`UPDATE hlstats_Servers SET server_version = ?, server_os = ?, server_vac = ? WHERE serverId = ?`,
+		[]any{clip(info.Version, 64), clip(info.OS, 8), clip(info.VAC, 8), serverID}})
+}
+
 // Connect types of hlstats_Players_Data.connect_type: how the player
 // connected last, from the client setting cl_connectmethod that the
 // SourceMod plugin logs (`"P" setup "cl_connectmethod" (value "...")`).

@@ -73,6 +73,7 @@ type Features struct {
 	LogAddress  LogAddress  `yaml:"log_address"`  // register the collector with logaddress_add
 	LogSecret   LogSecret   `yaml:"log_secret"`   // check sv_logsecret of the log packets
 	DailyAwards DailyAwards `yaml:"daily_awards"` // the daily awards job
+	ServerInfo  ServerInfo  `yaml:"server_info"`  // version, OS and VAC of every server (A2S_INFO, status)
 }
 
 // RconStatus polls every game server's "status" over RCON. In the config
@@ -147,6 +148,40 @@ func (l *LogAddress) UnmarshalYAML(n *yaml.Node) error {
 
 // Every returns Interval as a duration ("1m", "30s" or plain seconds).
 func (l LogAddress) Every() (time.Duration, error) { return interval(l.Interval) }
+
+// ServerInfo asks every game server for its version, OS and VAC state
+// (A2S_INFO on the game port, no RCON password needed; also read from the
+// RCON status) and stores them in hlstats_Servers. In the config file it is
+// a mapping, or just true / false.
+type ServerInfo struct {
+	Enabled  bool   `yaml:"enabled"`
+	Interval string `yaml:"interval"` // Go duration ("5m") or seconds
+}
+
+// MinServerInfoInterval is the shortest features.server_info.interval.
+const MinServerInfoInterval = 30 * time.Second
+
+// UnmarshalYAML accepts "server_info: true" and the mapping.
+func (s *ServerInfo) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode {
+		return n.Decode(&s.Enabled)
+	}
+	if n.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: features.server_info: want true / false or enabled, interval", n.Line)
+	}
+	for i := 0; i < len(n.Content); i += 2 {
+		switch k := n.Content[i].Value; k {
+		case "enabled", "interval":
+		default:
+			return fmt.Errorf("line %d: features.server_info: unknown key %q (enabled, interval)", n.Content[i].Line, k)
+		}
+	}
+	type plain ServerInfo
+	return n.Decode((*plain)(s))
+}
+
+// Every returns Interval as a duration ("5m" or plain seconds).
+func (s ServerInfo) Every() (time.Duration, error) { return interval(s.Interval) }
 
 // LogSecret checks the secret (sv_logsecret) in the log packets against
 // hlstats_Servers.log_secret: a server with a stored secret must send it,
@@ -280,7 +315,8 @@ func Defaults() Config {
 	}, GeoIP: GeoIP{AutoUpdate: true}, Features: Features{RconStatus: RconStatus{Enabled: true, Interval: "10s"},
 		LogAddress:  LogAddress{Enabled: true, Interval: "1m"},
 		LogSecret:   LogSecret{Enabled: true},
-		DailyAwards: DailyAwards{Enabled: true, Timezone: "UTC", Time: "00:00"}}}
+		DailyAwards: DailyAwards{Enabled: true, Timezone: "UTC", Time: "00:00"},
+		ServerInfo:  ServerInfo{Enabled: true, Interval: "5m"}}}
 }
 
 // Load reads, decodes and validates the YAML file at path.
@@ -370,6 +406,9 @@ func (c Config) Validate() error {
 	}
 	if d, err := c.Features.LogAddress.Every(); err != nil || d < MinLogAddressInterval {
 		return fmt.Errorf("features.log_address.interval %q: want a duration of at least %v, e.g. \"1m\"", c.Features.LogAddress.Interval, MinLogAddressInterval)
+	}
+	if d, err := c.Features.ServerInfo.Every(); err != nil || d < MinServerInfoInterval {
+		return fmt.Errorf("features.server_info.interval %q: want a duration of at least %v, e.g. \"5m\"", c.Features.ServerInfo.Interval, MinServerInfoInterval)
 	}
 	if _, err := c.Features.DailyAwards.Location(); err != nil {
 		return fmt.Errorf("features.daily_awards.timezone %q: %v (an IANA name such as UTC or Europe/Berlin)", c.Features.DailyAwards.Timezone, err)

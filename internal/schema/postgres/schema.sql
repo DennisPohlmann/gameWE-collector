@@ -877,6 +877,9 @@ CREATE TABLE hlstats_Servers (
   account_id integer NOT NULL DEFAULT 0,
   vac_status varchar(128) NOT NULL DEFAULT '',
   steam_status varchar(128) NOT NULL DEFAULT '',
+  server_version varchar(64) NOT NULL DEFAULT '',
+  server_os varchar(8) NOT NULL DEFAULT '',
+  server_vac varchar(8) NOT NULL DEFAULT '',
   PRIMARY KEY (serverId)
 );
 CREATE UNIQUE INDEX hlstats_Servers_address ON hlstats_Servers (address, port);

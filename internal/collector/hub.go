@@ -80,10 +80,11 @@ type worker struct {
 type packet struct {
 	line   string
 	at     time.Time
-	update *stats.Server // changed name / RCON password, applied in order
-	tick   bool          // end idle visits (Processor.Tick at time at)
-	status *Status       // RCON status polled at time at
-	pause  *pause        // stop here (between two lines) until released
+	update *stats.Server     // changed name / RCON password, applied in order
+	tick   bool              // end idle visits (Processor.Tick at time at)
+	status *Status           // RCON status polled at time at
+	info   *stats.ServerInfo // A2S_INFO answer
+	pause  *pause            // stop here (between two lines) until released
 }
 
 // pause stops a worker for a ranking reset: it drops the processor's
@@ -227,22 +228,29 @@ func (h *Hub) SetServers(list []stats.Server) (added, removed int) {
 			gate: newSecretGate()}
 		w.proc.Geo = h.Geo
 		h.applySecret(w, srv, now, grace)
-		if h.Monitor.Status || h.Monitor.LogAddress {
+		if h.Monitor.Status || h.Monitor.LogAddress || h.Monitor.ServerInfo {
 			ctx, cancel := context.WithCancel(context.Background())
 			w.stop = cancel
 			id := srv.ID
-			deliver := func(st Status, at time.Time) {
+			send := func(pk packet) {
 				h.mu.RLock()
 				defer h.mu.RUnlock()
 				if h.byID[id] == w { // not stopped
 					select {
-					case w.queue <- packet{status: &st, at: at}:
+					case w.queue <- pk:
 					default: // queue full: the next poll comes soon
 					}
 				}
 			}
+			deliver := func(st Status, at time.Time) {
+				if !h.Monitor.ServerInfo {
+					st.Info = stats.ServerInfo{}
+				}
+				send(packet{status: &st, at: at})
+			}
+			info := func(si stats.ServerInfo) { send(packet{info: &si}) }
 			mlog := h.log.With("server", srv.Address, "server_id", srv.ID)
-			go monitor(ctx, func() stats.Server { return h.server(id, srv) }, h.Monitor, deliver,
+			go monitor(ctx, func() stats.Server { return h.server(id, srv) }, h.Monitor, deliver, info,
 				func() time.Duration { return time.Duration(h.set.Get().RconTimeout) * time.Second }, mlog)
 		}
 		h.byID[id] = w
@@ -350,6 +358,14 @@ func (h *Hub) run(w *worker, addr string) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			if err := w.proc.Status(ctx, *pk.status, pk.at); err != nil {
 				h.log.Error("applying rcon status failed", "server", addr, "err", err)
+			}
+			cancel()
+			continue
+		}
+		if pk.info != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			if err := w.proc.ServerInfo(ctx, *pk.info); err != nil {
+				h.log.Error("storing the server info failed", "server", addr, "err", err)
 			}
 			cancel()
 			continue

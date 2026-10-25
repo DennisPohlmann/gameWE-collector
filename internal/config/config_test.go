@@ -139,6 +139,25 @@ func TestFeatures(t *testing.T) {
 			t.Errorf("log_address.interval %q accepted", bad)
 		}
 	}
+	if f := cfg.Features.ServerInfo; !f.Enabled || f.Interval != "5m" {
+		t.Errorf("server_info default: %+v", f)
+	}
+	cfg, err = Parse([]byte(base + "features:\n  server_info: false\n"))
+	if err != nil || cfg.Features.ServerInfo.Enabled {
+		t.Errorf("server_info short form: %+v %v", cfg.Features.ServerInfo, err)
+	}
+	cfg, err = Parse([]byte(base + "features:\n  server_info:\n    interval: 10m\n"))
+	if d, _ := cfg.Features.ServerInfo.Every(); err != nil || !cfg.Features.ServerInfo.Enabled || d != 10*time.Minute {
+		t.Errorf("server_info mapping: %+v %v", cfg.Features.ServerInfo, err)
+	}
+	for _, bad := range []string{"10s", "x", "0"} {
+		if _, err := Parse([]byte(base + "features:\n  server_info:\n    interval: " + bad + "\n")); err == nil {
+			t.Errorf("server_info.interval %q accepted", bad)
+		}
+	}
+	if _, err := Parse([]byte(base + "features:\n  server_info:\n    every: 1m\n")); err == nil {
+		t.Error("unknown server_info key accepted")
+	}
 	if _, err := Parse([]byte(base + "features:\n  log_address:\n    every: 1m\n")); err == nil {
 		t.Error("unknown log_address key accepted")
 	}

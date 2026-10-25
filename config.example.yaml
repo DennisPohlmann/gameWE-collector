@@ -69,6 +69,9 @@ features:
     enabled: true      # (set it with gamewe server set -logsecret or in the web admin, and the
                        # same sv_logsecret in server.cfg); a server without one is not checked.
                        # false: never checked
+  server_info:         # version, OS and VAC state of every server: A2S_INFO query on the game
+    enabled: true      # port (no rcon_password needed), and the version line of RCON status
+    interval: 5m       # how often (at least 30s)
   daily_awards:        # the daily awards of the previous day (by hand: gamewe awards -date ...)
     enabled: true
     timezone: UTC      # IANA time zone of the day and the time, e.g. Europe/Berlin
