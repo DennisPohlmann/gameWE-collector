@@ -47,6 +47,13 @@ type Settings struct {
 	RankBots        bool     // gamewe_rank_bots
 	GeoIPDB         string   // gamewe_geoip_db (path of a MaxMind-format city database)
 	ServerLoad      bool     // gamewe_server_load
+	PlayerReset     bool     // gamewe_player_reset
+	ResetCooldown   int      // gamewe_player_reset_cooldown (hours)
+	ConsoleEvents   bool     // gamewe_console_events
+	GlobalChat      bool     // gamewe_global_chat
+	// SiteURL is the web frontend's gamewe_site_url (a web key): the base of
+	// the pages the browser commands (!statsme, !status, ...) open.
+	SiteURL string
 }
 
 // DefaultGeoIPDB is where the collector looks for the GeoIP city database.
@@ -63,6 +70,7 @@ func Defaults() Settings {
 		},
 		StorePlayerIP: true, StoreChat: true, Commands: true, MenuTime: 15, RconTimeout: 5, LogLines: true, IdleTimeout: 300,
 		CommandPrefix: PrefixGameWE, CommandDisplay: DisplayPanel, StoreLocations: true, GeoIPDB: DefaultGeoIPDB, ServerLoad: true,
+		ResetCooldown: 24,
 	}
 }
 
@@ -102,6 +110,10 @@ func Keys() []Key {
 		{"gamewe_store_locations", b(d.StoreLocations), "1 = store kill and death positions (plugin location lines) in hlstats_Events_Locations"},
 		{"gamewe_geoip_db", d.GeoIPDB, "MaxMind-format city database (GeoLite2-City or DB-IP Lite City .mmdb) for player and server locations; skipped if missing"},
 		{"gamewe_server_load", b(d.ServerLoad), "1 = write hlstats_server_load every 10 minutes per server"},
+		{"gamewe_player_reset", b(d.PlayerReset), "1 = players may reset their own stats in game (!gamewe_reset, confirmed with !gamewe_reset 1); never for banned or admin-hidden players"},
+		{"gamewe_player_reset_cooldown", strconv.Itoa(d.ResetCooldown), "hours before a player may reset the own stats again (0 = no wait)"},
+		{"gamewe_console_events", b(d.ConsoleEvents), "1 = tell the involved players in their console the points of every kill and action (players switch it off with gamewe_display 0)"},
+		{"gamewe_global_chat", b(d.GlobalChat), "1 = announce player and team actions with points in the chat (players switch it off with gamewe_chat 0)"},
 	}
 }
 
@@ -214,6 +226,11 @@ func FromOptions(opts map[string]string) (Settings, []string) {
 		warn = append(warn, "hlstats_Options gamewe_ignore_bots is obsolete: bots are always recorded, only gamewe_rank_bots decides the rankings (1 is read as gamewe_rank_bots = 0); delete the row")
 	}
 	flag("gamewe_server_load", &s.ServerLoad)
+	flag("gamewe_player_reset", &s.PlayerReset)
+	num("gamewe_player_reset_cooldown", &s.ResetCooldown, 0)
+	flag("gamewe_console_events", &s.ConsoleEvents)
+	flag("gamewe_global_chat", &s.GlobalChat)
+	s.SiteURL = strings.TrimSpace(opts["gamewe_site_url"])
 	if v, ok := opts["gamewe_geoip_db"]; ok {
 		s.GeoIPDB = strings.TrimSpace(v)
 	}

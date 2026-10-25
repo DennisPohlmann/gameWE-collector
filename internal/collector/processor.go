@@ -75,6 +75,10 @@ type Store interface {
 	Next(ctx context.Context, game string, skill int) (stats.Player, error)
 	Above(ctx context.Context, game string, skill, n int) ([]stats.Player, error)
 	Top(ctx context.Context, game string, n int) ([]stats.Player, error)
+	WeaponCode(ctx context.Context, game, code string) (string, error)
+	ActionID(ctx context.Context, game, code string) (int, error)
+	ResetPlayer(ctx context.Context, playerID int64, skill int, at time.Time) (bool, error)
+	LastReset(ctx context.Context, playerID int64) (int64, error)
 }
 
 // Processor handles the log lines of one game server. It is not safe for
@@ -184,6 +188,9 @@ type playerState struct {
 	ping                     int        // of the last status
 	lastLatency              time.Time  // last ping sample (hlstats_Events_Latency)
 	lastHide                 time.Time  // last !hideranking change (cooldown)
+	resetAsked               time.Time  // last !gamewe_reset that waits for !gamewe_reset 1
+	lang                     string     // language of the answers ("" = English), see langCode
+	langChosen               bool       // lang is the player's gamewe_lang, not the game's cl_language
 	dead                     bool       // died since the round started (survived rounds)
 	missed                   int        // status polls in a row that did not list the player
 	connectType              int        // stored this visit (cl_connectmethod)
@@ -386,16 +393,28 @@ func (p *Processor) Handle(ctx context.Context, line string, now time.Time) erro
 		st.live.Role = e.Role
 		return p.store.ChangeRole(ctx, ev, st.live, e.Role)
 	case logparse.Setup:
-		if !strings.EqualFold(e.Name, "cl_connectmethod") || e.Player.IsBot() {
+		name := strings.ToLower(e.Name)
+		if (name != "cl_connectmethod" && name != "cl_language" && name != "gamewe_lang") || e.Player.IsBot() {
 			return nil
 		}
 		st, err := p.player(ctx, ev, e.Player)
 		if st == nil || err != nil {
 			return err
 		}
-		if t := stats.ConnectType(e.Value); t > 0 && t != st.connectType {
-			st.connectType = t
-			return p.store.SetConnectType(ctx, st.live.ID, t)
+		switch name {
+		case "gamewe_lang": // the player's choice in the plugin
+			if l := langCode(e.Value); l != "" {
+				st.lang, st.langChosen = l, true
+			}
+		case "cl_language": // the game's language, unless the player chose one
+			if l := langCode(e.Value); l != "" && !st.langChosen {
+				st.lang = l
+			}
+		default:
+			if t := stats.ConnectType(e.Value); t > 0 && t != st.connectType {
+				st.connectType = t
+				return p.store.SetConnectType(ctx, st.live.ID, t)
+			}
 		}
 	case logparse.KillAssist:
 		st, err := p.player(ctx, ev, e.Assister)
@@ -1308,6 +1327,8 @@ func (p *Processor) kill(ctx context.Context, ev stats.Ev, e logparse.Kill) erro
 	k.live.Skill, v.live.Skill = r.KillerSkill, r.VictimSkill
 	k.skillDelta += r.KillerDelta
 	v.skillDelta += r.VictimDelta
+	p.cmds.ConsoleEvent(&p.srv, k, r.KillerDelta, "ev_kill", v.live.Name, e.Weapon)
+	p.cmds.ConsoleEvent(&p.srv, v, r.VictimDelta, "ev_killed", k.live.Name, e.Weapon)
 	if teamkill {
 		return nil
 	}
@@ -1320,7 +1341,7 @@ func (p *Processor) kill(ctx context.Context, ev stats.Ev, e logparse.Kill) erro
 		// actions of the killer, if the game defines them (kill_penetrated, ...).
 		for _, f := range e.Flags {
 			if killFlags[f] {
-				if err := p.playerAction(ctx, ev, k, "kill_"+f); err != nil {
+				if err := p.scoreAction(ctx, ev, k, "kill_"+f, false); err != nil {
 					return err
 				}
 			}
@@ -1339,7 +1360,7 @@ func (p *Processor) kill(ctx context.Context, ev stats.Ev, e logparse.Kill) erro
 		if noSkill {
 			return nil
 		}
-		return p.playerAction(ctx, ev, k, "headshot")
+		return p.scoreAction(ctx, ev, k, "headshot", false)
 	}
 	return nil
 }
@@ -1505,6 +1526,9 @@ func (p *Processor) roundWin(ctx context.Context, ev stats.Ev, team, trigger str
 		st.live.Skill += bonus
 		st.skillDelta += bonus
 	}
+	if len(winStates) > 0 {
+		p.cmds.ChatEvent(&p.srv, bonus, func(l string) string { return tr(l, "chat_team", team, bonus, trigger) })
+	}
 	return nil
 }
 
@@ -1616,6 +1640,9 @@ func (p *Processor) playerEvent(ctx context.Context, ev stats.Ev, st *playerStat
 		st.skillDelta += d
 		v.live.Skill += vd
 		v.skillDelta += vd
+		p.cmds.ConsoleEvent(&p.srv, st, d, "ev_action_vs", e.Trigger, v.live.Name)
+		p.cmds.ConsoleEvent(&p.srv, v, vd, "ev_action_vs", e.Trigger, st.live.Name)
+		p.cmds.ChatEvent(&p.srv, d, func(l string) string { return tr(l, "chat_action_vs", st.live.Name, d, e.Trigger, v.live.Name) })
 		return nil
 	case e.Trigger == "headshot":
 		return p.headshotLine(ctx, ev, st)
@@ -1631,12 +1658,24 @@ func (p *Processor) playerEvent(ctx context.Context, ev stats.Ev, st *playerStat
 
 // playerAction scores a player action defined in hlstats_Actions.
 func (p *Processor) playerAction(ctx context.Context, ev stats.Ev, st *playerState, code string) error {
+	return p.scoreAction(ctx, ev, st, code, true)
+}
+
+// scoreAction scores a player action and tells the player the points
+// (gamewe_console_events); announce also tells every player
+// (gamewe_global_chat), which the actions of a kill line (headshot,
+// kill_<flag>) do not, so a kill is not announced.
+func (p *Processor) scoreAction(ctx context.Context, ev stats.Ev, st *playerState, code string, announce bool) error {
 	d, err := p.store.RecordPlayerAction(ctx, ev, st.live, code)
 	if err != nil {
 		return err
 	}
 	st.live.Skill += d
 	st.skillDelta += d
+	p.cmds.ConsoleEvent(&p.srv, st, d, "ev_action", code)
+	if announce {
+		p.cmds.ChatEvent(&p.srv, d, func(l string) string { return tr(l, "chat_action", st.live.Name, d, code) })
+	}
 	return nil
 }
 
@@ -1661,5 +1700,5 @@ func (p *Processor) say(ctx context.Context, ev stats.Ev, e logparse.Say, now ti
 	if name == "hideranking" || name == "settings" {
 		return p.cmds.SelfHide(ctx, &p.srv, st, name, e.Text, now)
 	}
-	return p.cmds.Run(ctx, &p.srv, st, name, now)
+	return p.cmds.Run(ctx, &p.srv, st, name, e.Text, now)
 }

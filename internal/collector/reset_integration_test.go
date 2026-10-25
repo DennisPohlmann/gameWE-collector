@@ -245,3 +245,75 @@ func TestIntegrationResetJob(t *testing.T) {
 		t.Errorf("heartbeat %v %v", beat, err)
 	}
 }
+
+// !gamewe_reset: one player's totals, weekly and monthly rows and history
+// go, the events and the other players stay; banned players are not reset.
+// The lookups of !weapons and !actions ignore case.
+func TestIntegrationPlayerOwnReset(t *testing.T) {
+	db := testDB(t)
+	hub, store, _ := resetFixture(t, db)
+	flush(t, hub)
+	hub.Close(context.Background())
+	ctx := context.Background()
+	id := func(uid string) int {
+		return q(t, db, `SELECT p.playerId FROM hlstats_Players p JOIN hlstats_PlayerUniqueIds u ON u.playerId = p.playerId WHERE u.uniqueId = ? AND u.game = 'css'`, uid)
+	}
+	a, b := id("0:101"), id("0:102")
+	frags := q(t, db, `SELECT COUNT(*) FROM hlstats_Events_Frags`)
+	bKills := q(t, db, `SELECT kills FROM hlstats_Players WHERE playerId = ?`, b)
+	if q(t, db, `SELECT kills FROM hlstats_Players WHERE playerId = ?`, a) == 0 {
+		t.Fatal("fixture: player A has no kills")
+	}
+	for _, p := range []int{a, b} { // weapon rows come from the plugin's weaponstats lines
+		if _, err := db.ExecContext(ctx, db.Q(`INSERT INTO hlstats_Players_Weapons (player_id, yearweek_id, game_id, weapon_id, kills) VALUES (?, 1, 1, 1, 3)`), p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	at := time.Unix(1792000000, 0)
+	if ok, err := store.ResetPlayer(ctx, int64(a), 1000, at); err != nil || !ok {
+		t.Fatalf("ResetPlayer: %v %v", ok, err)
+	}
+	for _, c := range []struct {
+		name      string
+		got, want int
+	}{
+		{"skill", q(t, db, `SELECT skill FROM hlstats_Players WHERE playerId = ?`, a), 1000},
+		{"kills", q(t, db, `SELECT kills + deaths + headshots FROM hlstats_Players WHERE playerId = ?`, a), 0},
+		{"weapon rows", q(t, db, `SELECT COUNT(*) FROM hlstats_Players_Weapons WHERE player_id = ?`, a), 0},
+		{"action rows", q(t, db, `SELECT COUNT(*) FROM hlstats_Players_Actions WHERE player_id = ?`, a), 0},
+		{"history", q(t, db, `SELECT COUNT(*) FROM hlstats_Players_History WHERE playerId = ?`, a), 0},
+		{"name counters", q(t, db, `SELECT COALESCE(SUM(kills), 0) FROM hlstats_PlayerNames WHERE playerId = ?`, a), 0},
+		{"reset row", q(t, db, `SELECT COUNT(*) FROM hlstats_Players_Resets WHERE player_id = ? AND timestamp = 1792000000`, a), 1},
+		{"events kept", q(t, db, `SELECT COUNT(*) FROM hlstats_Events_Frags`), frags},
+		{"other player kept", q(t, db, `SELECT kills FROM hlstats_Players WHERE playerId = ?`, b), bKills},
+		{"other player's weapons kept", q(t, db, `SELECT COUNT(*) FROM hlstats_Players_Weapons WHERE player_id = ?`, b), 1},
+	} {
+		if c.got != c.want {
+			t.Errorf("%s: %d, want %d", c.name, c.got, c.want)
+		}
+	}
+	if last, err := store.LastReset(ctx, int64(a)); err != nil || last != 1792000000 {
+		t.Errorf("LastReset: %d %v", last, err)
+	}
+	if last, err := store.LastReset(ctx, int64(b)); err != nil || last != 0 {
+		t.Errorf("LastReset without reset: %d %v", last, err)
+	}
+	if _, err := db.ExecContext(ctx, db.Q(`UPDATE hlstats_Players SET hideranking = 2 WHERE playerId = ?`), b); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := store.ResetPlayer(ctx, int64(b), 1000, at); err != nil || ok || q(t, db, `SELECT kills FROM hlstats_Players WHERE playerId = ?`, b) != bKills {
+		t.Errorf("banned player reset: %v %v", ok, err)
+	}
+	if code, err := store.WeaponCode(ctx, "css", "WEAPON1"); err != nil || code != "weapon1" {
+		t.Errorf("WeaponCode: %q %v", code, err)
+	}
+	if _, err := store.WeaponCode(ctx, "css", "nope"); err != stats.ErrNotFound {
+		t.Errorf("WeaponCode of an unknown weapon: %v", err)
+	}
+	if id, err := store.ActionID(ctx, "css", "planted_the_bomb"); err != nil || id <= 0 {
+		t.Errorf("ActionID: %d %v", id, err)
+	}
+	if _, err := store.ActionID(ctx, "tf", "planted_the_bomb"); err != stats.ErrNotFound {
+		t.Errorf("ActionID of another game: %v", err)
+	}
+}

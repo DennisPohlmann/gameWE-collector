@@ -13,24 +13,98 @@ settings: [CONFIG.md](CONFIG.md).
 
 ## In-game commands
 
-Players type these in chat (`!` or `/` prefix):
+Players type these in chat (`!` or `/` prefix). They are gameME's commands
+with gameWE names: every gameME word works, and the settings commands are
+also accepted as `gameme_*`.
 
-| Command    | Answer (private: a panel on the left of the screen via `gamewe_msay`, as gameME showed it, or chat lines via `gamewe_psay`, see `gamewe_command_display`; with `gamewe_raw_messages` = 1 `!rank`, `!next`, `!session` and `!top10` are sent as `gamewe_raw_message` for a message plugin instead) |
-|------------|------------------------------------------------------------------------|
-| `!rank`, `!statsme`, `!session`, `!status` | panel *1 - Total*: position, points, frags (K:D), headshots, accuracy, time played; *2 - Session*: positions and points won or lost, frags, headshots, accuracy, favourite weapon, time of this visit. In chat: *You are ranked #3 of 50 with 1012 points.* (`!rank`), the visit (`!session`, `!statsme`), the totals (`!status`) |
-| `!next`    | the player ranked just above you and how many points you are behind    |
-| `!top10`   | menu with the 10 best players (`gamewe_msay`)                          |
-| `!hideranking [1\|0]` (also `/gamewe_hideranking`) | hide yourself from the ranking (`1`, `on`) or show yourself again (`0`, `off`); without an argument it switches. A private chat line says the new state. At most one change per 10 seconds. Players hidden by an admin or banned cannot change it. Stored as `hideranking` 3 (DB-SEMANTICS.md) |
+### Stats in chat and panels
+
+Private answers are a panel on the left of the screen via `gamewe_msay`, as
+gameME showed it, or chat lines via `gamewe_psay`, see
+`gamewe_command_display`. With `gamewe_raw_messages` = 1, `!rank`, `!next`,
+`!session` and `!top10` are sent as `gamewe_raw_message` for a message plugin
+instead. The variants marked *to all* answer every player on the server (no
+bots) in chat, each in the own language.
+
+| Command | Answer |
+|---------|--------|
+| `!rank`, `!skill`, `!points` | panel *1 - Total*: position, points, frags (K:D), headshots, accuracy, time played; *2 - Session*: positions and points won or lost, frags, headshots, accuracy, favourite weapon, time of this visit. In chat: *You are ranked #3 of 50 with 1012 points.* |
+| `!place` | *to all*: *Alice is ranked #3 of 50 with 1012 points.* |
+| `!kpd`, `!kdratio` | the panel and your totals in chat: points, rank, hours played, kills, deaths, K:D, headshots, suicides, teamkills (what `!status` answered up to collector 0.8) |
+| `!kdeath` | *to all*: the totals of `!kpd` |
+| `!session`, `!sdata` | the panel and this visit in chat: kills, deaths, K:D, headshots, points, minutes |
+| `!session_data` | *to all*: this visit of `!session` |
+| `!next` | the player ranked just above you and how many points you are behind |
+| `!top5`, `!top10` (`!top`), `!top20` | menu with the 5, 10 or 20 best players (`gamewe_msay`; long names are shortened so the menu fits) |
+| `!help`, `!cmd`, `!cmds`, `!commands` | the list of commands, three chat lines |
+
+### Web pages (in-game browser)
+
+These open a page of the web frontend with `gamewe_browse <userid> "<url>"`
+(`gamewe_amx_browse` on GoldSrc). The address is `gamewe_site_url` (the web
+frontend's setting in `hlstats_Options`) with a fixed path, the game code and
+ids or codes from the database; nothing the player typed goes into it.
+
+| Command | Page |
+|---------|------|
+| `!load` | the start page of the site (`/`) |
+| `!servers` | the servers of the ranking (`/<game>`) |
+| `!status` | the server you are playing on (`/<game>/servers/<id>`) |
+| `!clans` | the clan ranking (`/<game>/clans`) |
+| `!cheaters` | the banned players (`/<game>/bans`) |
+| `!maps`, `!map_stats` | the maps (`/<game>/maps`) |
+| `!statsme` | your profile (`/<game>/players/<id>`) |
+| `!weapons`, `!weapon` | your profile; with a weapon code (`!weapons ak47`, case does not matter) the weapon's page (`/<game>/weapons/<code>`), *Unknown weapon* if the game has none of that name |
+| `!accuracy`, `!targets` (`!target`), `!kills` (`!kill`, `!player_kills`) | your profile, which holds the weapons, hit boxes, accuracy and kill statistics (the profile has no separate pages for them; arguments are ignored) |
+| `!actions`, `!action` | the actions (`/<game>/actions`); with an action code (`!actions planted_the_bomb`) its page (`/<game>/actions/<id>`) |
+
+- Players hidden from the ranking (by themselves, by an admin, or banned)
+  have no profile page: `!statsme`, `!weapons`, `!accuracy`, `!targets` and
+  `!kills` answer with a chat line instead. Nobody else's profile is ever
+  opened.
+- Without `gamewe_site_url`, or with a value that is not a plain `http(s)://`
+  address (no user, query or fragment), the commands answer *The web address
+  of the statistics is not configured on this server.* and `!statsme` shows
+  the stats panel of `!session`.
+- The MOTD window of GoldSrc games other than Counter-Strike 1.6 shows text
+  only: there the address is sent as a chat line and `!statsme` shows the
+  stats panel. CS:GO shows no web pages; the SourceMod plugin prints the
+  address in chat.
+- Plain words without `!` or `/` only count as the whole chat message
+  (`kill him` opens nothing); `rank`, `top`, `top10`, `next`, `help`,
+  `session` and `statsme` also with more words, as before.
+
+### Settings
+
+| Command | Effect |
+|---------|--------|
+| `!hideranking [1\|0]` (also `/gamewe_hideranking`, `/gameme_hideranking`) | hide yourself from the ranking (`1`, `on`) or show yourself again (`0`, `off`); without an argument it switches. A private chat line says the new state. At most one change per 10 seconds. Players hidden by an admin or banned cannot change it. Stored as `hideranking` 3 (DB-SEMANTICS.md) |
 | `!settings` (also `/gamewe_settings`) | your settings in chat: whether you are shown in the ranking, and how to change it. The plugins open their settings menu for `!gamewe_settings` instead; its one ranking entry hides or shows you, depending on your current state (`gamewe_hidestate`) |
-| `!help`    | the list of commands                                                   |
+| `!gamewe_reset` (also `!gameme_reset`) | only with `gamewe_player_reset` = 1: resets your own stats. The first call says what happens; `!gamewe_reset 1` within 30 seconds confirms, `!gamewe_reset 0` cancels. Your points go back to `gamewe_start_skill`, your totals, weekly and monthly weapon, action, map, team and role rows, daily history and name counters are deleted or zeroed; the events (kills, chat, ...) stay, they belong to the other players too. The reset is recorded in `hlstats_Players_Resets`; the next one is possible after `gamewe_player_reset_cooldown` hours. Players hidden by an admin or banned cannot reset |
+| `!gamewe_display 0\|1`, `!gamewe_chat 0\|1` | kept by the plugins per player: whether you get the console events (`gamewe_console_events`) and the chat events (`gamewe_global_chat`); see the plugins' USAGE.md |
+| `!gamewe_auto clear\|start\|end\|kill <command>` | kept by the plugins: a command that is sent for you at round start, round end or when you die (see the plugins' USAGE.md) |
+| `!gamewe_lang en\|de\|ru\|es\|fr\|pt\|nl\|dk\|pl` | the language of the answers. The plugin keeps it and logs it (`setup "gamewe_lang"`); without a choice the game's language (`cl_language`, logged by the plugin) decides, otherwise English. The collector keeps it with the player's visit |
+
+### Events
+
+- `gamewe_console_events` = 1: after every kill the killer and the victim
+  get the points in the console (*+5 points: you killed Bob with ak47.*), and
+  after every action with points the player (*+3 points: Planted_The_Bomb.*),
+  via `gamewe_console_event`; the plugin shows it only to players with
+  `gamewe_display 1`.
+- `gamewe_global_chat` = 1: player actions with points (not the headshot of a
+  kill), player-vs-player actions and team wins are announced in chat (*Bob
+  got +3 points for Planted_The_Bomb.*), via `gamewe_chat_event`; the plugin
+  shows it only to players with `gamewe_chat 1`.
+
+Both are off by default; every event is one RCON command per player or
+language, and the RCON queue of a server drops commands when it is full.
 
 The commands are read from the `say` lines in the log. The plugin logs them
 (always with the verb `say`) even when it hides them from chat. Its menu sends
-them with a `/` prefix (`/rank`), and both prefixes work. The plugin's other menu
-commands (`/clans`, `/weapons`, `/accuracy`, `/targets`, `/kills`, `/cheaters`,
-`/gamewe_reset`, `/gamewe_auto`, `/gamewe_display`, `/gamewe_chat`) are ignored
-for now. `!hideranking` and `!settings` need the `!` or `/` prefix (a chat
-line that only contains the word does nothing).
+them with a `/` prefix (`/rank`), and both prefixes work. `!hideranking`,
+`!settings` and `!gamewe_reset` need the `!` or `/` prefix (a chat line that
+only contains the word does nothing).
 
 ## Points
 

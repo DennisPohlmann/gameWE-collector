@@ -163,8 +163,8 @@ after too many wrong passwords; the error says so.
 
 | Engine | Plugin | Commands (prefix `gamewe`, or `gameme` with `gamewe_command_prefix` = gameme) |
 |--------|--------|------|
-| Source | gameWE SourceMod plugin | `gamewe_psay <userid> 0 "<msg>"`, `gamewe_msay <time> <userid> 0 "<line>\n<line>"`, raw messages `gamewe_raw_message` (`gamewe_raw_messages` = 1) |
-| GoldSrc | gameWE AMX Mod X plugins (`gamewe_cstrike`, `_dod`, `_tfc`, `_ns`, `_hlmp`) | `gamewe_amx_psay <userid> 0 "<msg>"`, `gamewe_amx_msay <time> <userid> 0 "<lines>"`; no raw messages |
+| Source | gameWE SourceMod plugin | `gamewe_psay <userid> 0 "<msg>"`, `gamewe_msay <time> <userid> 0 "<line>\n<line>"`, `gamewe_browse`, `gamewe_console_event`, `gamewe_chat_event`, raw messages `gamewe_raw_message` (`gamewe_raw_messages` = 1) |
+| GoldSrc | gameWE AMX Mod X plugins (`gamewe_cstrike`, `_dod`, `_tfc`, `_ns`, `_hlmp`) | `gamewe_amx_psay <userid> 0 "<msg>"`, `gamewe_amx_msay <time> <userid> 0 "<lines>"`, `gamewe_amx_browse` (Counter-Strike only: the other games show the MOTD as text, the address goes to chat), `gamewe_amx_console_event`, `gamewe_amx_chat_event`; no raw messages |
 
 The AMX plugin also offers `gamewe_amx_psay2`, `_say`, `_csay`, `_hint`,
 `_browse`, `_swap` and `gamewe_block_commands_values` (and the same as

@@ -175,7 +175,8 @@ func TestCommandPrefixAndRawMessages(t *testing.T) {
 		}
 	}
 	sent := rec.get("192.0.2.1:27015")
-	if len(sent) != 3 || !strings.HasPrefix(sent[0], "gameme_raw_message 1 0 2 ") ||
+	// !help is three chat lines
+	if len(sent) != 5 || !strings.HasPrefix(sent[0], "gameme_raw_message 1 0 2 ") ||
 		!strings.HasPrefix(sent[1], "gameme_raw_message 5 0 2 ") || !strings.HasPrefix(sent[2], "gameme_psay 2 ") {
 		t.Errorf("sent: %q", sent)
 	}

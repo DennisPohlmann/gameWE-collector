@@ -2623,4 +2623,8 @@ INSERT INTO hlstats_Options (keyname, value) VALUES
   ('gamewe_store_locations', '1'),
   ('gamewe_geoip_db', '/var/lib/gamewe/GeoLite2-City.mmdb'),
   ('gamewe_server_load', '1'),
+  ('gamewe_player_reset', '0'),
+  ('gamewe_player_reset_cooldown', '24'),
+  ('gamewe_console_events', '0'),
+  ('gamewe_global_chat', '0'),
   ('gamewe_heartbeat', '0') ON CONFLICT DO NOTHING;

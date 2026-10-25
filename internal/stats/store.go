@@ -1486,6 +1486,30 @@ func (s *Store) Above(ctx context.Context, game string, skill, n int) ([]Player,
 		`WHERE p.game = ? AND p.hideranking = 0 AND p.skill > ? ORDER BY p.skill, p.playerId LIMIT ?`, game, skill, n)
 }
 
+// WeaponCode returns the code of the game's weapon named code, ignoring
+// case (for !weapons <weapon>), or ErrNotFound.
+func (s *Store) WeaponCode(ctx context.Context, game, code string) (string, error) {
+	var c string
+	err := s.queryRow(ctx, `SELECT code FROM hlstats_Weapons WHERE game = ? AND LOWER(code) = LOWER(?) ORDER BY weaponId LIMIT 1`,
+		game, clip(code, 64)).Scan(&c)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return c, err
+}
+
+// ActionID returns the hlstats_Actions id of the game's action code,
+// ignoring case (for !actions <action>), or ErrNotFound.
+func (s *Store) ActionID(ctx context.Context, game, code string) (int, error) {
+	var id int
+	err := s.queryRow(ctx, `SELECT id FROM hlstats_Actions WHERE game = ? AND LOWER(code) = LOWER(?) ORDER BY id LIMIT 1`,
+		game, clip(code, 64)).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	return id, err
+}
+
 // Top returns the n best ranked players of the game.
 func (s *Store) Top(ctx context.Context, game string, n int) ([]Player, error) {
 	return s.players(ctx, `SELECT `+playerCols+playerFrom+

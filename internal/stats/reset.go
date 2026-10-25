@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // Reset modes of a ranking (hlstats_Games row).
@@ -223,6 +224,43 @@ func (s *Store) Reset(ctx context.Context, game, mode string) ([]TableCount, err
 		out = append(out, TableCount{st.table, n})
 	}
 	return out, nil
+}
+
+// ResetPlayer resets the statistics of one player, as the player asked for
+// in game (!gamewe_reset, gamewe_player_reset): the totals in hlstats_Players
+// go back to skill with zero counters (the columns of a ranking reset), the
+// player's weekly and monthly rows, daily history and name counters are
+// deleted or zeroed, and the reset is recorded in hlstats_Players_Resets.
+// The events stay (they belong to other players too). Players hidden by an
+// admin or as banned (hideranking 1, 2) are never reset: ok is false.
+func (s *Store) ResetPlayer(ctx context.Context, playerID int64, skill int, at time.Time) (ok bool, err error) {
+	var h int
+	if err := s.queryRow(ctx, `SELECT hideranking FROM hlstats_Players WHERE playerId = ?`, playerID).Scan(&h); err != nil {
+		return false, err
+	}
+	if h != 0 && h != 3 {
+		return false, nil
+	}
+	skill = max(0, skill)
+	steps := []step{{`UPDATE hlstats_Players SET skill = ?, sort_skill = ?, ` + zeroCols(resetPlayerCounters) +
+		` WHERE playerId = ? AND hideranking IN (0, 3)`, []any{skill, skill, playerID}}}
+	for _, t := range resetPlayerTables {
+		steps = append(steps,
+			step{`DELETE FROM hlstats_Players_` + t + `_History_Months WHERE player_id = ?`, []any{playerID}},
+			step{`DELETE FROM hlstats_Players_` + t + ` WHERE player_id = ?`, []any{playerID}})
+	}
+	steps = append(steps,
+		step{`DELETE FROM hlstats_Players_History WHERE playerId = ?`, []any{playerID}},
+		step{`UPDATE hlstats_PlayerNames SET ` + zeroCols(resetNameCounters) + ` WHERE playerId = ?`, []any{playerID}},
+		step{`INSERT INTO hlstats_Players_Resets (player_id, timestamp) VALUES (?, ?)`, []any{playerID, at.Unix()}})
+	return true, s.run(ctx, steps...)
+}
+
+// LastReset returns the Unix time of the player's last own reset, 0 if none.
+func (s *Store) LastReset(ctx context.Context, playerID int64) (int64, error) {
+	var t int64
+	err := s.queryRow(ctx, `SELECT COALESCE(MAX(timestamp), 0) FROM hlstats_Players_Resets WHERE player_id = ?`, playerID).Scan(&t)
+	return t, err
 }
 
 // ClearCache forgets every cached id (after a reset).

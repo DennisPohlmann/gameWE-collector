@@ -43,6 +43,21 @@ collector rewards one `headshot` action per kill, not two), position lines
 stored in `hlstats_Events_Locations`), player models (`changed role to "gign"`),
 `triggered "mvp"` / `"clantag"` and the queries of other plugins (see below).
 
+Client settings the plugin logs (`setup` lines):
+
+```
+"Name<2><STEAM_1:0:123><CT>" setup "cl_language" (value "german")
+"Name<2><STEAM_1:0:123><CT>" setup "gamewe_lang" (value "de")
+"Name<2><STEAM_1:0:123><CT>" setup "cl_connectmethod" (value "serverbrowser_internet")
+```
+
+`gamewe_lang` is the player's choice with the plugin's `!gamewe_lang`
+(`en`, `de`, `ru`, `es`, `fr`, `pt`, `nl`, `dk` or `da`, `pl`; logged when
+the player chooses and on every connect); it decides the language of the
+collector's answers. Without one, `cl_language` (english, german, russian,
+spanish, french, portuguese/brazilian, dutch, danish, polish) does; anything
+else is English. Other values are ignored.
+
 Field order: `weaponstats` = weapon, shots, hits, kills, headshots, tks, damage,
 deaths. `weaponstats2` = weapon, head, chest, stomach, leftarm, rightarm, leftleg,
 rightleg. The plugin flushes them when a player dies or disconnects and at round
@@ -70,13 +85,15 @@ plugin accepts besides `gameme_`; for a server with the original gameME plugin s
 
 | Command | Used for |
 |---------|----------|
-| `gamewe_psay <userid[,userid...]> [colored] "<msg>"` | private chat line (`!rank`, `!next`, `!status`, `!session`, `!help`) |
-| `gamewe_msay <time> <userid> [handler] "<menu text, \n separated>"` | `!top10` menu |
+| `gamewe_psay <userid[,userid...]> [colored] "<msg>"` | private chat line (`!rank`, `!next`, `!kpd`, `!session`, `!help`, ...); the *to all* commands (`!place`, `!kdeath`, `!session_data`) list every player of one language |
+| `gamewe_msay <time> <userid> [handler] "<menu text, \n separated>"` | stats panels and the `!top5` / `!top10` / `!top20` menus |
+| `gamewe_browse <userid> "<url>"` | the browser commands (`!statsme`, `!status`, `!clans`, ...; USAGE.md): `gamewe_site_url` plus a fixed path, only `http(s)://` |
+| `gamewe_console_event <userid> "<msg>"` | with `gamewe_console_events`: the points of a kill or action, printed in the player's console if the player's `gamewe_display` is on. Plugins before this command print "Unknown command" for it |
+| `gamewe_chat_event <userid[,userid...]> "<msg>"` | with `gamewe_global_chat`: an action with points, as a chat line to the listed players whose `gamewe_chat` is on (one command per language). Plugins before this command print "Unknown command" for it |
 | `gamewe_hidestate <userid> <hideranking>` | after `!hideranking` / `!settings` and for the `hideranking` request (below): the player's ranking state (`0` visible, `1` hidden by an admin or as a bot, `2` banned, `3` hidden by the player), so the plugin's settings menu shows the one entry that fits. Plugins before this command print "Unknown command" for it in the server console |
 | `gamewe_csay "<msg>"` | center text to all (not used yet) |
 | `gamewe_tsay <time> <userid> "<msg>"` | top text (not used yet) |
 | `gamewe_hint <userid[,..]> "<msg>"`, `gamewe_khint <userid[,..]> "<msg>"` | hint boxes (not used yet) |
-| `gamewe_browse <userid> "<url>"` | open a URL (not used yet) |
 | `gamewe_raw_message <type> <query_id> <userid> ...` | answers to other plugins' queries, and with `gamewe_raw_messages` the chat command answers (below) |
 
 Every chat line of `gamewe_psay` starts with the tag `[gameWE] `. The plugins

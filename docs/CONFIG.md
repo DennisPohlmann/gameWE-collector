@@ -241,17 +241,25 @@ seed only adds missing keys and never changes values that are already set.
 | `gamewe_rcon_timeout` | `5` | seconds for RCON connect, send and receive |
 | `gamewe_log_lines` | `1` | 1 = write every received game-server log line to the collector's log (the journal), as `[name ip:port] L 10/22/2026 - …`. That can be many lines; see [INSTALLATION.md](INSTALLATION.md#g-troubleshooting). |
 | `gamewe_idle_timeout` | `300` | seconds without any log line of a player after which the collector ends the visit, as for a disconnect but without an `hlstats_Events_Disconnects` row: the connection time up to now is stored and the live row deleted. Catches lost disconnect lines (server crash or restart, lost packets). A player who shows up again starts a new visit. Bots end after at most 3 minutes without a line (bot_quota kicks them without a disconnect line; RCON status keeps listed bots). 0 = never |
-| `gamewe_command_display` | `panel` | how `!rank`, `!statsme`, `!session`, `!status` and `!next` are answered: `panel` = a menu panel on the left of the screen for `gamewe_menu_time` seconds (as gameME showed it), `chat` = private chat lines, `both` |
+| `gamewe_command_display` | `panel` | how `!rank`, `!kpd`, `!session` and `!next` (and `!statsme` without a browser) are answered: `panel` = a menu panel on the left of the screen for `gamewe_menu_time` seconds (as gameME showed it), `chat` = private chat lines, `both` |
 | `gamewe_command_prefix` | `gamewe` | prefix of the plugin's server commands: `gamewe` (the gameWE plugin also knows `gameme_`), or `gameme` for a server that still runs the original gameME plugin |
 | `gamewe_raw_messages` | `0` | 1 = answer `!rank`, `!session`, `!top10` and `!next` with `gamewe_raw_message` (types 1, 4, 5, 6) for a plugin that shows them, instead of chat text ([INTERFACE.md](INTERFACE.md#queries-of-other-plugins-raw-messages)) |
 | `gamewe_store_locations` | `1` | 1 = store the kill and death positions of the plugin's location lines in `hlstats_Events_Locations` (one row per position; the plugin's `gamewe_log_locations` must be 1) |
 | `gamewe_geoip_db` | `/var/lib/gamewe/GeoLite2-City.mmdb` | **Legacy.** Used only when config.yaml has no `geoip.path` and the value is not this old default; otherwise the DB-IP database of `geoip.path` is used ([GeoIP database](#geoip-database-player-and-server-locations)). Old meaning: MaxMind-format city database for player and server locations, skipped with one warning if missing |
 | `gamewe_server_load` | `1` | 1 = write a row of `hlstats_server_load` every 10 minutes per server (DB-SEMANTICS.md) |
+| `gamewe_player_reset` | `0` | 1 = players may reset their own stats in game with `!gamewe_reset`, confirmed with `!gamewe_reset 1` within 30 seconds ([USAGE.md](USAGE.md#settings)); never players hidden by an admin or banned. The events stay. Like every chat command it is read from the log: a faked log packet could reset any player's stats, so turn it on only where the servers send their logs with `sv_logsecret` ([Log secret](#log-secret)) |
+| `gamewe_player_reset_cooldown` | `24` | hours before a player may reset the own stats again (from `hlstats_Players_Resets`); 0 = no wait |
+| `gamewe_console_events` | `0` | 1 = after every kill the killer and the victim, after every action with points the player, get the points in the console (`gamewe_console_event`; players turn it off with `!gamewe_display 0`). One RCON command per player and event |
+| `gamewe_global_chat` | `0` | 1 = player actions with points, player-vs-player actions and team wins are announced in chat (`gamewe_chat_event`; players turn it off with `!gamewe_chat 0`). One RCON command per event and language |
 | `gamewe_heartbeat` | – | **written by the collector** (Unix time, every 60 s), not a setting: the web and `gamewe reset` see from it whether a collector runs |
 
 The other `gamewe_*` keys the web admin writes are settings of the web frontend
 (`gamewe_default_game`, `gamewe_page_size`, site, header, SEO, map, voice and
 TeamSpeak settings, the header links `gamewe_link_<n>` and the admins' TOTP
 secrets `gamewe_totp_<hash>`); the collector ignores them and `gamewe check`
-does not report them. The list is `WebKeys` in `internal/settings/settings.go`;
+does not report them. One exception: the collector reads the web's
+`gamewe_site_url` (the public address of the site, set in the web admin) for
+the in-game browser commands (`!statsme`, `!status`, ...); it must be a plain
+`http://` or `https://` address, otherwise those commands answer that the web
+address is not configured. The list is `WebKeys` in `internal/settings/settings.go`;
 a new web setting needs an entry there.

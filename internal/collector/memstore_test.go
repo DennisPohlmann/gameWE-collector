@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"net/netip"
 	"sort"
+	"strings"
 	"sync"
+	"time"
 
 	"gamewe-collector/internal/games"
 	"gamewe-collector/internal/settings"
@@ -47,10 +49,14 @@ type memStore struct {
 	latency      []string         // "player:ping" samples
 	teams        map[int64]string // live row team by player id
 	teamWrites   int
-	assists      []string        // uid of each kill assist
-	fragPos      []string        // plugin positions added to frags
-	connected    map[int64]int64 // player id -> Live.Connected at Join
-	locations    []string        // "player:type:x,y"
+	assists      []string          // uid of each kill assist
+	fragPos      []string          // plugin positions added to frags
+	connected    map[int64]int64   // player id -> Live.Connected at Join
+	locations    []string          // "player:type:x,y"
+	weaponCodes  map[string]string // game:lower code -> code
+	actionIDs    map[string]int    // game:lower code -> id
+	resets       map[int64][]int64 // player id -> reset times
+	actionPoints map[string]int    // points of RecordPlayerAction by code
 	nextID       int64
 }
 
@@ -275,7 +281,7 @@ func (m *memStore) RecordPlayerAction(_ context.Context, _ stats.Ev, p stats.Liv
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.actions = append(m.actions, p.UniqueID+" "+code)
-	return 0, nil
+	return m.actionPoints[code], nil
 }
 
 func (m *memStore) RecordPlayerPlayerAction(_ context.Context, _ stats.Ev, p, v stats.Live, code string, _ bool) (int, int, error) {
@@ -535,4 +541,47 @@ func (m *memStore) RecordWorldDeath(_ context.Context, _ stats.Ev, p stats.Live,
 	defer m.mu.Unlock()
 	m.actions = append(m.actions, m.byID[p.ID].uid+" death:"+weapon)
 	return nil
+}
+
+func (m *memStore) WeaponCode(_ context.Context, game, code string) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if c, ok := m.weaponCodes[game+":"+strings.ToLower(code)]; ok {
+		return c, nil
+	}
+	return "", stats.ErrNotFound
+}
+
+func (m *memStore) ActionID(_ context.Context, game, code string) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if id, ok := m.actionIDs[game+":"+strings.ToLower(code)]; ok {
+		return id, nil
+	}
+	return 0, stats.ErrNotFound
+}
+
+func (m *memStore) ResetPlayer(_ context.Context, id int64, skill int, at time.Time) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	p := m.byID[id]
+	if p.hide != 0 && p.hide != 3 {
+		return false, nil
+	}
+	p.skill, p.kills, p.deaths, p.wins = skill, 0, 0, 0
+	if m.resets == nil {
+		m.resets = map[int64][]int64{}
+	}
+	m.resets[id] = append(m.resets[id], at.Unix())
+	return true, nil
+}
+
+func (m *memStore) LastReset(_ context.Context, id int64) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r := m.resets[id]
+	if len(r) == 0 {
+		return 0, nil
+	}
+	return r[len(r)-1], nil
 }

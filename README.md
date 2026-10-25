@@ -12,8 +12,11 @@ HLstatsX. The **collector** is its core: one static Go binary that
 - writes players, kills, skill, rounds, weapon and action statistics into an
   **HLstatsX database** (the gameME-style HLstatsX schema) on **MariaDB / MySQL**
   or **PostgreSQL**, with optional TLS that never falls back to plaintext,
-- answers the in-game commands **!rank, !top10, !status, !session, !hideranking**
-  over RCON through the gameWE SourceMod plugin (AMX Mod X plugin on GoldSrc),
+- answers gameME's in-game commands (**!rank, !kpd, !session, !next, !top10,
+  !statsme, !hideranking, !gamewe_reset, ...**, in 9 languages) over RCON
+  through the gameWE SourceMod plugin (AMX Mod X plugin on GoldSrc), opens
+  the web frontend's pages in the in-game browser and can announce points of
+  kills and actions,
 - runs daily awards, ranking resets queued by the web admin, GeoIP locations
   (DB-IP database included) and the RCON status of every server.
 

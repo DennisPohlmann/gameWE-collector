@@ -307,8 +307,10 @@ These are left to the web frontend or the web admin, or not filled at all
   `hits`, `hlstats_Players_Maps_History_Months`; `hlstats_Maps.teama_wins`
   / `teamb_wins`.
 - **Monthly histories:** all `*_History_Months` tables.
-- **Ranking helpers:** `hlstats_Players.rank`, `sort_skill`, `sort_kpd`,
-  `hlstats_Players_Resets`.
+- **Ranking helpers:** `hlstats_Players.rank`, `sort_skill`, `sort_kpd`.
+  `hlstats_Players_Resets` gets a row (`player_id`, `timestamp`) only when a
+  player resets the own stats in game (`!gamewe_reset` with
+  `gamewe_player_reset` = 1, USAGE.md); `sort_skill` is set with it.
 - **Trends:** `hlstats_Trend`.
 - **Other events:** `hlstats_Events_Admin`, `hlstats_Events_Rcon`.
 - **Web and admin:** `hlstats_Style`, `hlstats_Users`, `hlstats_HostGroups`;

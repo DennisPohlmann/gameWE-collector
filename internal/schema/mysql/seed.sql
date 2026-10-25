@@ -2638,4 +2638,8 @@ INSERT IGNORE INTO hlstats_Options (keyname, value) VALUES
   ('gamewe_store_locations', '1'),    -- 1 = kill/death positions in hlstats_Events_Locations
   ('gamewe_geoip_db', '/var/lib/gamewe/GeoLite2-City.mmdb'), -- city database for locations (optional)
   ('gamewe_server_load', '1'),        -- 1 = hlstats_server_load every 10 minutes
+  ('gamewe_player_reset', '0'),       -- 1 = players may reset their own stats (!gamewe_reset)
+  ('gamewe_player_reset_cooldown', '24'), -- hours between two own resets
+  ('gamewe_console_events', '0'),     -- 1 = points of kills and actions in the players' console
+  ('gamewe_global_chat', '0'),        -- 1 = player and team actions with points in the chat
   ('gamewe_heartbeat', '0');          -- written by the running collector every 60 s (Unix time)
