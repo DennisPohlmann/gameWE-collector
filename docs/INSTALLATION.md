@@ -337,7 +337,7 @@ ones still in `/opt/gamewe/collector/doc/schema/`; delete them).
 
 Create a new database as above, then copy the old statistics into it:
 [MIGRATION-HLSTATSX.md](MIGRATION-HLSTATSX.md) converts an HLstatsX:CE
-database, [MIGRATION-GAMEME.md](MIGRATION-GAMEME.md) imports the gameME data
+database (`gamewe db convert`), [MIGRATION-GAMEME.md](MIGRATION-GAMEME.md) imports the gameME data
 export (ZIP).
 
 ### GeoIP

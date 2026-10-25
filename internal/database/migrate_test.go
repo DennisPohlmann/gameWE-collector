@@ -175,7 +175,7 @@ func TestDetectCE(t *testing.T) {
 	if !isCE(c) {
 		t.Error("CE not detected")
 	}
-	if !strings.Contains(ErrHLstatsXCE.Error(), "MIGRATION-HLSTATSX.md") {
+	if !strings.Contains(ErrHLstatsXCE.Error(), "MIGRATION-HLSTATSX.md") || !strings.Contains(ErrHLstatsXCE.Error(), "gamewe db convert") {
 		t.Error(ErrHLstatsXCE)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -149,4 +150,28 @@ func HoldCollectorLock(ctx context.Context, cfg config.Database, interval time.D
 		}
 	}()
 	return nil
+}
+
+// LockCollector takes the collector lock of the database on a connection
+// of its own, so that no collector starts while gamewe db convert fills
+// the tables, and returns the function that releases it.
+// ErrCollectorRunning: a collector holds it.
+func LockCollector(ctx context.Context, db *DB) (func(), error) {
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return nil, Explain(err)
+	}
+	got, err := tryRunLock(ctx, conn, db.Postgres())
+	if err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("collector lock: %w", err)
+	}
+	if !got {
+		conn.Close()
+		return nil, ErrCollectorRunning
+	}
+	return func() {
+		releaseRunLock(conn, db.Postgres())
+		conn.Close()
+	}, nil
 }

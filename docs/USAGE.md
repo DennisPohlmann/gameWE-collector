@@ -118,9 +118,11 @@ gamewe db purge -older-than 90d  # delete the events older than 90 days (-dry-ru
 gamewe db optimize               # give the space of deleted rows back (OPTIMIZE TABLE / VACUUM ANALYZE)
 gamewe db reset                  # empty every table, reference data again: as new (asks for the database name, -yes)
 gamewe db drop                   # drop all gameWE tables (-print: the SQL for a database admin; MariaDB needs DROP)
+gamewe db convert -from hlstatsx -n   # HLstatsX:CE -> this new gameWE database: the plan only (MIGRATION-HLSTATSX.md)
+gamewe db convert -from hlstatsx -source-timezone Europe/Berlin   # plan, then "Convert now? [y/N]" (-yes)
 ```
 
-`migrate`, `reset` and `drop` refuse while a collector runs on the database,
+`migrate`, `convert`, `reset` and `drop` refuse while a collector runs on the database,
 also one on another host or in a container (see below); `purge` keeps
 players, totals, rankings and awards. What each one touches and the
 rights they need: [DATABASE.md](DATABASE.md#maintenance-gamewe-db).

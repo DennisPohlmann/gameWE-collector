@@ -171,7 +171,7 @@ SELECT playerId, uniqueId, game FROM hlstatsx_ce.hlstats_PlayerUniqueIds;
 
 INSERT INTO hlstats_PlayerNames (playerId, name, lastuse, connection_time, numuses,
     kills, deaths, suicides, headshots, shots, hits)
-SELECT playerId, name, lastuse, connection_time, LEAST(numuses, 16777215),
+SELECT playerId, name, IFNULL(lastuse, '0000-00-00 00:00:00'), connection_time, LEAST(numuses, 16777215),
     LEAST(kills, 16777215), LEAST(deaths, 16777215), LEAST(suicides, 16777215),
     LEAST(headshots, 16777215), shots, hits
 FROM hlstatsx_ce.hlstats_PlayerNames;

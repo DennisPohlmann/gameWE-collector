@@ -140,8 +140,8 @@ What it does:
   **HLstatsX database of the variant gameWE uses** (events with
   `timestamp_id`, as the database gameWE started from): recorded as baseline
   (version 1), then the later versions add what is missing. An HLstatsX:CE
-  database (events with `eventTime`) is refused: copy its data into a new
-  database instead ([MIGRATION-HLSTATSX.md](MIGRATION-HLSTATSX.md)).
+  database (events with `eventTime`) is refused: convert it into a new
+  database instead, `gamewe db convert` ([MIGRATION-HLSTATSX.md](MIGRATION-HLSTATSX.md)).
 - Every version only **adds** tables, columns, indexes and missing reference
   rows (`INSERT IGNORE`: existing rows stay as they are). It never deletes
   rows, never drops a table or column and never changes a column type or
@@ -206,9 +206,10 @@ from an old HLstatsX, are listed and left alone.
 | `gamewe db purge -older-than 90d` | deletes the **events** (`hlstats_Events_*`: frags, connects, chat, actions, ...) older than that many days (at least 7, plain `90` works too). Players, their totals, rankings, awards, the history per day and the server statistics stay; the event lists of the web pages get shorter. Asks `[y/N]`; on MariaDB in chunks of 20,000 rows, so a table is locked only shortly and the collector can keep running | the collector user |
 | `gamewe db optimize` | gives the space of deleted rows back to the disk and renews the table statistics (MariaDB `OPTIMIZE TABLE`, PostgreSQL `VACUUM ANALYZE`), e.g. after `purge`. MyISAM tables are locked while they are rebuilt: run it at a quiet time | the collector user |
 | `gamewe db reset` | **empties every table** and loads the reference data again, the AUTO_INCREMENT / identity counters start at 1: the database is as new. Everything goes, also the game servers, the settings (`hlstats_Options`), the admin logins (`hlstats_Users`) and own games or changed definitions; the tables and schema versions stay. Asks to type the database name. For one ranking only: `gamewe reset GAME -mode all` | the collector user (PostgreSQL: owner of the tables, for `TRUNCATE`) |
+| `gamewe db convert -from CE` | copies an **HLstatsX:CE** database into this gameWE database, which must be new (no tables) or have no data yet (no players, servers, clans, frags): creates the schema, converts every table (event times to UTC, names and codes to ids, character sets to utf8mb4) and compares the rows of both at the end. The CE database is only read (a read-only session). Shows the plan and asks `[y/N]`; `-dry-run`, `-yes`, `-source-timezone`, `-mojibake`. MariaDB / MySQL only. [MIGRATION-HLSTATSX.md](MIGRATION-HLSTATSX.md) | the collector user; SELECT on the CE database |
 | `gamewe db drop` | **drops all tables** of the gameWE schema. Afterwards `gamewe db init` (or the next start) creates them again. Asks to type the database name | DROP: on MariaDB a database admin, `gamewe db drop -print \| mariadb -u root -p gamewe` (`-print` only prints the `DROP TABLE IF EXISTS ...`); on PostgreSQL the collector (owner) |
 
-`migrate`, `reset` and `drop` refuse while a collector runs on the database
+`migrate`, `convert`, `reset` and `drop` refuse while a collector runs on the database
 (it holds the collector lock, or, up to 0.7.1, its heartbeat in
 `hlstats_Options` is still written): stop it first.
 Make a backup before them; they print an example `mariadb-dump` /
@@ -233,7 +234,7 @@ rows: register servers in the web admin with IP (`address`), game port (`port`),
 
 Existing gameME databases, and HLstatsX:CE databases (events with
 `eventTime`), are not upgraded in place: create a new gameWE database and
-copy the data into it, as described in
+copy the data into it (HLstatsX:CE: `gamewe db convert`), as described in
 [MIGRATION-HLSTATSX.md](MIGRATION-HLSTATSX.md) and
 [MIGRATION-GAMEME.md](MIGRATION-GAMEME.md).
 

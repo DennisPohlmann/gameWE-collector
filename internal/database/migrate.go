@@ -205,7 +205,7 @@ func readApplied(ctx context.Context, q querier, cat catalog) ([]Applied, error)
 // than the HLstatsX variant gameWE uses; its data is copied into a new
 // database instead.
 var ErrHLstatsXCE = errors.New("this is an HLstatsX:CE database (events with eventTime, not timestamp_id): it cannot be upgraded in place. " +
-	"Create a new gameWE database and copy the data, see docs/MIGRATION-HLSTATSX.md")
+	"Create a new gameWE database and convert it into that one: gamewe db convert -from <this database> (docs/MIGRATION-HLSTATSX.md)")
 
 // isCE reports whether the database is an HLstatsX:CE one.
 func isCE(cat catalog) bool {

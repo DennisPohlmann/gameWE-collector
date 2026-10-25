@@ -58,7 +58,18 @@ const dbUsage = `usage:
         DROP right, which the collector user has not on MariaDB: -print only
         prints the SQL, to run it as a database admin. Afterwards db init
         (or the next start) creates them again
-migrate, reset and drop refuse while a collector runs on the database (stop
+  gamewe db convert -from CE [-config FILE] [-source-timezone ZONE]
+                    [-mojibake auto|repair|keep] [-dry-run] [-yes]
+        copy an HLstatsX:CE database (only read) into this new gameWE
+        database: shows the plan (source, target, time zone, character
+        sets, rows per table) and asks [y/N] unless -yes; -dry-run only
+        prints the plan. CE is NAME (a database on the gameWE database
+        server) or mysql://[user@]host[:port]/NAME (password in
+        GAMEWE_FROM_PASSWORD). -source-timezone: the zone in which CE wrote
+        eventTime, default server (the CE server's), e.g. Europe/Berlin;
+        -mojibake: UTF-8 stored twice (MÃ¼ller), auto repairs it in latin1
+        tables. MariaDB / MySQL only; docs/MIGRATION-HLSTATSX.md
+migrate, convert, reset and drop refuse while a collector runs on the database (stop
 it first: systemctl stop gamewe-collector); reset and drop ask to type the
 database name unless -yes. Make a backup first.
 Every db command takes -o text|json|yaml (status: the schema as a document;
@@ -227,6 +238,8 @@ func dbCmd(args []string) error {
 		return maint(dbPurgeCmd)
 	case "optimize":
 		return maint(dbOptimizeCmd)
+	case "convert":
+		return maint(dbConvertCmd)
 	}
 	return exitError{2, fmt.Sprintf("unknown command %q\n\n%s", "db "+args[0], dbUsage)}
 }

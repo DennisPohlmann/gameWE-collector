@@ -84,6 +84,24 @@ go test -p 1 -tags integration -run Migrate ./internal/database/ ./cmd/gamewe/
 CI runs all of them against both MariaDB / PostgreSQL pairs of service
 containers.
 
+`gamewe db convert` has its own tests (`cmd/gamewe/convert_integration_test.go`,
+MariaDB only, same environment). They need the schema of HLstatsX:CE 1.7
+(`sql/install.sql` of HLstatsX:CE, not part of this repository) and skip
+without it; they create the CE databases `conv_ce*` with test data (names
+in many scripts, events around both summer time changes, a latin1 variant
+with double-encoded UTF-8) and the gameWE databases `conv_gw*`, convert,
+compare rows and samples, check that CE is unchanged (`CHECKSUM TABLE`)
+and start the collector on the result:
+
+```bash
+GAMEWE_TEST_CE_SCHEMA=/path/to/hlstatsx-ce-install.sql GAMEWE_TEST_MIGRATE_TYPE=mysql ... \
+go test -p 1 -tags integration -run Convert -v ./cmd/gamewe/
+```
+
+The SQL script `docs/migration/hlstatsx-ce-to-gamewe.sql` does the same
+conversion; after a change to one of them, run both on the same CE data
+and compare the two gameWE databases.
+
 ### Adding a migration
 
 The target schema lives in `internal/schema/mysql/` (`schema.sql`,
