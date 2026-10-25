@@ -18,13 +18,23 @@ type Location struct {
 }
 
 // locationID returns the hlstats_Players_Locations id of loc, creating the
-// row. Rows are unique by lat/lng (4 decimals, about 11 m).
+// row. Rows are unique by lat/lng (4 decimals, about 11 m). A row that
+// exists without a state name gets the state of loc, so the web's state
+// ranking fills over time: rows with an empty state, or with a legacy
+// region code of at most 3 characters ("02", "CA") that HLstatsX stored
+// from the old GeoIP Legacy database.
 func (s *Store) locationID(ctx context.Context, loc Location) (int64, error) {
 	lat, lng := strconv.FormatFloat(loc.Lat, 'f', 4, 64), strconv.FormatFloat(loc.Lng, 'f', 4, 64)
 	v, err := s.cached("hlstats_Players_Locations|"+lat+"|"+lng, func() (any, error) {
 		if _, err := s.exec(ctx, s.ignore(`INSERT INTO hlstats_Players_Locations (city, state, country, flag, lat, lng) VALUES (?, ?, ?, ?, ?, ?)`),
 			clip(loc.City, 255), clip(loc.State, 255), clip(loc.Country, 255), clip(loc.Flag, 255), lat, lng); err != nil {
 			return nil, err
+		}
+		if loc.State != "" {
+			if _, err := s.exec(ctx, `UPDATE hlstats_Players_Locations SET state = ? WHERE lat = ? AND lng = ? AND CHAR_LENGTH(state) <= 3 AND state <> ?`,
+				clip(loc.State, 255), lat, lng, clip(loc.State, 255)); err != nil {
+				return nil, err
+			}
 		}
 		var id int64
 		err := s.queryRow(ctx, `SELECT id FROM hlstats_Players_Locations WHERE lat = ? AND lng = ?`, lat, lng).Scan(&id)

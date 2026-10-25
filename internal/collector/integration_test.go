@@ -813,6 +813,76 @@ func TestIntegrationBotsGeoLoad(t *testing.T) {
 	}
 }
 
+// stateGeo places 203.0.113.0/24 in Saxony, 198.51.100.0/24 in Munich and
+// 192.0.2.0/24 in Nuremberg.
+type stateGeo struct{}
+
+func (stateGeo) Lookup(_ string, ip netip.Addr) (stats.Location, bool) {
+	switch b := ip.As4(); {
+	case ip.Is4() && b[0] == 203 && b[1] == 0 && b[2] == 113:
+		return stats.Location{Flag: "de", Country: "Germany", City: "Falkenstein", State: "Saxony", Lat: 50.4779, Lng: 12.3713}, true
+	case ip.Is4() && b[0] == 198 && b[1] == 51 && b[2] == 100:
+		return stats.Location{Flag: "de", Country: "Germany", City: "Munich", State: "Bavaria", Lat: 48.1374, Lng: 11.5755}, true
+	case ip.Is4() && b[0] == 192 && b[1] == 0 && b[2] == 2:
+		return stats.Location{Flag: "de", Country: "Germany", City: "Nuremberg", State: "Bavaria", Lat: 49.4521, Lng: 11.0767}, true
+	}
+	return stats.Location{}, false
+}
+
+// A location row that exists without a state, or with a legacy region code
+// from HLstatsX, gets the state of the next lookup; a stored name stays.
+func TestIntegrationLocationState(t *testing.T) {
+	db := testDB(t)
+	addr := "203.0.113.136:27015"
+	insertServer(t, db, addr, "css")
+	for _, q := range []string{
+		`INSERT INTO hlstats_Players_Locations (city, state, country, flag, lat, lng) VALUES ('Falkenstein', '', 'Germany', 'de', '50.4779', '12.3713')`,
+		`INSERT INTO hlstats_Players_Locations (city, state, country, flag, lat, lng) VALUES ('Munich', 'Upper Bavaria', 'Germany', 'de', '48.1374', '11.5755')`,
+		`INSERT INTO hlstats_Players_Locations (city, state, country, flag, lat, lng) VALUES ('Nuremberg', '02', 'Germany', 'de', '49.4521', '11.0767')`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	set := settings.NewLive(settings.Defaults())
+	store := stats.NewStore(db, set)
+	hub := NewHub(store, set, &recorder{}, strictLog(t))
+	hub.Geo = stateGeo{}
+	if err := hub.Reload(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range []string{
+		`"K<2><STEAM_1:0:91><>" connected, address "203.0.113.2:27005"`,
+		`"M<3><STEAM_1:0:92><>" connected, address "198.51.100.7:27005"`,
+		`"N<4><STEAM_1:0:93><>" connected, address "192.0.2.9:27005"`,
+	} {
+		if err := hub.Dispatch(netip.MustParseAddrPort(addr), pkt(l), time.Now().UTC()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	located := `SELECT COUNT(*) FROM hlstats_Players_Data d JOIN hlstats_Players_Locations l ON l.id = d.location_id`
+	deadline := time.Now().Add(10 * time.Second)
+	for count(t, db, located) < 3 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	hub.Close(context.Background())
+	checks := []struct {
+		name      string
+		got, want int
+	}{
+		{"no new rows", count(t, db, `SELECT COUNT(*) FROM hlstats_Players_Locations`), 3},
+		{"empty state filled", count(t, db, `SELECT COUNT(*) FROM hlstats_Players_Locations WHERE lat = '50.4779' AND state = 'Saxony'`), 1},
+		{"legacy code replaced", count(t, db, `SELECT COUNT(*) FROM hlstats_Players_Locations WHERE lat = '49.4521' AND state = 'Bavaria'`), 1},
+		{"stored state kept", count(t, db, `SELECT COUNT(*) FROM hlstats_Players_Locations WHERE lat = '48.1374' AND state = 'Upper Bavaria'`), 1},
+		{"players located", count(t, db, located), 3},
+	}
+	for _, c := range checks {
+		if c.got != c.want {
+			t.Errorf("%s: got %d, want %d", c.name, c.got, c.want)
+		}
+	}
+}
+
 // RCON status alone fills the server and the live view.
 func TestIntegrationStatus(t *testing.T) {
 	db := testDB(t)

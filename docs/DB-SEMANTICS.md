@@ -182,7 +182,7 @@ and the game server's address when the server becomes active:
 
 | Table | Columns |
 |-------|---------|
-| `hlstats_Players_Locations` | one row per location, unique by `lat`/`lng` (text, 4 decimals): `city`, `state` (first subdivision), `country` (English name), `flag` (lower-case ISO 3166 code, e.g. `de`, as HLstatsX/gameME), `lat`, `lng` |
+| `hlstats_Players_Locations` | one row per location, unique by `lat`/`lng` (text, 4 decimals): `city`, `state` (name of the first subdivision; a row stored without one, empty or with a legacy region code of at most 3 characters such as HLstatsX's `02`, gets the name on the next lookup of that point), `country` (English name), `flag` (lower-case ISO 3166 code, e.g. `de`, as HLstatsX/gameME), `lat`, `lng` |
 | `hlstats_Players_Data.location_id` | the player's location of the latest connect line or RCON status address (`hlstats_Players_Locations.id`); bots, LAN and loopback addresses get none. Lookups are cached per address for an hour. Without the GeoIP database (warning `GeoIP database not available` in the journal) no location is written at all. |
 | `hlstats_Livestats.cli_location_id` | the same for the live view |
 | `hlstats_Servers` | `lat`, `lng` (3 decimals), `country_code` (lower-case ISO code), `country_name`, `city`, `state`, not if `fixed_location` = 1 (set in the web admin) |
