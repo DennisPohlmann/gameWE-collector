@@ -226,6 +226,16 @@ func tlsState(info database.Info) string {
 	return strings.TrimSpace(fmt.Sprintf("on, %s %s", info.TLSVersion, info.Cipher))
 }
 
+// checkTLS is the tls line of gamewe check: the state of the connection and
+// the configured mode in one line, e.g. "off (plaintext connection, mode
+// disable)" or "on, TLSv1.3 TLS_AES_256_GCM_SHA384 (mode verify-full)".
+func checkTLS(info database.Info, mode string) string {
+	if !info.TLS {
+		return fmt.Sprintf("off (plaintext connection, mode %s)", mode)
+	}
+	return fmt.Sprintf("%s (mode %s)", tlsState(info), mode)
+}
+
 func runCmd(args []string) error {
 	var listen, level string
 	var reload time.Duration
@@ -524,7 +534,7 @@ func check(cfg config.Config, out io.Writer, rep *checkReport) error {
 	if o := cfg.Features.LogSecret.Obsolete; len(o) > 0 {
 		warn(fmt.Sprintf("features.log_secret: %s ignored, the automatic log secret was removed (set it per server with gamewe server set -logsecret)", strings.Join(o, ", ")))
 	}
-	fmt.Fprintf(out, "database:  %s %s@%s:%d/%s, tls mode %s\n", d.Type, d.User, d.Host, d.Port, d.Name, d.TLS.Mode)
+	fmt.Fprintf(out, "database:  %s %s@%s:%d/%s\n", d.Type, d.User, d.Host, d.Port, d.Name)
 	rep.Database = checkDatabase{Type: d.Type, User: d.User, Host: d.Host, Port: d.Port, Name: d.Name, TLSMode: d.TLS.Mode}
 
 	db, err := database.Open(d)
@@ -536,10 +546,11 @@ func check(cfg config.Config, out io.Writer, rep *checkReport) error {
 	defer cancel()
 	info, err := database.Inspect(ctx, db)
 	if err != nil {
+		fmt.Fprintf(out, "tls:       mode %s (not connected)\n", d.TLS.Mode)
 		return fmt.Errorf("database connection failed: %w", database.Explain(err))
 	}
 	fmt.Fprintf(out, "connected: %s\n", info.Version)
-	fmt.Fprintf(out, "tls:       %s\n", tlsState(info))
+	fmt.Fprintf(out, "tls:       %s\n", checkTLS(info, d.TLS.Mode))
 	rep.Database.Server, rep.Database.TLS = info.Version, tlsState(info)
 	if d.TLS.Mode != config.TLSDisable && !info.TLS {
 		// Should be impossible with the drivers' settings; never accept it.

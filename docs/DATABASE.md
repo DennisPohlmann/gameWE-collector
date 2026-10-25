@@ -337,5 +337,8 @@ The modes work the same for both database types (on PostgreSQL they match
 - Use `server_name` when you connect by IP but the certificate carries a DNS name.
 - If TLS is configured and the server cannot do TLS, the connection fails. There
   is never a silent plaintext fallback.
-- `gamewe check` shows the TLS version and cipher, as reported by the server
-  (`Ssl_version`, `Ssl_cipher` on MariaDB, `pg_stat_ssl` on PostgreSQL).
+- `gamewe check` shows the TLS state in one line: the TLS version and cipher, as
+  reported by the server (`Ssl_version`, `Ssl_cipher` on MariaDB, `pg_stat_ssl`
+  on PostgreSQL), and the configured mode, e.g.
+  `tls: on, TLSv1.3 TLS_AES_256_GCM_SHA384 (mode verify-full)` or
+  `tls: off (plaintext connection, mode disable)`.

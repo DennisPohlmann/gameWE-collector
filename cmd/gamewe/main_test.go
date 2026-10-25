@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"gamewe-collector/internal/database"
 	"gamewe-collector/internal/version"
 )
 
@@ -82,6 +83,25 @@ func TestRunConfigErrorExitCode(t *testing.T) {
 	for _, want := range []string{"\nType=notify\n", fmt.Sprintf("\nRestartPreventExitStatus=2 %d\n", exitConfig)} {
 		if !strings.Contains(string(unit), want) {
 			t.Errorf("unit without %q", strings.TrimSpace(want))
+		}
+	}
+}
+
+// The tls line of gamewe check carries the connection state and the
+// configured mode once, not split over the database and tls lines.
+func TestCheckTLS(t *testing.T) {
+	for _, c := range []struct {
+		info database.Info
+		mode string
+		want string
+	}{
+		{database.Info{}, "disable", "off (plaintext connection, mode disable)"},
+		{database.Info{TLS: true, TLSVersion: "TLSv1.3", Cipher: "TLS_AES_256_GCM_SHA384"}, "verify-full",
+			"on, TLSv1.3 TLS_AES_256_GCM_SHA384 (mode verify-full)"},
+		{database.Info{TLS: true, TLSVersion: "TLSv1.2"}, "require", "on, TLSv1.2 (mode require)"},
+	} {
+		if got := checkTLS(c.info, c.mode); got != c.want {
+			t.Errorf("checkTLS(%+v, %q) = %q, want %q", c.info, c.mode, got, c.want)
 		}
 	}
 }
