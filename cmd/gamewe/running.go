@@ -59,8 +59,21 @@ func refuseRunning(ctx context.Context, db *database.DB, out io.Writer, what str
 
 // localCollectors returns the `gamewe run` processes on this host and the
 // active systemd unit gamewe-collector (also when /proc hides its process).
+// The systemd unit of a process (from its cgroup) is kept only when it is
+// active with this process as its main PID: a collector started by hand
+// from another service (a CI runner, a script) is in that service's cgroup,
+// and stopping that service is not the way to stop it. User units cannot
+// be checked from here: such a process is stopped by its PID.
 func localCollectors(ctx context.Context) []localrun.Process {
 	found, _ := localrun.Find(procDir, selfPID()) // no /proc: the lock and systemd still tell
+	for i, p := range found {
+		if p.Unit == "" {
+			continue
+		}
+		if active, pid := systemdState(ctx, p.Unit); p.UserUnit || !active || pid != p.PID {
+			found[i].Unit, found[i].UserUnit = "", false
+		}
+	}
 	active, pid := systemdState(ctx, localrun.Unit)
 	if !active {
 		return found
@@ -69,8 +82,8 @@ func localCollectors(ctx context.Context) []localrun.Process {
 	if i < 0 {
 		return append(found, localrun.Process{PID: pid, Unit: localrun.Unit})
 	}
-	if found[i].Unit == "" && found[i].Container == "" {
-		found[i].Unit, found[i].UserUnit = localrun.Unit, false
+	if found[i].Container == "" {
+		found[i].Unit = localrun.Unit
 	}
 	return found
 }
@@ -163,8 +176,6 @@ func describe(p localrun.Process) string {
 	switch {
 	case p.Container != "":
 		s += fmt.Sprintf(" (%s container %s)", p.Engine, p.Container)
-	case p.UserUnit:
-		s += fmt.Sprintf(" (systemd user unit %s)", p.Unit)
 	case p.Unit != "":
 		s += fmt.Sprintf(" (systemd unit %s)", p.Unit)
 	}
@@ -177,8 +188,6 @@ func stopStart(p localrun.Process) (string, string) {
 	switch {
 	case p.Container != "":
 		return p.Engine + " stop " + p.Container, p.Engine + " start " + p.Container
-	case p.UserUnit:
-		return "systemctl --user stop " + shellQuote(unit), "systemctl --user start " + shellQuote(unit)
 	case p.Unit != "":
 		return "systemctl stop " + shellQuote(unit), "systemctl start " + shellQuote(unit)
 	case inContainer(): // docker compose exec: the collector of this container

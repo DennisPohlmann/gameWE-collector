@@ -42,8 +42,9 @@ func fakeRun(t *testing.T, cfg string) (int, func()) {
 
 // fakeHost replaces what refuseRunning looks at: a /proc with the given
 // command lines and cgroups (PIDs 100, 101, ...), the state of the systemd
-// unit, the binary, the arguments and whether it runs in a container.
-func fakeHost(t *testing.T, active bool, mainPID int, container bool, args []string, procs ...[2]string) {
+// units (active ones with their main PID), the binary, the arguments and
+// whether it runs in a container.
+func fakeHost(t *testing.T, units map[string]int, container bool, args []string, procs ...[2]string) {
 	t.Helper()
 	dir := t.TempDir()
 	for i, p := range procs {
@@ -57,7 +58,10 @@ func fakeHost(t *testing.T, active bool, mainPID int, container bool, args []str
 		procDir, systemdState, executable, commandArgs, inContainer, selfPID = oldProc, oldSys, oldExe, oldArgs, oldCont, oldSelf
 	})
 	procDir = dir
-	systemdState = func(context.Context, string) (bool, int) { return active, mainPID }
+	systemdState = func(_ context.Context, unit string) (bool, int) {
+		pid, ok := units[unit]
+		return ok, pid
+	}
 	executable = func() (string, error) { return "/opt/gamewe/collector/bin/gamewe", nil }
 	commandArgs = func() []string { return args }
 	inContainer = func() bool { return container }
@@ -92,7 +96,7 @@ func wantCmds(t *testing.T, got []string, want ...string) {
 }
 
 func TestRefusalSystemdUnit(t *testing.T) {
-	fakeHost(t, true, 100, false, []string{"db", "migrate", "--force"},
+	fakeHost(t, map[string]int{localrun.Unit: 100}, false, []string{"db", "migrate", "--force"},
 		[2]string{runLine, "0::/system.slice/gamewe-collector.service\n"})
 	msg, cmds := refusal(t, true)
 	wantCmds(t, cmds,
@@ -111,7 +115,7 @@ func TestRefusalSystemdUnit(t *testing.T) {
 
 // A collector up to 0.7.1 holds no lock: the process tells it.
 func TestRefusalOldCollectorOtherUnit(t *testing.T) {
-	fakeHost(t, false, 0, false, []string{"db", "migrate", "-config", "/srv/my config.yaml"},
+	fakeHost(t, map[string]int{"gw-cs2.service": 100}, false, []string{"db", "migrate", "-config", "/srv/my config.yaml"},
 		[2]string{"/usr/local/bin/gamewe\x00run\x00", "0::/system.slice/gw-cs2.service\n"})
 	msg, cmds := refusal(t, false)
 	wantCmds(t, cmds,
@@ -124,7 +128,7 @@ func TestRefusalOldCollectorOtherUnit(t *testing.T) {
 }
 
 func TestRefusalPlainProcessAndContainer(t *testing.T) {
-	fakeHost(t, false, 0, false, []string{"db", "reset", "-yes"},
+	fakeHost(t, nil, false, []string{"db", "reset", "-yes"},
 		[2]string{"./gamewe\x00run\x00-config\x00c.yaml\x00", "0::/user.slice/user-1000.slice/session-2.scope\n"},
 		[2]string{"/opt/gamewe/collector/bin/gamewe\x00run\x00", "0::/system.slice/docker-89abcdef0123456789abcdef.scope\n"},
 		[2]string{"/usr/bin/vim\x00gamewe\x00run\x00", ""})
@@ -137,9 +141,31 @@ func TestRefusalPlainProcessAndContainer(t *testing.T) {
 		"docker start 89abcdef0123")
 }
 
+// A gamewe run started by hand from another service (a CI runner job, a
+// script of a user unit) is in that service's cgroup: stop it by its PID,
+// never that service.
+func TestRefusalProcessInOtherService(t *testing.T) {
+	fakeHost(t, map[string]int{"runner-agent.service": 7}, false, []string{"db", "migrate", "-f"},
+		[2]string{"/tmp/x/gamewe\x00run\x00", "0::/system.slice/runner-agent.service\n"},
+		[2]string{"/tmp/y/gamewe\x00run\x00", "0::/system.slice/stopped.service\n"},
+		[2]string{"/tmp/z/gamewe\x00run\x00", "0::/user.slice/user-1000.slice/user@1000.service/app.slice/gw.service\n"})
+	msg, cmds := refusal(t, false)
+	wantCmds(t, cmds,
+		"kill 100",
+		"kill 101",
+		"kill 102",
+		"/opt/gamewe/collector/bin/gamewe db migrate -f",
+		"/tmp/x/gamewe run &    # as it was started before",
+		"/tmp/y/gamewe run &    # as it was started before",
+		"/tmp/z/gamewe run &    # as it was started before")
+	if strings.Contains(msg, "systemctl") || strings.Contains(msg, "unit") {
+		t.Error("named a unit the collector is not the main process of")
+	}
+}
+
 // /proc hides the process (hidepid), systemd names the unit.
 func TestRefusalSystemdOnly(t *testing.T) {
-	fakeHost(t, true, 4242, false, []string{"db", "drop"})
+	fakeHost(t, map[string]int{localrun.Unit: 4242}, false, []string{"db", "drop"})
 	msg, cmds := refusal(t, false)
 	wantCmds(t, cmds,
 		"systemctl stop gamewe-collector",
@@ -152,7 +178,7 @@ func TestRefusalSystemdOnly(t *testing.T) {
 
 // Only the lock: the collector runs on another host or in a container.
 func TestRefusalLockOnly(t *testing.T) {
-	fakeHost(t, false, 0, false, []string{"db", "migrate", "-f"},
+	fakeHost(t, nil, false, []string{"db", "migrate", "-f"},
 		[2]string{"/opt/gamewe/collector/bin/gamewe\x00db\x00migrate\x00", ""})
 	msg, cmds := refusal(t, true)
 	if len(cmds) != 3 || !strings.HasPrefix(cmds[0], "docker compose stop collector") || cmds[1] != "/opt/gamewe/collector/bin/gamewe db migrate -f" || !strings.HasPrefix(cmds[2], "docker compose start collector") {
@@ -166,7 +192,7 @@ func TestRefusalLockOnly(t *testing.T) {
 }
 
 func TestRerunInContainer(t *testing.T) {
-	fakeHost(t, false, 0, true, []string{"db", "migrate", "-f"})
+	fakeHost(t, nil, true, []string{"db", "migrate", "-f"})
 	if got, want := rerunCommand(), "docker compose run --rm collector db migrate -f"; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -174,7 +200,7 @@ func TestRerunInContainer(t *testing.T) {
 
 // gamewe db migrate in the collector container (docker compose exec).
 func TestRefusalInContainer(t *testing.T) {
-	fakeHost(t, false, 0, true, []string{"db", "migrate"}, [2]string{runLine, "0::/\n"})
+	fakeHost(t, nil, true, []string{"db", "migrate"}, [2]string{runLine, "0::/\n"})
 	_, cmds := refusal(t, true)
 	wantCmds(t, cmds,
 		"docker compose stop collector    # on the host, in the directory of its docker-compose.yml",
@@ -200,7 +226,7 @@ func TestShellQuote(t *testing.T) {
 }
 
 func TestLocalCollectorsSystemdSamePID(t *testing.T) {
-	fakeHost(t, true, 100, false, nil, [2]string{runLine, ""}) // cgroup unreadable
+	fakeHost(t, map[string]int{localrun.Unit: 100}, false, nil, [2]string{runLine, ""}) // cgroup unreadable
 	got := localCollectors(context.Background())
 	if len(got) != 1 || got[0].Unit != localrun.Unit {
 		t.Errorf("got %+v", got)

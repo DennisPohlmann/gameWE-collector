@@ -117,7 +117,7 @@ func TestFindFakeProc(t *testing.T) {
 	dir := fakeProc(t,
 		[2]string{"/opt/gamewe/collector/bin/gamewe\x00run\x00-config\x00/etc/gamewe/collector/config.yaml\x00", "0::/system.slice/gamewe-collector.service\n"},
 		[2]string{"/opt/gamewe/collector/bin/gamewe\x00db\x00migrate\x00-f\x00", "0::/user.slice/user-0.slice/session-1.scope\n"},
-		[2]string{"", ""},                          // kernel thread
+		[2]string{"", ""}, // kernel thread
 		[2]string{"/usr/local/src/gamewe\x00run\x00", ""}, // no cgroup readable
 		[2]string{"/usr/local/src/gamewe\x00run\x00", ""}, // PID 104 = self
 		[2]string{"/opt/gamewe/collector/bin/gamewe\x00run\x00", "0::/system.slice/docker-0123456789abcdef0123.scope\n"},

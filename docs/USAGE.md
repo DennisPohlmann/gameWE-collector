@@ -148,8 +148,9 @@ nothing while one runs. A collector runs when
 
 The refusal names the PID, its command line and its systemd unit or
 container, and lists the commands to run, one per line, ready to copy: stop
-it (`systemctl stop UNIT`, `docker stop CONTAINER`, or `kill PID` for a
-process started by hand), the same `gamewe db ...` command again (the path of
+it (`systemctl stop UNIT` when the collector is the main process of an active
+system unit, `docker stop CONTAINER`, otherwise `kill PID`, e.g. for one
+started by hand, from a script or a user unit), the same `gamewe db ...` command again (the path of
 this binary, the same flags), start it again. For example:
 
 ```text
