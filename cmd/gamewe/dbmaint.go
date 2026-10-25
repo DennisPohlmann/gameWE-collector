@@ -18,8 +18,6 @@ import (
 
 	"gamewe-collector/internal/config"
 	"gamewe-collector/internal/database"
-	"gamewe-collector/internal/settings"
-	"gamewe-collector/internal/stats"
 )
 
 // MinPurgeDays is the smallest -older-than of gamewe db purge: the daily
@@ -65,55 +63,6 @@ func connect(d config.Database, extra time.Duration) (context.Context, func(), *
 		return nil, nil, nil, err
 	}
 	return ctx, func() { db.Close(); done() }, db, nil
-}
-
-// heartbeatPoll is how often refuseRunning reads the heartbeat while it
-// waits for it to expire.
-var heartbeatPoll = 5 * time.Second
-
-// refuseRunning returns an error while a collector runs on the database:
-// one that holds the collector lock, or one whose heartbeat is still
-// written (collectors up to 0.7.1 hold no lock). A fresh heartbeat without
-// the lock can also be a collector stopped a moment ago: it waits (telling
-// out) until the heartbeat is written again (running) or older than
-// stats.HeartbeatFresh (stopped).
-func refuseRunning(ctx context.Context, db *database.DB, out io.Writer, what string) error {
-	stopIt := "stop it first (systemctl stop gamewe-collector, docker compose stop collector), then " + what
-	running, err := database.CollectorRunning(ctx, db)
-	if err != nil {
-		return fmt.Errorf("is a collector running? %w", database.Explain(err))
-	}
-	if running {
-		return fmt.Errorf("a collector is running on this database (it holds the collector lock): %s", stopIt)
-	}
-	store := stats.NewStore(db, settings.NewLive(settings.Defaults()))
-	beat, err := store.LastHeartbeat(ctx)
-	if err != nil || beat.IsZero() || time.Since(beat) >= stats.HeartbeatFresh { // no hlstats_Options: no collector either
-		return nil
-	}
-	// at most HeartbeatFresh, also for a heartbeat from a clock ahead
-	deadline := time.Now().Add(min(stats.HeartbeatFresh-time.Since(beat), stats.HeartbeatFresh))
-	fmt.Fprintf(out, "the collector heartbeat is %s old, but no collector holds the collector lock: a collector up to 0.7.1 runs, or one stopped a moment ago; waiting up to %s to tell (Ctrl-C cancels) ...\n",
-		max(time.Since(beat), time.Second).Round(time.Second), time.Until(deadline).Round(time.Second))
-	for time.Now().Before(deadline) {
-		select {
-		case <-ctx.Done():
-			return errors.New("cancelled: nothing changed")
-		case <-time.After(max(min(heartbeatPoll, time.Until(deadline)), 0)):
-		}
-		now, err := store.LastHeartbeat(ctx)
-		if err != nil {
-			return fmt.Errorf("collector heartbeat: %w", err)
-		}
-		if now.After(beat) {
-			return fmt.Errorf("a collector is running on this database (it wrote its heartbeat %s ago): %s", max(time.Since(now), time.Second).Round(time.Second), stopIt)
-		}
-		if running, err := database.CollectorRunning(ctx, db); err == nil && running {
-			return fmt.Errorf("a collector is running on this database (it holds the collector lock): %s", stopIt)
-		}
-	}
-	fmt.Fprintln(out, "no collector is running")
-	return nil
 }
 
 // printRows writes the rows per table (and puts them into the document).

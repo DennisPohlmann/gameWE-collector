@@ -157,6 +157,23 @@ func startRun(t *testing.T, bin, cfg string) func() string {
 	}
 }
 
+// rerunLine is the line of a refusal that runs bin with args again; in a
+// container (tests in a podman/docker container) the docker compose one.
+func rerunLine(bin string, args ...string) string {
+	if inContainer() {
+		return "  docker compose run --rm collector " + strings.Join(args, " ") + "\n"
+	}
+	return "  " + bin + " " + strings.Join(args, " ") + "\n"
+}
+
+// killLine is the line of a refusal that stops the plain process pid.
+func killLine(pid int) string {
+	if inContainer() {
+		return "  docker compose stop collector"
+	}
+	return fmt.Sprintf("  kill %d\n", pid)
+}
+
 // beating writes the heartbeat every 500 ms, as a running collector up to
 // 0.7.1 (no collector lock) does every minute, until the returned function
 // is called.
@@ -184,11 +201,11 @@ func beating(t *testing.T, admin *database.DB) func() {
 	return func() { close(done); <-stopped }
 }
 
-// gamewe db migrate refuses while a collector runs on the database: one
-// that holds the collector lock (gamewe run of this version, also from
-// another host), or one up to 0.7.1 whose heartbeat is still written. A
-// heartbeat that is not written any more (a collector stopped a moment
-// ago) is waited out. Nothing is changed while it refuses.
+// gamewe db migrate refuses while a collector runs: one that holds the
+// collector lock (gamewe run of this version, also from another host), or
+// a gamewe run on this host without it (up to 0.7.1). It names the PID and
+// the commands to run. A fresh heartbeat without either is only noted:
+// nothing waits for it. Nothing is changed while it refuses.
 func TestMigrateRefusesRunningCollector(t *testing.T) {
 	if database.MigrateTestEnv() == "" {
 		t.Skip("set GAMEWE_TEST_MIGRATE_* to run (creates and drops databases mig_*)")
@@ -226,7 +243,11 @@ func TestMigrateRefusesRunningCollector(t *testing.T) {
 	}
 	start := time.Now()
 	out, code := gw(t, bin, "db", "migrate", "-f", "-config", cfg)
-	expect(t, out, code, 1, "a collector is running on this database (it holds the collector lock)", "systemctl stop gamewe-collector")
+	expect(t, out, code, 1, "a collector is running on this host:", "PID ", bin+" run -config "+cfg, "Stop it first, then migrate",
+		rerunLine(bin, "db", "migrate", "-f", "-config", cfg))
+	if strings.Contains(out, "0.7.1") {
+		t.Error("the collector with the lock called an old one")
+	}
 	if time.Since(start) > 15*time.Second || version() != 4 {
 		t.Errorf("refusal took %s, version %d", time.Since(start), version())
 	}
@@ -235,21 +256,35 @@ func TestMigrateRefusesRunningCollector(t *testing.T) {
 		t.Errorf("run log lacks the collector lock:\n%s", log)
 	}
 
-	// A collector up to 0.7.1: no lock, its heartbeat is written.
-	stopBeat := beating(t, admin)
-	out, code = gw(t, bin, "db", "migrate", "-f", "-config", cfg)
-	stopBeat()
-	expect(t, out, code, 1, "no collector holds the collector lock", "a collector is running on this database (it wrote its heartbeat")
-	if version() != 4 {
-		t.Fatal("migrate changed the database while a collector ran")
-	}
-
-	// A heartbeat 110 s old that is not written any more: stopped.
-	if _, err := admin.Exec(admin.Q(`UPDATE hlstats_Options SET value = ? WHERE keyname = 'gamewe_heartbeat'`), fmt.Sprint(time.Now().Unix()-110)); err != nil {
+	// The lock of a collector elsewhere (another host, a container).
+	release, err := database.LockCollector(ctx, admin)
+	if err != nil {
 		t.Fatal(err)
 	}
 	out, code = gw(t, bin, "db", "migrate", "-f", "-config", cfg)
-	expect(t, out, code, 0, "waiting up to", "no collector is running", "[1/", "done: the database has schema version")
+	release()
+	expect(t, out, code, 1, "it holds the collector lock), but not here", "  docker compose stop collector", "docker stop CONTAINER",
+		"systemctl stop gamewe-collector", rerunLine(bin, "db", "migrate", "-f", "-config", cfg), "  docker compose start collector")
+
+	// A collector up to 0.7.1: no lock, its process runs here.
+	stopBeat := beating(t, admin)
+	pid, kill := fakeRun(t, cfg)
+	start = time.Now()
+	out, code = gw(t, bin, "db", "migrate", "-f", "-config", cfg)
+	kill()
+	expect(t, out, code, 1, fmt.Sprintf("PID %d: ", pid), "holds no collector lock", killLine(pid))
+	if time.Since(start) > 15*time.Second || version() != 4 {
+		t.Fatalf("refusal took %s, version %d", time.Since(start), version())
+	}
+
+	// A fresh heartbeat, no lock, no process: noted, no waiting.
+	start = time.Now()
+	out, code = gw(t, bin, "db", "migrate", "-f", "-config", cfg)
+	stopBeat()
+	expect(t, out, code, 0, "note: the collector heartbeat is", "[1/", "done: the database has schema version")
+	if strings.Contains(out, "waiting up to") || time.Since(start) > 15*time.Second {
+		t.Errorf("waited (%s)", time.Since(start))
+	}
 	if version() != database.Latest() {
 		t.Errorf("version %d after migrate", version())
 	}
@@ -490,15 +525,20 @@ func TestMigrateDBCommands(t *testing.T) {
 	expect(t, out, code, 1, "Make a backup before resetting", "no interactive confirmation possible")
 	sql(`UPDATE hlstats_Options SET value = ? WHERE keyname = 'gamewe_heartbeat'`, fmt.Sprint(time.Now().Unix()))
 	sql(`INSERT INTO hlstats_Options (keyname, value) SELECT 'gamewe_heartbeat', ? WHERE NOT EXISTS (SELECT 1 FROM hlstats_Options WHERE keyname = 'gamewe_heartbeat')`, fmt.Sprint(time.Now().Unix()))
-	stopBeat := beating(t, admin) // a collector up to 0.7.1
+	stopBeat := beating(t, admin)
+	_, kill := fakeRun(t, cfg) // a collector up to 0.7.1
 	out, code = gw(t, bin, "db", "reset", "-yes", "-config", cfg)
-	expect(t, out, code, 1, "a collector is running on this database")
+	expect(t, out, code, 1, "a collector is running on this host:", "holds no collector lock", "then reset the database", rerunLine(bin, "db", "reset", "-yes", "-config", cfg))
 	out, code = gw(t, bin, "db", "drop", "-yes", "-config", cfg)
-	expect(t, out, code, 1, "a collector is running on this database")
+	expect(t, out, code, 1, "a collector is running on this host:", "then drop the tables", rerunLine(bin, "db", "drop", "-yes", "-config", cfg))
+	kill()
 	stopBeat()
 	stop := startRun(t, bin, cfg) // this version: the collector lock
 	out, code = gw(t, bin, "db", "reset", "-yes", "-config", cfg)
-	expect(t, out, code, 1, "a collector is running on this database (it holds the collector lock)")
+	expect(t, out, code, 1, "a collector is running on this host:", bin+" run -config "+cfg)
+	if strings.Contains(out, "holds no collector lock") {
+		t.Error("the collector with the lock called an old one")
+	}
 	stop()
 	sql(`UPDATE hlstats_Options SET value = '1' WHERE keyname = 'gamewe_heartbeat'`)
 	out, code = gw(t, bin, "db", "reset", "-yes", "-config", cfg)

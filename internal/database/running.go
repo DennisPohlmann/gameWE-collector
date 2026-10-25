@@ -54,8 +54,8 @@ func holdsRunLock(ctx context.Context, conn *sql.Conn, postgres bool) (bool, err
 }
 
 // CollectorRunning reports whether a collector holds the collector lock of
-// the database. Collectors up to 0.7.1 hold none: their heartbeat
-// (hlstats_Options gamewe_heartbeat) tells them.
+// the database. Collectors up to 0.7.1 hold none: gamewe db finds their
+// process on the host (internal/localrun).
 func CollectorRunning(ctx context.Context, db *DB) (bool, error) {
 	conn, err := db.Conn(ctx)
 	if err != nil {

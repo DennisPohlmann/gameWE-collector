@@ -134,17 +134,44 @@ lock, so a second run at the same time waits and then finds nothing to do.
 
 **Stop the collector first** (`systemctl stop gamewe-collector`, `docker
 compose stop collector`): a running collector writes into the tables a
-migration changes. `gamewe db migrate` (also with `-f`) checks this before it
-asks and changes nothing while one runs:
+migration changes. `gamewe db migrate` (also with `-f`: it only skips the
+question), `convert`, `reset` and `drop` check this before they ask and change
+nothing while one runs. A collector runs when
 
-- a running `gamewe run` holds the *collector lock* of its database
-  (MariaDB `GET_LOCK`, PostgreSQL advisory lock, on a connection of its
-  own); the database releases it when the collector ends;
-- a collector up to 0.7.1 holds no lock: its heartbeat (`gamewe_heartbeat`,
-  written every 60 s) tells it. A heartbeat younger than 2 minutes without
-  the lock can also be a collector stopped a moment ago: the command then
-  waits until the heartbeat is written again (running: it stops) or 2
-  minutes old (stopped: it goes on), and says so.
+- it holds the *collector lock* of the database: a running `gamewe run`
+  (0.7.2 and newer) holds it on a connection of its own (MariaDB `GET_LOCK`,
+  PostgreSQL advisory lock); the database releases it when the collector
+  ends, so this also tells a collector on another host or in a container;
+- a `gamewe run` process runs on this host (found in `/proc`, whatever the
+  path of the binary; also collectors up to 0.7.1, which hold no lock), or
+  the systemd unit `gamewe-collector` is active.
+
+The refusal names the PID, its command line and its systemd unit or
+container, and lists the commands to run, one per line, ready to copy: stop
+it (`systemctl stop UNIT`, `docker stop CONTAINER`, or `kill PID` for a
+process started by hand), the same `gamewe db ...` command again (the path of
+this binary, the same flags), start it again. For example:
+
+```text
+gamewe db: a collector is running on this host:
+  PID 1234: /opt/gamewe/collector/bin/gamewe run -config /etc/gamewe/collector/config.yaml (systemd unit gamewe-collector.service)
+Stop it first, then migrate, then start it again:
+
+  systemctl stop gamewe-collector
+  /opt/gamewe/collector/bin/gamewe db migrate -f
+  systemctl start gamewe-collector
+```
+
+A collector seen only by its lock runs elsewhere: the commands are then
+`docker compose stop collector` (or `docker stop CONTAINER`, or `systemctl
+stop gamewe-collector` on its host). Run in a container (`docker compose
+exec`/`run`), the commands are the `docker compose` ones. Nothing waits for
+the heartbeat (`gamewe_heartbeat`): a heartbeat younger than 2 minutes
+without lock and process is only noted (a collector stopped a moment ago,
+or one up to 0.7.1 on another host, which only you can stop) and the command
+goes on. Every `gamewe run` on this host counts, also one of another
+database: stop it as well, or run the command in a container or on another
+host.
 
 While it migrates, every step is a line `[n/m] ...`; a step that takes long
 prints `still running after 15s ...` every 15 seconds. A step waits at most

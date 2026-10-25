@@ -127,8 +127,10 @@ the database: stop it first. A running collector holds the *collector lock*
 on a connection of its own (MariaDB `GET_LOCK('gamewe_collector.<database>')`,
 PostgreSQL a session advisory lock; the database releases it when the
 process ends or the connection breaks), so this also works for a collector on
-another host or in a container; collectors up to 0.7.1 are recognised by
-their heartbeat. Each step waits at most 30 seconds for a table another
+another host or in a container; a `gamewe run` process on this host (also up
+to 0.7.1, without the lock) or the active systemd unit `gamewe-collector`
+counts too. The refusal lists the commands to stop it, migrate and start it
+again ([USAGE.md](USAGE.md)). Each step waits at most 30 seconds for a table another
 session holds (`lock_wait_timeout`, PostgreSQL `lock_timeout`), Ctrl-C stops
 the migration (the waiting statement too) and says which steps are done.
 
@@ -210,8 +212,8 @@ from an old HLstatsX, are listed and left alone.
 | `gamewe db drop` | **drops all tables** of the gameWE schema. Afterwards `gamewe db init` (or the next start) creates them again. Asks to type the database name | DROP: on MariaDB a database admin, `gamewe db drop -print \| mariadb -u root -p gamewe` (`-print` only prints the `DROP TABLE IF EXISTS ...`); on PostgreSQL the collector (owner) |
 
 `migrate`, `convert`, `reset` and `drop` refuse while a collector runs on the database
-(it holds the collector lock, or, up to 0.7.1, its heartbeat in
-`hlstats_Options` is still written): stop it first.
+(it holds the collector lock, or a `gamewe run` process runs on this host):
+stop it first; the message lists the commands.
 Make a backup before them; they print an example `mariadb-dump` /
 `pg_dump` command.
 

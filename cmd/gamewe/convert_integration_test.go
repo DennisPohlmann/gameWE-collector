@@ -522,7 +522,7 @@ func TestConvertRefusesRunningCollector(t *testing.T) {
 	cfg := writeConfig(t, d)
 	stop := startRun(t, bin, cfg) // creates the schema, holds the collector lock
 	out, code := gw(t, bin, "db", "convert", "-config", cfg, "-from", "conv_ce_run", "-yes")
-	expect(t, out, code, 1, "a collector is running on this database")
+	expect(t, out, code, 1, "a collector is running on this host:", "then convert", rerunLine(bin, "db", "convert", "-config", cfg, "-from", "conv_ce_run", "-yes"))
 	stop()
 	if n := one[int](t, gwdb, `SELECT COUNT(*) FROM hlstats_Players`); n != 0 {
 		t.Errorf("%d players written", n)

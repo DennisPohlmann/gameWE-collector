@@ -64,9 +64,13 @@ missing rights). `TestMigrateMaintenance` and `TestMigrateDBCommands` cover
 `-dry-run`, a running collector, the missing DROP right on MariaDB).
 `TestMigrateCollectorLock` (`internal/database/running_integration_test.go`)
 and `TestMigrateRefusesRunningCollector` cover the collector lock (migrate
-refuses while `gamewe run` or an old collector's heartbeat runs, waits out a
-heartbeat that stopped, the lock comes back after its connection was
-killed), the lock timeout on a table another session holds, the progress
+refuses while `gamewe run` holds the lock, while only the lock of a collector
+elsewhere is held, and while a `gamewe run` without lock runs here (the test
+binary re-started with that command line, `fakeRun`); a fresh heartbeat alone
+is only noted; the lock comes back after its connection was killed); the
+messages and their commands, the `/proc` scan (a fake proc directory and the
+real one) and the cgroup parsing are unit tests (`cmd/gamewe/running_test.go`,
+`internal/localrun`), the lock timeout on a table another session holds, the progress
 lines and Ctrl-C while a step waits. `TestAskTerminalWithoutICRNL`
 (`cmd/gamewe/term_linux_test.go`) answers a question on a pseudo terminal
 with `icrnl` off. They
