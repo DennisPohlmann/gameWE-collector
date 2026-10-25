@@ -143,7 +143,7 @@ order with the server's log lines:
 | `hlstats_Servers.act_map`, `map_started` | the map, when it differs from the current one; counted as a map start (`map_changes`, `hlstats_Maps.played`) once, the `Started map` log line of the same change is not counted again |
 | `hlstats_Servers.max_players` | the `(N max)` of the players line, written when it changes |
 | `hlstats_Servers.name` | the hostname, only while the name is empty |
-| `hlstats_Servers.act_players` | humans and bots listed (the same count the log lines keep) |
+| `hlstats_Servers.act_players` | humans and bots listed. While the last status is at most 2 minutes old and of the current map, its count is the player count (also for `hlstats_server_load`); players the log lines bring back between two polls do not add to it |
 | `hlstats_Livestats` | a row for every player and bot listed that has none yet, as on a first log line: `hlstats_Players` / `hlstats_PlayerUniqueIds` are created if needed (bots `BOT:<name>`), `connected` = now minus the connected time of status (bots: now). `ping` is written when it changes. `team` is not in status: it is empty until the player's next log line, whose player tag sets it. |
 | `hlstats_Events_Connects`, `hlstats_Players_Data.total_connects`, `last_connect` | a connect with the `adr` address for a player whose `connected` line was not seen (joined before the collector started or before the server was added), once until the player's disconnect line; bots and players without an address get none |
 | `hlstats_Events_Latency`, `hlstats_Players_Data.average_ping` | the ping, one sample per player and minute (see the table above) |
@@ -216,7 +216,10 @@ Map change: the players connect again and the bots are added anew, so for
 from before the change stands, in `act_players`, `min_players`/`max_players`
 and `hlstats_Servers.act_players`. A sample during the change shows neither 0
 nor old and new bots counted at once; a server that really emptied shows 0
-once that time is over.
+once that time is over. After it, with RCON status, the count is what the
+last status listed: bots of the old map that late log lines bring back are
+tracked until the next poll misses them, but never counted next to the new
+ones.
 
 ## Daily awards, ribbons, ranks
 

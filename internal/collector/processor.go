@@ -119,6 +119,7 @@ type serverState struct {
 	activeCount int       // hlstats_Servers.act_players as last written
 	lastLine    time.Time // last log line
 	lastStatus  time.Time // last RCON status
+	statusCount int       // players and bots listed by the last status
 
 	// RCON status
 	statusMap  string // map set by a status, not by a log line yet
@@ -476,7 +477,7 @@ func (p *Processor) Discard() {
 	srv.players = map[string]*playerState{}
 	srv.gone, srv.connected, srv.pendingKill, srv.pendingLoc = nil, nil, nil, nil
 	srv.minPlay, srv.maxPlay = 0, 0
-	srv.heldCount, srv.activeCount = 0, 0 // the reset clears act_players too
+	srv.heldCount, srv.activeCount, srv.statusCount = 0, 0, 0 // the reset clears act_players too
 	srv.lastRaw, srv.lastTwin = "", false
 }
 
@@ -699,9 +700,8 @@ func (p *Processor) Status(ctx context.Context, st Status, at time.Time) error {
 			return err
 		}
 	}
-	if left > 0 {
-		p.counted(at)
-	}
+	srv.statusCount = len(listed)
+	p.counted(at)
 	if err := p.setActive(ctx, at); err != nil {
 		return err
 	}
@@ -1033,10 +1033,20 @@ const (
 	mapSettleNoStatus = botIdle + MonitorInterval
 )
 
-// online is the number of players on the server at now: the tracked
-// players (one per identity, Player.Key), but during a map change's settle
-// time the count from before the change. A drop to 0 is only counted once
-// the players are really gone after the map change.
+// statusFresh is how long the player count of an RCON status stands for
+// the server: a few missed polls (busy server) keep it.
+const statusFresh = 2 * MonitorInterval
+
+// online is the number of players on the server at now: the players the
+// last RCON status listed, if it is recent and of the current map, else the
+// tracked players (one per identity, Player.Key). During a map change's
+// settle time it is the count from before the change. A drop to 0 is only
+// counted once the players are really gone after the map change.
+//
+// Status counts what the server says is on it. The tracked players can be
+// more for a while: lines of the old map's bots that come after the map
+// change, or after the last status, bring them back until the next status
+// or botIdle ends them, next to the new bots (up to the slots).
 func (p *Processor) online(now time.Time) int {
 	srv := &p.srv
 	if srv.heldCount > 0 {
@@ -1048,6 +1058,9 @@ func (p *Processor) online(now time.Time) int {
 			return srv.heldCount
 		}
 		srv.heldCount = 0
+	}
+	if srv.lastStatus.After(srv.mapAt) && now.Sub(srv.lastStatus) <= statusFresh {
+		return srv.statusCount
 	}
 	return len(srv.players)
 }

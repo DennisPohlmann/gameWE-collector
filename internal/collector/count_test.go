@@ -225,3 +225,69 @@ func TestMapChangeHoldsPlayerCount(t *testing.T) {
 		t.Errorf("act_players writes %v, want 0 last", st.active)
 	}
 }
+
+// Once the map change's hold is over, the count is what status lists: old
+// bots brought back by lines after the last status do not add to the 32
+// on the server (they used to, up to the 48 slots).
+func TestStatusCountAfterMapChange(t *testing.T) {
+	p, st := newTestProcessor(t)
+	s := settings.Defaults()
+	s.IdleTimeout = 0
+	p.set.Set(s)
+	ctx := context.Background()
+	t0 := time.Now()
+	bots := func(m, prefix string) string {
+		out := strings.Replace(strings.Replace(statusHead, "24 max", "48 max", 1), "de_dust2", m, 1)
+		for i := 0; i < 32; i++ {
+			out += fmt.Sprintf("# %d \"%s %d\" BOT active\n", 10+i, prefix, i)
+		}
+		return out
+	}
+	status := func(at time.Time, out string) {
+		t.Helper()
+		if err := p.Status(ctx, statusOf(t, out), at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	handleAll(t, p, t0, `Started map "gg_a" (CRC "1")`)
+	status(t0.Add(time.Second), bots("gg_a", "Old"))
+	start := t0.Add(LoadInterval + 2*time.Second)
+	if err := p.Tick(ctx, start); err != nil {
+		t.Fatal(err)
+	}
+	change := start.Add(time.Minute)
+	handleAll(t, p, change, `Loading map "gg_b"`)
+	for i := 0; i < 32; i++ {
+		handleAll(t, p, change.Add(3*time.Second), fmt.Sprintf(`"New %d<%d><BOT><CT>" entered the game`, i, 50+i))
+	}
+	at := change.Add(10 * time.Second)
+	for ; at.Before(change.Add(LoadInterval)); at = at.Add(10 * time.Second) {
+		status(at, bots("gg_b", "New"))
+		// Lines of old bots between two polls, after the hold.
+		if at.After(change.Add(mapSettle)) && at.Before(change.Add(mapSettle+time.Minute)) {
+			for i := 0; i < 16; i++ {
+				handleAll(t, p, at.Add(time.Second), fmt.Sprintf(`"Old %d<%d><BOT><CT>" killed "New %d<%d><BOT><TERRORIST>" with "ak47"`, i, 10+i, i, 50+i))
+			}
+			if n := p.online(at.Add(2 * time.Second)); n != 32 {
+				t.Fatalf("online %d with %d tracked, want the 32 of status", n, len(p.srv.players))
+			}
+		}
+	}
+	if err := p.Tick(ctx, start.Add(LoadInterval+time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if len(st.loads) != 1 {
+		t.Fatalf("%d load rows: %+v", len(st.loads), st.loads)
+	}
+	if l := st.loads[0]; l.Players != 32 || l.MinPlayers != 32 || l.MaxPlayers != 32 {
+		t.Errorf("load row %+v, want 32 players (32-32)", l)
+	}
+	for _, n := range st.active {
+		if n != 32 {
+			t.Errorf("act_players writes %v, want only 32", st.active)
+			break
+		}
+	}
+}
