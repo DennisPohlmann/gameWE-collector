@@ -44,29 +44,67 @@ func TestGoldSrcServer(t *testing.T) {
 	}
 }
 
-// CS:GO and TF2 kill assists are counted.
+// Kill assists are counted from CS:GO's native line, the SourceMod
+// plugin's kill_assist line (CS:GO, Insurgency) and TF2's "kill assist".
+// CS:GO logs the native and the plugin line for the same kill: counted once.
 func TestKillAssists(t *testing.T) {
 	st := newMemStore()
-	addrs := []string{"198.51.100.17:27015", "198.51.100.18:27015"}
-	srvs := st.addServers(addrs, map[string]string{addrs[0]: "csgo", addrs[1]: "tf"})
+	addrs := []string{"198.51.100.17:27015", "198.51.100.18:27015", "198.51.100.19:27015", "198.51.100.20:27015"}
+	srvs := st.addServers(addrs, map[string]string{addrs[0]: "csgo", addrs[1]: "tf", addrs[2]: "csgo", addrs[3]: "insurgency"})
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	ctx, now := context.Background(), time.Now()
-	lines := map[int][]string{
-		0: {`"C<4><STEAM_1:0:33><CT>" assisted killing "B<3><STEAM_1:1:22><TERRORIST>"`},
-		1: {`"C<4><[U:1:67]><Red>" triggered "kill assist" against "B<3><[U:1:44]><Blue>" (assister_position "1 2 3")`},
+	type line struct {
+		at time.Duration
+		l  string
+	}
+	c, b := `"C<4><STEAM_1:0:33><CT>"`, `"B<3><STEAM_1:1:22><TERRORIST>"`
+	lines := map[int][]line{
+		0: {{0, c + ` assisted killing ` + b}},
+		1: {{0, `"C<4><[U:1:67]><Red>" triggered "kill assist" against "B<3><[U:1:44]><Blue>" (assister_position "1 2 3")`}},
+		2: {
+			// kill 1: native line, then the plugin's (counted once)
+			{0, `"A<2><STEAM_1:0:11><CT>" [1 2 3] killed ` + b + ` [4 5 6] with "ak47"`},
+			{0, c + ` assisted killing ` + b},
+			{0, c + ` triggered "kill_assist" against ` + b},
+			// kill 2: the plugin's line first, the native one in the next second
+			{30 * time.Second, `"A<2><STEAM_1:0:11><CT>" [1 2 3] killed ` + b + ` [4 5 6] with "ak47"`},
+			{30 * time.Second, c + ` triggered "kill_assist" against ` + b},
+			{31 * time.Second, c + ` assisted killing ` + b},
+			// kill 3: plugin only (counted)
+			{60 * time.Second, c + ` triggered "kill_assist" against ` + b},
+		},
+		3: {{0, `"I<5><STEAM_1:0:55><#Team_Security>" triggered "kill_assist" against "J<6><STEAM_1:1:66><#Team_Insurgent>"`}},
 	}
 	for i, srv := range srvs {
 		p := NewProcessor(st, settings.NewLive(settings.Defaults()), srv, &recorder{}, log)
 		for _, l := range lines[i] {
-			if err := p.Handle(ctx, l, now); err != nil {
+			if err := p.Handle(ctx, l.l, now.Add(l.at)); err != nil {
 				t.Fatal(err)
 			}
 		}
 	}
 	st.mu.Lock()
 	defer st.mu.Unlock()
-	if strings.Join(st.assists, " ") != "0:33 1:33" {
-		t.Errorf("assists %v", st.assists)
+	if got := strings.Join(st.assists, " "); got != "0:33 1:33 0:33 0:33 0:33 0:55" {
+		t.Errorf("assists %v", got)
+	}
+	n := 0
+	for _, a := range st.actions {
+		if a == "0:33 kill_assist" {
+			n++
+		}
+	}
+	if n != 3 { // the native lines' kill_assist action, as before
+		t.Errorf("%d kill_assist actions of 0:33, want 3: %v", n, st.actions)
+	}
+	n = 0
+	for _, a := range st.ppas {
+		if strings.HasSuffix(a, " kill_assist 1:22") || a == "0:55 kill_assist 1:66" {
+			n++
+		}
+	}
+	if n != 4 { // the plugin lines still go through the player-player actions
+		t.Errorf("%d kill_assist player-player actions, want 4: %v", n, st.ppas)
 	}
 }
 

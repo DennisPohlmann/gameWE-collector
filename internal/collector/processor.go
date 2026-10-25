@@ -193,6 +193,12 @@ type playerState struct {
 	// headshot kill and the kill line says (headshot) as well. Whichever
 	// comes first is rewarded, the other one is skipped.
 	headshotLines, headshotKills int
+
+	// Kill assists: CS:GO logs `assisted killing` and the plugin
+	// `triggered "kill_assist" against` for the same kill. The victim keeps
+	// the last counted assist, so the second line is not counted again.
+	assistBy int64 // player id of the assister
+	assistAt time.Time
 }
 
 type heldKill struct {
@@ -396,10 +402,11 @@ func (p *Processor) Handle(ctx context.Context, line string, now time.Time) erro
 		if st == nil || err != nil {
 			return err
 		}
-		if _, err := p.player(ctx, ev, e.Victim); err != nil {
+		v, err := p.player(ctx, ev, e.Victim)
+		if err != nil {
 			return err
 		}
-		if err := p.store.KillAssist(ctx, ev, st.live); err != nil {
+		if err := p.killAssist(ctx, ev, st, v); err != nil {
 			return err
 		}
 		if e.Flash {
@@ -1519,12 +1526,31 @@ func (p *Processor) playerTrigger(ctx context.Context, ev stats.Ev, e logparse.P
 		}
 		return p.weaponStats(ctx, ev, st.live, e)
 	}
-	if e.Trigger == "kill assist" { // TF2
-		if err := p.store.KillAssist(ctx, ev, st.live); err != nil {
+	// TF2 logs "kill assist", the plugin "kill_assist" (CS:GO, Insurgency).
+	if (e.Trigger == "kill assist" || e.Trigger == "kill_assist") && e.Victim != nil {
+		v, err := p.player(ctx, ev, *e.Victim)
+		if err != nil {
+			return err
+		}
+		if err := p.killAssist(ctx, ev, st, v); err != nil {
 			return err
 		}
 	}
 	return p.playerEvent(ctx, ev, st, e)
+}
+
+// killAssist counts a kill assist of st on the victim v (nil if not
+// tracked). The same assist logged again within a second, CS:GO's
+// `assisted killing` line and the plugin's `kill_assist` line, is counted
+// once. The actions of both lines are scored as before.
+func (p *Processor) killAssist(ctx context.Context, ev stats.Ev, st, v *playerState) error {
+	if v != nil {
+		if d := ev.Time.Sub(v.assistAt); v.assistBy == st.live.ID && d <= time.Second && d >= -time.Second {
+			return nil
+		}
+		v.assistBy, v.assistAt = st.live.ID, ev.Time
+	}
+	return p.store.KillAssist(ctx, ev, st.live)
 }
 
 func (p *Processor) weaponStats(ctx context.Context, ev stats.Ev, live stats.Live, e logparse.PlayerTriggered) error {

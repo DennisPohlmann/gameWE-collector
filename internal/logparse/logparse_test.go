@@ -76,6 +76,9 @@ func TestParseLine(t *testing.T) {
 		{`Team "CT" triggered "CTs_Win" (CT "3") (T "1")`, TeamTriggered{Team: "CT", Trigger: "CTs_Win"}},
 		{`"Alice<2><STEAM_1:0:123><CT>" triggered "domination" against "Bob<3><STEAM_1:1:456><TERRORIST>"`,
 			PlayerTriggered{Player: alice, Trigger: "domination", Props: map[string]string{}, Victim: &bob}},
+		// the SourceMod plugin's kill assist (CS:GO, Insurgency)
+		{`"Alice<2><STEAM_1:0:123><CT>" triggered "kill_assist" against "Bob<3><STEAM_1:1:456><TERRORIST>"`,
+			PlayerTriggered{Player: alice, Trigger: "kill_assist", Props: map[string]string{}, Victim: &bob}},
 		{`Team "CT" scored "3" with "5" players`, TeamScored{Team: "CT", Score: 3, Players: 5}},
 		{`World triggered "Round_Start"`, WorldTriggered{Trigger: "Round_Start"}},
 		{`World triggered "Round_Win" (winner "Red")`, WorldTriggered{Trigger: "Round_Win", Winner: "Red"}},

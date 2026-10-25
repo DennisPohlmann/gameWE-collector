@@ -89,7 +89,7 @@ events (`killed`, `committed suicide with`, `triggered`, `joined team`,
 | headshot | `(headshot)` | `(headshot)`, `(headshot penetrated)` | `(customkill "headshot")` | CS 1.6 logs none: the AMX plugin logs the kill line, then `triggered "headshot"` (see below) |
 | team change | `joined team` | `switched from team <A> to <B>` | `joined team` | `joined team` |
 | round win | `Team "CT" triggered "CTs_Win"` | `SFUI_Notice_CTs_Win` (prefix removed) | `Round_Win` | `CTs_Win` |
-| kill assists | – | `"A" assisted killing "V"` | `triggered "kill assist" against "V"` | – |
+| kill assists | – (CS:S has no assister; Insurgency: plugin `triggered "kill_assist" against "V"`) | `"A" assisted killing "V"`, the plugin also `triggered "kill_assist" against "V"` | `triggered "kill assist" against "V"` | – |
 | map | `Started map "x"` | same | same | `Started map "x"` |
 
 **GoldSrc kills are held for one line:** the AMX plugin writes a headshot
@@ -101,7 +101,12 @@ otherwise as a normal kill. A kill that is the last line is recorded at the
 next tick (30 s) or at shutdown.
 
 Kill assists add to `kill_assists` (players, live view, history) and reward
-the action `kill_assist` / `kill assist` where the game defines it.
+the action `kill_assist` / `kill assist` where the game defines it. On CS:GO
+the engine's `assisted killing` line and the SourceMod plugin's
+`triggered "kill_assist" against` line describe the same assist: the same
+assister and victim within a second is counted once (each line's action is
+scored as before: the native line as a player action, the plugin line as a
+player-vs-player action). `kills_assisted` (the killer's side) is not written.
 
 **uniqueId** (`hlstats_PlayerUniqueIds.uniqueId`) is the same form for every
 engine: `STEAM_x:y:z` → `y:z`; Steam3 `[U:1:n]` → `n%2:n/2`; bots
@@ -135,6 +140,7 @@ The log lines the collector reads on CS:GO (`mp_logdetail 3` is not needed):
 | `"A<2><STEAM_1:0:1><CT>" [x y z] killed "V<3><STEAM_1:1:2><TERRORIST>" [x y z] with "ak47" (headshot penetrated)` | the kill with both positions; headshot; each other flag (`penetrated`, `noscope`, `throughsmoke`, `attackerblind`) is the killer's action `kill_<flag>` (not for kills with unranked bots) |
 | `"A" [x y z] killed other "chicken<99>" [x y z] with "knife"` | ignored |
 | `"A" assisted killing "V"` / `"A" flash-assisted killing "V"` | a kill assist (`kill_assist`); the flash assist also `flash_assist` |
+| `"A" triggered "kill_assist" against "V"` (SourceMod plugin) | the same kill assist, counted once with the line above; a player-vs-player action `kill_assist` |
 | `"P" [x y z] committed suicide with "world"` | a suicide |
 | `"P" [x y z] was killed by the bomb.` | a death of P with the weapon `planted_c4` (no suicide, no skill change) |
 | `"P" triggered "Planted_The_Bomb"` / `"Defused_The_Bomb"` / `"Got_The_Bomb"` / ... | player actions |
