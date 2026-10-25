@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"time"
@@ -20,10 +21,15 @@ import (
 func geoipUpdateCmd(args []string) error {
 	fs := flag.NewFlagSet("geoip-update", flag.ExitOnError)
 	file := fs.String("file", geoip.DefaultPath, "database file to write (replaced in one step)")
+	addOutputFlag(fs)
 	fs.Parse(args)
+	return captured(os.Stdout, func(out io.Writer, _ *result) error { return geoipUpdate(*file, out) })
+}
+
+func geoipUpdate(file string, out io.Writer) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	u := &geoip.Updater{Dest: *file}
+	u := &geoip.Updater{Dest: file}
 	now := time.Now().UTC()
 	this := now.Format("2006-01")
 	last := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, -1, 0).Format("2006-01")
@@ -35,7 +41,7 @@ func geoipUpdateCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	t, _ := geoip.BuildTime(*file)
-	fmt.Printf("%s: DB-IP City Lite built %s (CC BY 4.0, IP Geolocation by DB-IP, https://db-ip.com)\n", *file, t.Format("2006-01-02"))
+	t, _ := geoip.BuildTime(file)
+	fmt.Fprintf(out, "%s: DB-IP City Lite built %s (CC BY 4.0, IP Geolocation by DB-IP, https://db-ip.com)\n", file, t.Format("2006-01-02"))
 	return nil
 }

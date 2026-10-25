@@ -78,7 +78,9 @@ sudo -u gamewe /opt/gamewe/collector/bin/gamewe awards -date 2026-10-21
 ## Command line
 
 `gamewe <command>`; every command takes `-config FILE` (default
-`/etc/gamewe/collector/config.yaml`), `gamewe help` lists them all.
+`/etc/gamewe/collector/config.yaml`), `gamewe help` lists them all. Every
+command except `run` also takes `-o FORMAT` for scripts
+([output formats](#output-formats-for-scripts)).
 
 | Command | What it does |
 |---------|--------------|
@@ -187,6 +189,55 @@ gamewe option list                                 # the collector settings with
 gamewe option get gamewe_command_display
 gamewe option set gamewe_command_display both      # gamewe_* values are checked
 ```
+
+### Output formats for scripts
+
+`-o FORMAT` (or `--output FORMAT`) chooses how a command prints its result. It
+can stand before the command (`gamewe -o json server list`) or among its flags
+(`gamewe server list -o json`, `gamewe db status --output=yaml`); for `rcon`
+it must come before the RCON command.
+
+| Format | What it prints | Commands |
+|--------|----------------|----------|
+| `text` | the normal output (default) | all |
+| `json` | one indented JSON document | all except `run` |
+| `yaml` | the same document as YAML (`yml` works too) | all except `run` |
+| `csv` | a header line and one line per item (RFC 4180) | the lists: `game list`, `server list`, `option list`, `status` (one line per player), `logaddress`, `awards`, `reset -list` |
+| `tsv` | as `csv`, tab separated (tabs and line breaks in values become spaces) | the lists |
+| `name` | only the first column, one per line: server id, game code, option key, job id | the lists |
+
+```bash
+gamewe server list -o json                     # [{"id": 3, "address": "198.51.100.7:27015", "rcon_password_set": true, ...}]
+gamewe check -o yaml                           # config, database, schema, settings and servers as one document
+gamewe -o json db status                       # schema version, applied and pending migrations, steps
+gamewe db migrate -n -o json                   # the plan; exit code 0 up to date, 2 pending, 1 error
+gamewe status -o csv > players.csv             # the players of all servers, one line each
+for id in $(gamewe server list -o name); do gamewe logaddress -server "$id" -o json; done
+gamewe option get gamewe_kill_points -o json   # {"key": ..., "value": "5", "default": false, ...}
+```
+
+- Lists and `check`, `status`, `logaddress`, `awards`, `rcon` (`server_id`,
+  `address`, `output`; the RCON command itself is not repeated), `db status`
+  and `option get` print their data. Commands that change something (`game
+  add`, `server set`, `option set`, `db migrate`, `db purge`, `reset`, ...)
+  print `{"ok": ..., "error": ..., "messages": [...]}` with the lines of the
+  text output, and where it applies the migration `plan`, the rows per table
+  (`tables`) or the SQL of `-print` (`sql`).
+- Questions (`[y/N]`, type the database name) and notes such as the root
+  warning go to stderr then, so stdout holds only the document. Without a
+  terminal give `-yes` / `-f` as with the text output.
+- Errors go to stderr and the exit codes stay the same; `check`, `status`
+  and `logaddress` print their document also when a server fails (with
+  `error` per server, or `ok: false` and `error` for `check`).
+- **Secrets are never printed, in no format:** the database password is not
+  part of any output, the RCON password and the log secret only as
+  `rcon_password_set` / `log_secret_set`. As a second guard every string under
+  a key that names a password, secret, token or DSN is written as `***`.
+- `csv` and `tsv` start a value beginning with `=`, `+`, `-` or `@` that is
+  not a number with `'`, so a spreadsheet does not run player or server
+  names as formulas.
+- `csv`, `tsv` and `name` for a command that is not a list is an error (exit
+  code 2) before the command does anything.
 
 ### Resetting a ranking
 

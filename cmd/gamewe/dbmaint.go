@@ -32,9 +32,10 @@ type dbIO struct {
 	in          io.Reader
 	out         io.Writer
 	interactive bool
+	res         *result // the document of -o json|yaml; nil for the text
 }
 
-func stdIO() dbIO { return dbIO{os.Stdin, os.Stdout, stdinIsTerminal()} }
+func stdIO() dbIO { return dbIO{in: os.Stdin, out: os.Stdout, interactive: stdinIsTerminal()} }
 
 // errNoTTYYes is returned when a destructive command cannot ask.
 var errNoTTYYes = errors.New("no interactive confirmation possible (stdin is not a terminal): use -yes to run it without asking, or -dry-run to see what it would do")
@@ -45,7 +46,7 @@ func typed(c dbIO, prompt, want string) (bool, error) {
 	if !c.interactive {
 		return false, errNoTTYYes
 	}
-	fmt.Fprint(c.out, prompt)
+	fmt.Fprint(promptOut(c.out), prompt)
 	line, _ := bufio.NewReader(c.in).ReadString('\n')
 	return strings.TrimSpace(line) == want, nil
 }
@@ -86,12 +87,16 @@ func refuseRunning(ctx context.Context, db *database.DB, what string) error {
 	return nil
 }
 
-func printRows(out io.Writer, rows []database.TableRows) int64 {
-	w := tabwriter.NewWriter(out, 0, 2, 2, ' ', tabwriter.AlignRight)
+// printRows writes the rows per table (and puts them into the document).
+func (c dbIO) printRows(rows []database.TableRows) int64 {
+	w := tabwriter.NewWriter(c.out, 0, 2, 2, ' ', tabwriter.AlignRight)
 	var total int64
 	for _, r := range rows {
 		fmt.Fprintf(w, "%d\t  %s\t\n", r.Rows, r.Table)
 		total += r.Rows
+		if c.res != nil {
+			c.res.Tables = append(c.res.Tables, tableDoc{r.Table, r.Rows})
+		}
 	}
 	w.Flush()
 	return total
@@ -120,7 +125,7 @@ func dbInit(ctx context.Context, db *database.DB, d config.Database, c dbIO) err
 		return fmt.Errorf("the database %s is not empty (%d gameWE / HLstatsX tables): db init only creates a new database. "+
 			"To bring it to this version: %s; to empty it: %s", d.Name, n, migrateCommand(), dbCommand("reset"))
 	}
-	return migrate(ctx, db, d, migrateFlags{force: true}, c.in, c.out, c.interactive)
+	return migrate(ctx, db, d, migrateFlags{force: true}, c.in, c.out, c.interactive, c.res)
 }
 
 // gamewe db drop: all tables of the schema away.
@@ -139,8 +144,7 @@ func dbDropCmd(args []string, c dbIO) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprint(c.out, q)
-		return nil
+		return printSQL(c.out, c.res, q)
 	}
 	ctx, done, db, err := connect(cfg.Database, 5*time.Minute)
 	if err != nil {
@@ -164,7 +168,7 @@ func dbDrop(ctx context.Context, db *database.DB, d config.Database, yes, dry bo
 		return err
 	}
 	fmt.Fprintf(c.out, "drop %d tables of the database %s (rows per table):\n", len(own), d.Name)
-	total := printRows(c.out, rows)
+	total := c.printRows(rows)
 	if len(other) > 0 {
 		fmt.Fprintf(c.out, "not dropped (not part of the gameWE schema): %s\n", strings.Join(other, ", "))
 	}
@@ -247,7 +251,7 @@ func dbReset(ctx context.Context, db *database.DB, d config.Database, yes, dry b
 		return err
 	}
 	fmt.Fprintf(c.out, "reset the database %s: empty all %d tables (rows per table), then load the reference data again:\n", d.Name, len(data))
-	total := printRows(c.out, rows)
+	total := c.printRows(rows)
 	fmt.Fprintln(c.out, "Everything goes: players, statistics, events, awards, clans, game servers, settings (hlstats_Options), admin logins (hlstats_Users)\n"+
 		"and own games or changed definitions. The tables and the schema versions stay. Only one ranking: gamewe reset GAME -mode all.")
 	if dry {
@@ -320,7 +324,7 @@ func dbPurge(ctx context.Context, db *database.DB, d config.Database, days int, 
 		return err
 	}
 	fmt.Fprintf(c.out, "events before %s (older than %d days), rows per table:\n", before.UTC().Format("2006-01-02 15:04 UTC"), days)
-	total := printRows(c.out, rows)
+	total := c.printRows(rows)
 	fmt.Fprintln(c.out, "Players, their totals, rankings, awards and the history per day stay; the event lists of the web pages lose these rows.")
 	if dry || total == 0 {
 		if total == 0 {
@@ -334,7 +338,7 @@ func dbPurge(ctx context.Context, db *database.DB, d config.Database, days int, 
 		if !c.interactive {
 			return errNoTTYYes
 		}
-		fmt.Fprintf(c.out, "Delete %d rows? This cannot be undone. [y/N] ", total)
+		fmt.Fprintf(promptOut(c.out), "Delete %d rows? This cannot be undone. [y/N] ", total)
 		line, _ := bufio.NewReader(c.in).ReadString('\n')
 		switch strings.ToLower(strings.TrimSpace(line)) {
 		case "y", "yes", "j", "ja":

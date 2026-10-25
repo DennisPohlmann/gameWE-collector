@@ -235,7 +235,7 @@ func TestMigrateQuestion(t *testing.T) {
 	defer db.Close()
 	for _, answer := range []string{"n\n", "\n", ""} {
 		var out bytes.Buffer
-		err := migrate(ctx, db, d, migrateFlags{}, strings.NewReader(answer), &out, true)
+		err := migrate(ctx, db, d, migrateFlags{}, strings.NewReader(answer), &out, true, nil)
 		var ee exitError
 		if !errors.As(err, &ee) || ee.code != 1 || !strings.Contains(out.String(), "Cancelled: nothing changed") {
 			t.Errorf("answer %q: %v\n%s", answer, err, out.String())
@@ -245,7 +245,7 @@ func TestMigrateQuestion(t *testing.T) {
 		t.Fatal("a cancelled migration changed the database")
 	}
 	var out bytes.Buffer
-	if err := migrate(ctx, db, d, migrateFlags{}, strings.NewReader("ja\n"), &out, true); err != nil {
+	if err := migrate(ctx, db, d, migrateFlags{}, strings.NewReader("ja\n"), &out, true, nil); err != nil {
 		t.Fatalf("ja: %v\n%s", err, out.String())
 	}
 	if p, _ := database.PlanMigrations(ctx, db); p == nil || !p.UpToDate() {

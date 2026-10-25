@@ -78,9 +78,16 @@ func (a *Admin) say(format string, args ...any) {
 
 // Game is a row of hlstats_Games with its use.
 type Game struct {
-	Code, Name, Realgame string
-	Hidden               bool
-	Servers, Players     int
+	Code     string `json:"code"`
+	Realgame string `json:"realgame"`
+	// Guessed: realgame is empty or unknown, the base game is guessed from
+	// the code (ListGames marks it with "?").
+	Guessed bool   `json:"realgame_guessed"`
+	Engine  string `json:"engine"`
+	Hidden  bool   `json:"hidden"`
+	Servers int    `json:"servers"`
+	Players int    `json:"players"`
+	Name    string `json:"name"`
 }
 
 // realgameCol is the column expression of hlstats_Games.realgame: the
@@ -120,9 +127,27 @@ func (a *Admin) game(ctx context.Context, code string) (Game, error) {
 
 // ListGames prints all games with their number of servers and players.
 func (a *Admin) ListGames(ctx context.Context) error {
-	col, err := a.realgameCol(ctx)
+	list, err := a.Games(ctx)
 	if err != nil {
 		return err
+	}
+	w := tabwriter.NewWriter(a.Out, 0, 2, 2, ' ', 0)
+	fmt.Fprintln(w, "CODE\tREALGAME\tENGINE\tHIDDEN\tSERVERS\tPLAYERS\tNAME")
+	for _, g := range list {
+		rg := g.Realgame
+		if g.Guessed {
+			rg += "?"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%d\t%s\n", g.Code, rg, g.Engine, map[bool]string{true: "yes"}[g.Hidden], g.Servers, g.Players, g.Name)
+	}
+	return w.Flush()
+}
+
+// Games returns all games with their number of servers and players.
+func (a *Admin) Games(ctx context.Context) ([]Game, error) {
+	col, err := a.realgameCol(ctx)
+	if err != nil {
+		return nil, err
 	}
 	if col == "realgame" {
 		col = "g.realgame"
@@ -132,28 +157,21 @@ func (a *Admin) ListGames(ctx context.Context) error {
 		(SELECT COUNT(*) FROM hlstats_Players p WHERE p.game = g.code)
 		FROM hlstats_Games g ORDER BY g.code`)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer rows.Close()
-	w := tabwriter.NewWriter(a.Out, 0, 2, 2, ' ', 0)
-	fmt.Fprintln(w, "CODE\tREALGAME\tENGINE\tHIDDEN\tSERVERS\tPLAYERS\tNAME")
+	list := []Game{}
 	for rows.Next() {
 		var g Game
 		var hidden string
 		if err := rows.Scan(&g.Code, &g.Name, &g.Realgame, &hidden, &g.Servers, &g.Players); err != nil {
-			return err
+			return nil, err
 		}
 		_, engine, warn := games.Resolve(g.Realgame, g.Code)
-		rg := g.Realgame
-		if warn != "" {
-			rg += "?"
-		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%d\t%s\n", g.Code, rg, engine, map[string]string{"1": "yes"}[hidden], g.Servers, g.Players, g.Name)
+		g.Engine, g.Guessed, g.Hidden = engine.String(), warn != "", hidden == "1"
+		list = append(list, g)
 	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	return w.Flush()
+	return list, rows.Err()
 }
 
 // cloned are the per-game definition tables a new ranking copies from its
@@ -419,33 +437,56 @@ func (a *Admin) server(ctx context.Context, ref string) (server, error) {
 	return s, err
 }
 
+// ServerRow is a game server of ListServers. The RCON password and the
+// log secret are never read, only whether they are set.
+type ServerRow struct {
+	ID              int64  `json:"id"`
+	Address         string `json:"address"` // ip:port
+	Game            string `json:"game"`
+	Engine          string `json:"engine"`
+	RconPasswordSet bool   `json:"rcon_password_set"`
+	LogSecretSet    bool   `json:"log_secret_set"`
+	Name            string `json:"name"`
+}
+
 // ListServers prints the game servers; the RCON password and the log
 // secret only as set / not set.
 func (a *Admin) ListServers(ctx context.Context) error {
-	rows, err := a.q(ctx, `SELECT s.serverId, s.address, s.port, s.game, COALESCE(g.realgame, ''), s.rcon_password <> '', s.log_secret <> '', s.name
-		FROM hlstats_Servers s LEFT JOIN hlstats_Games g ON g.code = s.game ORDER BY s.serverId`)
+	list, err := a.Servers(ctx)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
 	w := tabwriter.NewWriter(a.Out, 0, 2, 2, ' ', 0)
 	fmt.Fprintln(w, "ID\tADDRESS\tGAME\tENGINE\tRCON\tLOGSECRET\tNAME")
 	setStr := map[bool]string{true: "set", false: "-"}
-	for rows.Next() {
-		var id int64
-		var addr, game, realgame, name string
-		var port int
-		var rcon, secret bool
-		if err := rows.Scan(&id, &addr, &port, &game, &realgame, &rcon, &secret, &name); err != nil {
-			return err
-		}
-		_, engine, _ := games.Resolve(realgame, game)
-		fmt.Fprintf(w, "%d\t%s:%d\t%s\t%s\t%s\t%s\t%s\n", id, addr, port, game, engine, setStr[rcon], setStr[secret], name)
-	}
-	if err := rows.Err(); err != nil {
-		return err
+	for _, s := range list {
+		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\n", s.ID, s.Address, s.Game, s.Engine, setStr[s.RconPasswordSet], setStr[s.LogSecretSet], s.Name)
 	}
 	return w.Flush()
+}
+
+// Servers returns the game servers; the RCON password and the log secret
+// only as set / not set (the query does not read them).
+func (a *Admin) Servers(ctx context.Context) ([]ServerRow, error) {
+	rows, err := a.q(ctx, `SELECT s.serverId, s.address, s.port, s.game, COALESCE(g.realgame, ''), s.rcon_password <> '', s.log_secret <> '', s.name
+		FROM hlstats_Servers s LEFT JOIN hlstats_Games g ON g.code = s.game ORDER BY s.serverId`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	list := []ServerRow{}
+	for rows.Next() {
+		var s ServerRow
+		var addr, realgame string
+		var port int
+		if err := rows.Scan(&s.ID, &addr, &port, &s.Game, &realgame, &s.RconPasswordSet, &s.LogSecretSet, &s.Name); err != nil {
+			return nil, err
+		}
+		_, engine, _ := games.Resolve(realgame, s.Game)
+		s.Address, s.Engine = fmt.Sprintf("%s:%d", addr, port), engine.String()
+		list = append(list, s)
+	}
+	return list, rows.Err()
 }
 
 func (a *Admin) checkFields(ctx context.Context, f ServerFields) error {
@@ -584,26 +625,53 @@ func (a *Admin) RemoveServer(ctx context.Context, ref string) error {
 
 // ---- options ----
 
+// Option is a value of hlstats_Options.
+type Option struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+	// Default: the key is not stored, Value is the collector's default.
+	Default     bool   `json:"default"`
+	Description string `json:"description,omitempty"`
+}
+
 // ListOptions prints the collector settings (gamewe_*) with their values,
 // defaults for missing keys marked.
 func (a *Admin) ListOptions(ctx context.Context) error {
-	opts, err := a.options(ctx)
+	list, err := a.Options(ctx)
 	if err != nil {
 		return err
 	}
 	w := tabwriter.NewWriter(a.Out, 0, 2, 2, ' ', 0)
 	fmt.Fprintln(w, "KEY\tVALUE\tDESCRIPTION")
-	for _, k := range settings.Keys() {
-		v, ok := opts[k.Name]
-		if !ok {
-			v = k.Default + " (default)"
+	for _, o := range list {
+		v := o.Value
+		if o.Default {
+			v += " (default)"
 		}
 		if utf8.RuneCountInString(v) > 40 {
 			v = string([]rune(v)[:37]) + "..."
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\n", k.Name, v, k.Meaning)
+		fmt.Fprintf(w, "%s\t%s\t%s\n", o.Key, v, o.Description)
 	}
 	return w.Flush()
+}
+
+// Options returns the collector settings (gamewe_*) with their values or
+// defaults.
+func (a *Admin) Options(ctx context.Context) ([]Option, error) {
+	opts, err := a.options(ctx)
+	if err != nil {
+		return nil, err
+	}
+	list := []Option{}
+	for _, k := range settings.Keys() {
+		v, ok := opts[k.Name]
+		if !ok {
+			v = k.Default
+		}
+		list = append(list, Option{Key: k.Name, Value: v, Default: !ok, Description: k.Meaning})
+	}
+	return list, nil
 }
 
 func (a *Admin) options(ctx context.Context) (map[string]string, error) {
@@ -625,22 +693,38 @@ func (a *Admin) options(ctx context.Context) (map[string]string, error) {
 
 // GetOption prints one value of hlstats_Options.
 func (a *Admin) GetOption(ctx context.Context, key string) error {
-	var v string
-	err := a.row(ctx, `SELECT value FROM hlstats_Options WHERE keyname = ?`, key).Scan(&v)
-	if errors.Is(err, sql.ErrNoRows) {
-		for _, k := range settings.Keys() {
-			if k.Name == key {
-				fmt.Fprintf(a.Out, "%s (default, not stored)\n", k.Default)
-				return nil
-			}
-		}
-		return fmt.Errorf("option %q: %w", key, ErrNotFound)
-	}
+	o, err := a.Option(ctx, key)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(a.Out, v)
+	if o.Default {
+		fmt.Fprintf(a.Out, "%s (default, not stored)\n", o.Value)
+		return nil
+	}
+	fmt.Fprintln(a.Out, o.Value)
 	return nil
+}
+
+// Option returns one value of hlstats_Options, or the default of a
+// collector setting that is not stored.
+func (a *Admin) Option(ctx context.Context, key string) (Option, error) {
+	o := Option{Key: key}
+	err := a.row(ctx, `SELECT value FROM hlstats_Options WHERE keyname = ?`, key).Scan(&o.Value)
+	if errors.Is(err, sql.ErrNoRows) {
+		for _, k := range settings.Keys() {
+			if k.Name == key {
+				o.Value, o.Default, o.Description = k.Default, true, k.Meaning
+				return o, nil
+			}
+		}
+		return o, fmt.Errorf("option %q: %w", key, ErrNotFound)
+	}
+	for _, k := range settings.Keys() {
+		if k.Name == key {
+			o.Description = k.Meaning
+		}
+	}
+	return o, err
 }
 
 // SetOption stores a value in hlstats_Options. Collector settings

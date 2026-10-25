@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -30,7 +31,8 @@ const adminUsage = `usage:
   gamewe option list
   gamewe option get KEY
   gamewe option set KEY VALUE
-every command takes -config FILE and -dry-run (show what would change)`
+every command takes -config FILE, -dry-run (show what would change) and
+-o text|json|yaml; the lists also -o csv|tsv|name`
 
 // optional is a string flag that knows whether it was given.
 type optional struct {
@@ -80,12 +82,18 @@ func adminCmd(kind string, args []string) error {
 	fs.Var(&rconFile, "rcon-password-file", "file with the RCON password ('-' = stdin)")
 	fs.Var(&public, "public-address", "address shown in the web")
 	fs.Var(&logSecret, "logsecret", "log secret (sv_logsecret in server.cfg): a number 1..2147483647, or \"\" (none: the server's log packets are not checked)")
+	addOutputFlag(fs)
 	pos, err := parseInterspersed(fs, args)
 	if err != nil {
 		return err
 	}
 	if len(pos) == 0 {
 		return errors.New(adminUsage)
+	}
+	sub, rest := pos[0], pos[1:]
+	list := sub == "list"
+	if err := needList(list); err != nil {
+		return err
 	}
 	given := map[string]bool{}
 	fs.Visit(func(f *flag.Flag) { given[f.Name] = true })
@@ -116,14 +124,65 @@ func adminCmd(kind string, args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	a := &admin.Admin{DB: db, Out: os.Stdout, DryRun: *dry}
-	sub, rest := pos[0], pos[1:]
+	if structured() && (list || kind+" "+sub == "option get") {
+		a.Out = os.Stderr // notes; the document goes to stdout
+		return adminDoc(ctx, a, kind, rest)
+	}
+	return captured(os.Stdout, func(w io.Writer, _ *result) error {
+		a.Out = w
+		return adminRun(ctx, a, kind, sub, rest, adminArgs{fields: admin.ServerFields{Game: game.ptr(), Name: name.ptr(), RconPassword: rcon.ptr(), PublicAddress: public.ptr(), LogSecret: logSecret.ptr()},
+			game: admin.GameFields{Name: name.ptr()}, given: given, template: *template, realgame: *realgame, hidden: *hidden, order: *order, logSecret: logSecret, dry: *dry})
+	})
+}
+
+// adminArgs are the flags of adminCmd that adminRun needs.
+type adminArgs struct {
+	fields             admin.ServerFields
+	game               admin.GameFields
+	given              map[string]bool
+	template, realgame string
+	hidden             bool
+	order              int
+	logSecret          optional
+	dry                bool
+}
+
+// adminDoc writes the document of a list or of option get.
+func adminDoc(ctx context.Context, a *admin.Admin, kind string, rest []string) error {
+	var v any
+	var err error
+	switch kind {
+	case "game":
+		v, err = a.Games(ctx)
+		v = gameList(v.([]admin.Game))
+	case "server":
+		v, err = a.Servers(ctx)
+		v = serverList(v.([]admin.ServerRow))
+	case "option":
+		if len(rest) == 1 {
+			v, err = a.Option(ctx, rest[0])
+		} else if len(rest) == 0 {
+			v, err = a.Options(ctx)
+			v = optionList(v.([]admin.Option))
+		} else {
+			return errors.New(adminUsage)
+		}
+	}
+	if err != nil {
+		return err
+	}
+	return emit(os.Stdout, v)
+}
+
+// adminRun runs `gamewe game|server|option SUB` with the text output.
+func adminRun(ctx context.Context, a *admin.Admin, kind, sub string, rest []string, f adminArgs) error {
 	want := func(n int) error {
 		if len(rest) != n {
 			return errors.New(adminUsage)
 		}
 		return nil
 	}
-	fields := admin.ServerFields{Game: game.ptr(), Name: name.ptr(), RconPassword: rcon.ptr(), PublicAddress: public.ptr(), LogSecret: logSecret.ptr()}
+	fields, given, logSecret, dry := f.fields, f.given, f.logSecret, &f.dry
 	switch kind + " " + sub {
 	case "game list":
 		return a.ListGames(ctx)
@@ -131,20 +190,20 @@ func adminCmd(kind string, args []string) error {
 		if err := want(2); err != nil {
 			return err
 		}
-		return a.AddGame(ctx, rest[0], rest[1], *template, *realgame, *hidden)
+		return a.AddGame(ctx, rest[0], rest[1], f.template, f.realgame, f.hidden)
 	case "game set":
 		if err := want(1); err != nil {
 			return err
 		}
-		gf := admin.GameFields{Name: name.ptr()}
+		gf := f.game
 		if given["realgame"] {
-			gf.Realgame = realgame
+			gf.Realgame = &f.realgame
 		}
 		if given["order"] {
-			gf.Order = order
+			gf.Order = &f.order
 		}
 		if given["hidden"] {
-			gf.Hidden = hidden
+			gf.Hidden = &f.hidden
 		}
 		return a.SetGame(ctx, rest[0], gf)
 	case "game hide", "game show":
@@ -166,7 +225,7 @@ func adminCmd(kind string, args []string) error {
 		if err := a.AddServer(ctx, rest[0], fields); err != nil || !logSecret.set || *dry {
 			return err
 		}
-		secretHint(logSecret.v)
+		secretHint(a.Out, logSecret.v)
 		return nil
 	case "server set":
 		if err := want(1); err != nil {
@@ -175,7 +234,7 @@ func adminCmd(kind string, args []string) error {
 		if err := a.SetServer(ctx, rest[0], fields); err != nil || !logSecret.set || *dry {
 			return err
 		}
-		secretHint(logSecret.v)
+		secretHint(a.Out, logSecret.v)
 		return nil
 	case "server remove":
 		if err := want(1); err != nil {
@@ -200,12 +259,12 @@ func adminCmd(kind string, args []string) error {
 
 // secretHint reminds that the collector never sets sv_logsecret itself.
 // The value is not printed.
-func secretHint(secret string) {
+func secretHint(w io.Writer, secret string) {
 	if secret == "" {
-		fmt.Println("note: no log secret: the collector accepts all log packets of this server (remove sv_logsecret from server.cfg too)")
+		fmt.Fprintln(w, "note: no log secret: the collector accepts all log packets of this server (remove sv_logsecret from server.cfg too)")
 		return
 	}
-	fmt.Println("note: set the same value as sv_logsecret in the game server's server.cfg; until then its log packets are rejected (GoldSrc servers are never checked)")
+	fmt.Fprintln(w, "note: set the same value as sv_logsecret in the game server's server.cfg; until then its log packets are rejected (GoldSrc servers are never checked)")
 }
 
 // readAllLimited reads at most 1 KiB (an RCON password).

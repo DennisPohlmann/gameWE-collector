@@ -38,7 +38,9 @@ for the game code to confirm.
 With a running collector (heartbeat less than 2 minutes old, table
 hlstats_gamewe_jobs present) the reset is queued for it: it pauses the game's servers, resets and goes
 on. Otherwise it runs here; then no collector may be running.
--list shows the latest queued resets.`
+-list shows the latest queued resets.
+-o json|yaml writes the result as a document (the question goes to stderr);
+-list also -o csv|tsv|name.`
 
 // resetCmd runs `gamewe reset`.
 func resetCmd(args []string) error {
@@ -53,14 +55,29 @@ func resetWith(args []string, in io.Reader, out io.Writer) error {
 	dry := fs.Bool("dry-run", false, "only show the rows per table")
 	yes := fs.Bool("yes", false, "do not ask for confirmation")
 	list := fs.Bool("list", false, "show the latest queued resets")
+	addOutputFlag(fs)
 	wait := fs.Duration("wait", 10*time.Minute, "how long to wait for a running collector to do the reset")
 	pos, err := parseInterspersed(fs, args)
 	if err != nil {
 		return err
 	}
-	cfg, err := config.Load(*path)
+	if err := needList(*list); err != nil {
+		return err
+	}
+	if *list {
+		return resetRun(pos, *path, *mode, *dry, *yes, true, *wait, in, out, nil)
+	}
+	return captured(out, func(out io.Writer, r *result) error {
+		return resetRun(pos, *path, *mode, *dry, *yes, false, *wait, in, out, r)
+	})
+}
+
+// resetRun is gamewe reset after the flags; r is the document of -o
+// json|yaml (nil for the text and for -list).
+func resetRun(pos []string, path, mode string, dry, yes, list bool, wait time.Duration, in io.Reader, out io.Writer, r *result) error {
+	cfg, err := config.Load(path)
 	if err != nil {
-		return fmt.Errorf("config %s: %w", *path, err)
+		return fmt.Errorf("config %s: %w", path, err)
 	}
 	db, err := database.Open(cfg.Database)
 	if err != nil {
@@ -78,7 +95,7 @@ func resetWith(args []string, in io.Reader, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if *list {
+	if list {
 		if !jobs {
 			return errors.New("no hlstats_gamewe_jobs: " + database.SchemaHint)
 		}
@@ -87,26 +104,29 @@ func resetWith(args []string, in io.Reader, out io.Writer) error {
 	if len(pos) != 1 {
 		return errors.New(resetUsage)
 	}
-	if *mode, err = stats.ResetMode(*mode); err != nil {
+	if mode, err = stats.ResetMode(mode); err != nil {
 		return fmt.Errorf("%w\n\n%s", err, resetUsage)
 	}
 	game := pos[0]
-	counts, err := store.ResetCounts(ctx, game, *mode)
+	counts, err := store.ResetCounts(ctx, game, mode)
 	if err != nil {
 		return err
 	}
 	w := tabwriter.NewWriter(out, 0, 2, 2, ' ', tabwriter.AlignRight)
-	fmt.Fprintf(out, "reset %s, mode %s: rows per table\n", game, *mode)
+	fmt.Fprintf(out, "reset %s, mode %s: rows per table\n", game, mode)
 	for _, c := range counts {
 		fmt.Fprintf(w, "%d\t  %s\t\n", c.Rows, c.Table)
+		if r != nil {
+			r.Tables = append(r.Tables, tableDoc{c.Table, c.Rows})
+		}
 	}
 	w.Flush()
-	if *dry {
+	if dry {
 		fmt.Fprintln(out, "dry run: nothing changed")
 		return nil
 	}
-	if !*yes {
-		fmt.Fprintf(out, "This cannot be undone. Type the game code (%s) to reset it: ", game)
+	if !yes {
+		fmt.Fprintf(promptOut(out), "This cannot be undone. Type the game code (%s) to reset it: ", game)
 		line, _ := bufio.NewReader(in).ReadString('\n')
 		if strings.TrimSpace(line) != game {
 			return errors.New("not confirmed, nothing changed")
@@ -118,11 +138,11 @@ func resetWith(args []string, in io.Reader, out io.Writer) error {
 			return err
 		}
 		if !beat.IsZero() && time.Since(beat) < stats.HeartbeatFresh {
-			return queueReset(ctx, store, game, *mode, *wait, out)
+			return queueReset(ctx, store, game, mode, wait, out)
 		}
 	}
 	fmt.Fprintln(out, "no running collector (no heartbeat in the last 2 minutes): resetting here")
-	res, err := store.Reset(ctx, game, *mode)
+	res, err := store.Reset(ctx, game, mode)
 	if err != nil {
 		return fmt.Errorf("reset stopped (run it again to complete it): %w; done before: %s", err, stats.FormatCounts(res))
 	}
@@ -205,6 +225,13 @@ func listJobs(ctx context.Context, store *stats.Store, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if structured() {
+		l := jobList{}
+		for _, j := range jobs {
+			l = append(l, jobDoc{j.ID, j.Type, j.Game, j.Mode, j.Status, j.RequestedBy, unixTime(j.RequestedAt), unixTime(j.StartedAt), unixTime(j.FinishedAt), j.Result})
+		}
+		return emit(out, l)
+	}
 	w := tabwriter.NewWriter(out, 0, 2, 2, ' ', 0)
 	fmt.Fprintln(w, "ID\tGAME\tMODE\tSTATUS\tBY\tREQUESTED\tFINISHED\tRESULT")
 	ts := func(t int64) string {
@@ -221,4 +248,30 @@ func listJobs(ctx context.Context, store *stats.Store, out io.Writer) error {
 		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", j.ID, j.Game, j.Mode, j.Status, j.RequestedBy, ts(j.RequestedAt), ts(j.FinishedAt), res)
 	}
 	return w.Flush()
+}
+
+type jobDoc struct {
+	ID          int64  `json:"id"`
+	Type        string `json:"type"`
+	Game        string `json:"game"`
+	Mode        string `json:"mode"`
+	Status      string `json:"status"`
+	RequestedBy string `json:"requested_by"`
+	RequestedAt string `json:"requested_at"`
+	StartedAt   string `json:"started_at"`
+	FinishedAt  string `json:"finished_at"`
+	Result      string `json:"result"`
+}
+
+type jobList []jobDoc
+
+func (jobList) Header() []string {
+	return []string{"id", "type", "game", "mode", "status", "requested_by", "requested_at", "started_at", "finished_at", "result"}
+}
+func (l jobList) Rows() [][]string {
+	out := [][]string{}
+	for _, j := range l {
+		out = append(out, []string{itoa(j.ID), j.Type, j.Game, j.Mode, j.Status, j.RequestedBy, j.RequestedAt, j.StartedAt, j.FinishedAt, j.Result})
+	}
+	return out
 }

@@ -7,6 +7,7 @@ package admin
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"strconv"
@@ -160,6 +161,16 @@ func TestAdmin(t *testing.T) {
 	}
 	if strings.Contains(out.String(), "s3cret") || strings.Contains(out.String(), "1234567") {
 		t.Error("RCON password or log secret printed")
+	}
+	// the document of server list -o json|yaml|csv: set / not set only
+	list, err := a.Servers(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, _ := json.Marshal(list)
+	if strings.Contains(string(doc), "s3cret") || strings.Contains(string(doc), "1234567") ||
+		!strings.Contains(string(doc), `"address":"198.51.100.99:27015","game":"zz_tpl","engine":"goldsrc","rcon_password_set":true,"log_secret_set":true`) {
+		t.Errorf("server list document: %s", doc)
 	}
 	empty := ""
 	if err := a.SetServer(ctx, "198.51.100.99:27015", ServerFields{LogSecret: &empty}); err != nil {

@@ -202,13 +202,13 @@ func TestParseDays(t *testing.T) {
 func TestTyped(t *testing.T) {
 	for in, want := range map[string]bool{"gamewe\n": true, " gamewe \n": true, "gamewe": true, "y\n": false, "GAMEWE\n": false, "\n": false, "": false} {
 		var out bytes.Buffer
-		got, err := typed(dbIO{strings.NewReader(in), &out, true}, "Type it: ", "gamewe")
+		got, err := typed(dbIO{in: strings.NewReader(in), out: &out, interactive: true}, "Type it: ", "gamewe")
 		if err != nil || got != want || out.String() != "Type it: " {
 			t.Errorf("%q: %v, %v, %q", in, got, err, out.String())
 		}
 	}
 	var out bytes.Buffer
-	if got, err := typed(dbIO{strings.NewReader("gamewe\n"), &out, false}, "Type it: ", "gamewe"); got || !errors.Is(err, errNoTTYYes) || out.Len() != 0 {
+	if got, err := typed(dbIO{in: strings.NewReader("gamewe\n"), out: &out}, "Type it: ", "gamewe"); got || !errors.Is(err, errNoTTYYes) || out.Len() != 0 {
 		t.Errorf("no tty: %v, %v, %q", got, err, out.String())
 	}
 }

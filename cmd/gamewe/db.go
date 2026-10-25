@@ -61,6 +61,9 @@ const dbUsage = `usage:
         (or the next start) creates them again
 reset and drop ask to type the database name unless -yes, and refuse while a
 collector runs on the database. Make a backup first.
+Every db command takes -o text|json|yaml (status: the schema as a document;
+the others: ok, error, plan, rows per table, -print SQL and the text lines;
+questions then go to stderr).
 
 A new database: create it with schema/init/init-db.sh (database, users,
 rights), then start the collector (it creates the tables) or run gamewe db
@@ -186,9 +189,24 @@ func (l *lineLog) flush() {
 }
 
 func dbCmd(args []string) error {
+	args, err := globalFlags(args) // gamewe db -o json status
+	if err != nil {
+		return exitError{2, err.Error()}
+	}
 	if len(args) == 0 || args[0] == "help" || args[0] == "-h" || args[0] == "-help" || args[0] == "--help" {
 		fmt.Println(dbUsage)
 		return nil
+	}
+	// -o among the subcommand's flags decides before the command runs
+	// whether its text is captured into a document (FlagSet.Parse sets it
+	// again, the same).
+	presetOutput(args[1:])
+	maint := func(cmd func([]string, dbIO) error) error {
+		return captured(os.Stdout, func(w io.Writer, r *result) error {
+			c := stdIO()
+			c.out, c.res = w, r
+			return cmd(args[1:], c)
+		})
 	}
 	switch args[0] {
 	case "migrate":
@@ -196,21 +214,40 @@ func dbCmd(args []string) error {
 	case "status":
 		return dbStatusCmd(args[1:], os.Stdout)
 	case "grants":
-		return dbGrantsCmd(args[1:], os.Stdout)
+		return captured(os.Stdout, func(w io.Writer, r *result) error { return dbGrantsCmd(args[1:], w, r) })
 	case "seed":
-		return dbSeedCmd(args[1:], os.Stdout)
+		return captured(os.Stdout, func(w io.Writer, r *result) error { return dbSeedCmd(args[1:], w, r) })
 	case "init":
-		return dbInitCmd(args[1:], stdIO())
+		return maint(dbInitCmd)
 	case "drop":
-		return dbDropCmd(args[1:], stdIO())
+		return maint(dbDropCmd)
 	case "reset":
-		return dbResetCmd(args[1:], stdIO())
+		return maint(dbResetCmd)
 	case "purge":
-		return dbPurgeCmd(args[1:], stdIO())
+		return maint(dbPurgeCmd)
 	case "optimize":
-		return dbOptimizeCmd(args[1:], stdIO())
+		return maint(dbOptimizeCmd)
 	}
 	return exitError{2, fmt.Sprintf("unknown command %q\n\n%s", "db "+args[0], dbUsage)}
+}
+
+// presetOutput sets the output format from -o / --output among args (up
+// to "--"); errors are reported when the flags are parsed.
+func presetOutput(args []string) {
+	for i := 0; i < len(args) && args[i] != "--"; i++ {
+		name, val, hasVal := strings.Cut(strings.TrimLeft(args[i], "-"), "=")
+		if !strings.HasPrefix(args[i], "-") || (name != "o" && name != "output") {
+			continue
+		}
+		if !hasVal {
+			if i+1 == len(args) {
+				return
+			}
+			i++
+			val = args[i]
+		}
+		formatFlag{}.Set(val)
+	}
 }
 
 // stdinIsTerminal reports whether stdin is a terminal (someone can answer).
@@ -234,6 +271,7 @@ func parseMigrateFlags(args []string, errOut io.Writer) (migrateFlags, error) {
 	fs.BoolVar(&f.force, "f", false, "short for -force")
 	fs.BoolVar(&f.dryRun, "dry-run", false, "only print the plan; exit code 2 if a migration is pending")
 	fs.BoolVar(&f.dryRun, "n", false, "short for -dry-run")
+	addOutputFlag(fs)
 	if err := fs.Parse(args); err != nil {
 		return f, exitError{2, ""}
 	}
@@ -336,6 +374,10 @@ func dbMigrateCmd(args []string, in io.Reader, out io.Writer, interactive bool) 
 	if err != nil {
 		return err
 	}
+	return captured(out, func(out io.Writer, r *result) error { return dbMigrate(f, in, out, interactive, r) })
+}
+
+func dbMigrate(f migrateFlags, in io.Reader, out io.Writer, interactive bool, r *result) error {
 	cfg, err := config.Load(f.config)
 	if err != nil {
 		return fmt.Errorf("config %s: %w", f.config, err)
@@ -350,14 +392,18 @@ func dbMigrateCmd(args []string, in io.Reader, out io.Writer, interactive bool) 
 		return err
 	}
 	defer db.Close()
-	return migrate(ctx, db, cfg.Database, f, in, out, interactive)
+	return migrate(ctx, db, cfg.Database, f, in, out, interactive, r)
 }
 
-// migrate is gamewe db migrate after the flags and the connection.
-func migrate(ctx context.Context, db *database.DB, d config.Database, f migrateFlags, in io.Reader, out io.Writer, interactive bool) error {
+// migrate is gamewe db migrate after the flags and the connection; r is
+// the document of -o json|yaml (nil for the text).
+func migrate(ctx context.Context, db *database.DB, d config.Database, f migrateFlags, in io.Reader, out io.Writer, interactive bool, r *result) error {
 	p, err := database.PlanMigrations(ctx, db)
 	if err != nil {
 		return err
+	}
+	if r != nil {
+		r.Plan = newPlanDoc(p)
 	}
 	printPlan(out, p)
 	if p.UpToDate() {
@@ -379,7 +425,7 @@ func migrate(ctx context.Context, db *database.DB, d config.Database, f migrateF
 		fmt.Fprintln(out, "Stop the collector while migrating: MyISAM tables are locked while they are changed.")
 	}
 	if !f.force {
-		ok, err := confirm(in, out, interactive)
+		ok, err := confirm(in, promptOut(out), interactive)
 		if err != nil {
 			return err
 		}
@@ -421,6 +467,9 @@ func dbStatusCmd(args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if err := needList(false); err != nil {
+		return err
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.Database.ConnectTimeout+30)*time.Second)
 	defer cancel()
 	db, err := openChecked(ctx, cfg.Database)
@@ -431,6 +480,9 @@ func dbStatusCmd(args []string, out io.Writer) error {
 	p, err := database.PlanMigrations(ctx, db)
 	if err != nil {
 		return err
+	}
+	if structured() {
+		return emit(out, newPlanDoc(p))
 	}
 	printStatus(out, p)
 	return nil
@@ -472,7 +524,7 @@ func printStatus(out io.Writer, p *database.Plan) {
 	}
 }
 
-func dbGrantsCmd(args []string, out io.Writer) error {
+func dbGrantsCmd(args []string, out io.Writer, r *result) error {
 	var print bool
 	cfg, err := loadConfig("db grants", args, func(fs *flag.FlagSet) {
 		fs.BoolVar(&print, "print", false, "only print the SQL (to run it as a database admin)")
@@ -481,8 +533,7 @@ func dbGrantsCmd(args []string, out io.Writer) error {
 		return err
 	}
 	if print {
-		fmt.Fprint(out, schema.Grants(cfg.Database.Type))
-		return nil
+		return printSQL(out, r, schema.Grants(cfg.Database.Type))
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.Database.ConnectTimeout+60)*time.Second)
 	defer cancel()
@@ -502,7 +553,7 @@ func dbGrantsCmd(args []string, out io.Writer) error {
 	return nil
 }
 
-func dbSeedCmd(args []string, out io.Writer) error {
+func dbSeedCmd(args []string, out io.Writer, r *result) error {
 	var print bool
 	cfg, err := loadConfig("db seed", args, func(fs *flag.FlagSet) {
 		fs.BoolVar(&print, "print", false, "only print the SQL")
@@ -511,8 +562,7 @@ func dbSeedCmd(args []string, out io.Writer) error {
 		return err
 	}
 	if print {
-		fmt.Fprint(out, schema.Seed(cfg.Database.Type))
-		return nil
+		return printSQL(out, r, schema.Seed(cfg.Database.Type))
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.Database.ConnectTimeout+120)*time.Second)
 	defer cancel()
@@ -526,6 +576,25 @@ func dbSeedCmd(args []string, out io.Writer) error {
 	}
 	fmt.Fprintln(out, "missing reference data added")
 	return nil
+}
+
+// printSQL writes the SQL of -print, or puts it into the document.
+func printSQL(out io.Writer, r *result, sql string) error {
+	if r != nil {
+		r.SQL = sql
+		return nil
+	}
+	_, err := fmt.Fprint(out, sql)
+	return err
+}
+
+// promptOut is where a question goes: out for the text, stderr when
+// stdout carries a document.
+func promptOut(out io.Writer) io.Writer {
+	if structured() {
+		return os.Stderr
+	}
+	return out
 }
 
 // obsoleteSQL lists SQL files of older packages next to the binary
