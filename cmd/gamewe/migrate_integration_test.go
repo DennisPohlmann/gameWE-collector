@@ -179,7 +179,7 @@ func TestMigrateBinary(t *testing.T) {
 	cfg := writeConfig(t, d)
 
 	out, code := gw(t, bin, "run", "-config", cfg)
-	expect(t, out, code, 1, "does not match the layout this collector needs", "database.auto_migrate is false", "Make a backup, then run: ", "gamewe db migrate -config "+cfg)
+	expect(t, out, code, exitConfig, "does not match the layout this collector needs", "database.auto_migrate is false", "Make a backup, then run: ", "gamewe db migrate -config "+cfg)
 	out, code = gw(t, bin, "check", "-config", cfg)
 	expect(t, out, code, 1, "migration steps pending, the collector does not start", "db migrate -config "+cfg)
 	out, code = gw(t, bin, "db")
@@ -279,7 +279,7 @@ func TestMigrateAuto(t *testing.T) {
 	off := d
 	off.AutoMigrate = false
 	out, code := gw(t, bin, "run", "-config", writeConfig(t, off))
-	expect(t, out, code, 1, "database.auto_migrate is false", "db migrate")
+	expect(t, out, code, exitConfig, "database.auto_migrate is false", "db migrate")
 	cfg := writeConfig(t, d)
 	out, _ = gw(t, bin, "check", "-config", cfg)
 	expect(t, out, 0, 0, "gamewe run migrates at start (database.auto_migrate)")
@@ -308,7 +308,7 @@ func TestMigrateAuto(t *testing.T) {
 			}
 		}
 		out, code = gw(t, bin, "run", "-config", writeConfig(t, d))
-		expect(t, out, code, 1, "not migrated automatically", "taken over once by hand", "db migrate")
+		expect(t, out, code, exitConfig, "not migrated automatically", "taken over once by hand", "db migrate")
 		if p, _ := database.PlanMigrations(ctx, admin); p == nil || p.Versions {
 			t.Error("the HLstatsX database was changed")
 		}
