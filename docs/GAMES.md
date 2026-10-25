@@ -20,6 +20,7 @@ registers itself as log address, and the commands of in-game replies.
 | `dods` | Day of Defeat: Source | Source |
 | `hl2mp`, `hl2ctf` | Half-Life 2: Deathmatch | Source |
 | `l4d`, `l4d2`, `insurgency` | Left 4 Dead 1/2, Insurgency | Source |
+| `zps`, `ff`, `csp`, `fof`, `nmrih` | Zombie Panic! Source, Fortress Forever, CSPromod, Fistful of Frags, No More Room in Hell | Source |
 | `cstrike` | Counter-Strike 1.6 | GoldSrc |
 | `czero` | Counter-Strike: Condition Zero | GoldSrc |
 | `dod` | Day of Defeat | GoldSrc |
@@ -66,6 +67,13 @@ gameWE changes:
   `gamewe_cstrike`), so czero gets a copy of the cstrike definitions.
   HLstatsX:CE has no Condition Zero data of its own (it runs CZ servers as
   cstrike); a CZ server can still use a ranking with realgame cstrike;
+- zps, ff, csp, fof: teams, roles (ff), actions, weapons and awards of
+  HLstatsX:CE; a few crude ff award names are replaced by neutral ones, and
+  the ff pseudo weapon award `BOOM_HEADSHOT` is left out (`most_headshots`
+  covers it). The SourceMod plugin detects all four (`ZPS`, `FF`, `CSP`,
+  `FOF`). Not checked against live logs of these games yet;
+- nmrih: like l4d below (HLstatsX:CE has no data for it), no teams (it is
+  a co-op game);
 - insurgency, l4d, l4d2: no weapons and actions (HLstatsX:CE has none; weapons
   are created with modifier 1.00 when first used), but the game-independent
   awards, the ranks and the ribbon classes like every game;
@@ -73,7 +81,7 @@ gameWE changes:
 
 **Limit:** `hlstats_Teams.teamId` and `hlstats_Roles.roleId` are tinyint in
 the HLstatsX schema: at most 255 teams and 255 roles over all games and
-rankings. The seed uses about 30 teams and 98 roles; a ranking cloned from
+rankings. The seed uses about 60 teams and 108 roles; a ranking cloned from
 css adds 3 and 8, one cloned from dod 2 and 35.
 
 ## Log transport

@@ -28,6 +28,11 @@ func TestResolve(t *testing.T) {
 		{"", "tfc", "tfc", GoldSrc, false},
 		{"", "tf2fun", "tf", Source, true},
 		{"", "l4d2", "l4d2", Source, false},
+		{"", "zps", "zps", Source, false},
+		{"", "ff", "ff", Source, false},
+		{"", "csp", "csp", Source, false},
+		{"", "fof", "fof", Source, false},
+		{"nmrih", "nmrih_coop", "nmrih", Source, false},
 		{"unknown", "myserver", "css", Source, true},
 		{"VALVE", "hldm", "valve", GoldSrc, false},
 	} {

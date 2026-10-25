@@ -40,7 +40,7 @@ Current version: see `VERSION` and [CHANGELOG.md](CHANGELOG.md).
 
 | Engine | Games | Logs | In-game replies |
 |--------|-------|------|-----------------|
-| Source | CS:S, CS:GO, TF2, DoD:S, HL2:DM, L4D, L4D2, Insurgency | UDP | gameWE SourceMod plugin |
+| Source | CS:S, CS:GO, TF2, DoD:S, HL2:DM, L4D, L4D2, Insurgency, Zombie Panic! Source, Fortress Forever, CSPromod, Fistful of Frags, No More Room in Hell | UDP | gameWE SourceMod plugin |
 | GoldSrc | CS 1.6, CS: Condition Zero, DoD, TFC, HL1, NS | UDP | gameWE AMX Mod X plugin |
 | Source 2 | Counter-Strike 2 | HTTP (`listen.http`) | none (no plugin; stats from the game's own logs) |
 

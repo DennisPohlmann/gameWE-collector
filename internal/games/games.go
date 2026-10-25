@@ -37,7 +37,8 @@ var engines = []struct {
 	{"cstrike", GoldSrc}, {"czero", GoldSrc}, {"cs2", Source2}, {"csgo", Source}, {"css", Source},
 	{"dods", Source}, {"dod", GoldSrc}, {"tfc", GoldSrc}, {"tf", Source},
 	{"hl2mp", Source}, {"hl2ctf", Source}, {"l4d2", Source}, {"l4d", Source},
-	{"insurgency", Source}, {"valve", GoldSrc}, {"ns", GoldSrc},
+	{"insurgency", Source}, {"zps", Source}, {"ff", Source}, {"csp", Source},
+	{"fof", Source}, {"nmrih", Source}, {"valve", GoldSrc}, {"ns", GoldSrc},
 	{"ts", GoldSrc}, {"dmc", GoldSrc}, {"ricochet", GoldSrc}, {"gearbox", GoldSrc},
 }
 

@@ -89,6 +89,12 @@ var Migrations = []Migration{
 		Desc: "Counter-Strike: Condition Zero (GoldSrc): the czero game with the teams, actions, weapons, awards and ranks of cstrike",
 		Seed: true,
 	},
+	{
+		Version: 9, Name: "more-source-games",
+		Desc: "the games Zombie Panic! Source (zps), Fortress Forever (ff), CSPromod (csp), Fistful of Frags (fof) and No More Room in Hell (nmrih) " +
+			"with their teams, roles, actions, weapons, awards, ranks and ribbons",
+		Seed: true,
+	},
 }
 
 // Latest is the newest schema version this collector knows.
