@@ -8,9 +8,12 @@ name: build
 # vX.Y.Z and creates the GitHub release. package and docker then build the
 # tag: the archive goes into the release, the image gets the tags <version>,
 # <major>.<minor> and latest. A manual run (workflow_dispatch) tests and
-# builds without pushing an image or making a release.
+# builds without pushing an image or making a release, and so does a pull
+# request (e.g. from Dependabot).
 on:
   push:
+    branches: [main]
+  pull_request:
     branches: [main]
   workflow_dispatch:
 
