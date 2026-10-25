@@ -84,6 +84,11 @@ var Migrations = []Migration{
 		Sync: true,
 		Seed: true,
 	},
+	{
+		Version: 8, Name: "czero",
+		Desc: "Counter-Strike: Condition Zero (GoldSrc): the czero game with the teams, actions, weapons, awards and ranks of cstrike",
+		Seed: true,
+	},
 }
 
 // Latest is the newest schema version this collector knows.

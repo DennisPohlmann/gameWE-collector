@@ -21,6 +21,7 @@ registers itself as log address, and the commands of in-game replies.
 | `hl2mp`, `hl2ctf` | Half-Life 2: Deathmatch | Source |
 | `l4d`, `l4d2`, `insurgency` | Left 4 Dead 1/2, Insurgency | Source |
 | `cstrike` | Counter-Strike 1.6 | GoldSrc |
+| `czero` | Counter-Strike: Condition Zero | GoldSrc |
 | `dod` | Day of Defeat | GoldSrc |
 | `tfc` | Team Fortress Classic | GoldSrc |
 | `valve` | Half-Life 1 Multiplayer | GoldSrc |
@@ -60,6 +61,11 @@ gameWE changes:
 - csgo: see [CS:GO](#csgo) below;
 - cs2: the csgo definitions for the game cs2, see
   [Counter-Strike 2](#counter-strike-2) below;
+- czero: Counter-Strike: Condition Zero multiplayer logs like Counter-Strike
+  1.6 (the same teams, triggers and weapon names, the same AMX Mod X plugin
+  `gamewe_cstrike`), so czero gets a copy of the cstrike definitions.
+  HLstatsX:CE has no Condition Zero data of its own (it runs CZ servers as
+  cstrike); a CZ server can still use a ranking with realgame cstrike;
 - insurgency, l4d, l4d2: no weapons and actions (HLstatsX:CE has none; weapons
   are created with modifier 1.00 when first used), but the game-independent
   awards, the ranks and the ribbon classes like every game;
@@ -123,7 +129,7 @@ engine: `STEAM_x:y:z` → `y:z`; Steam3 `[U:1:n]` → `n%2:n/2`; bots
 
 **Hitgroups** (`hlstats_Players_Weapons` hit areas) come from `weaponstats2`
 lines: the SourceMod plugin on CS:S, CS:GO, DoD:S, HL2DM (not TF2), the AMX
-plugin on cstrike, dod and tfc. valve and ns have none. On CS2 they come from
+plugin on cstrike, czero, dod and tfc. valve and ns have none. On CS2 they come from
 the game's own `attacked` lines (`features.cs2_hitgroups`), with `neck` as an
 extra area.
 
@@ -215,7 +221,7 @@ after too many wrong passwords; the error says so.
 |--------|--------|------|
 | Source | gameWE SourceMod plugin | `gamewe_psay <userid> 0 "<msg>"`, `gamewe_msay <time> <userid> 0 "<line>\n<line>"`, `gamewe_browse`, `gamewe_console_event`, `gamewe_chat_event`, raw messages `gamewe_raw_message` (`gamewe_raw_messages` = 1) |
 | Source 2 | none | no replies: the collector sends nothing to CS2 servers |
-| GoldSrc | gameWE AMX Mod X plugins (`gamewe_cstrike`, `_dod`, `_tfc`, `_ns`, `_hlmp`) | `gamewe_amx_psay <userid> 0 "<msg>"`, `gamewe_amx_msay <time> <userid> 0 "<lines>"`, `gamewe_amx_browse` (Counter-Strike only: the other games show the MOTD as text, the address goes to chat), `gamewe_amx_console_event`, `gamewe_amx_chat_event`; no raw messages |
+| GoldSrc | gameWE AMX Mod X plugins (`gamewe_cstrike`, `_dod`, `_tfc`, `_ns`, `_hlmp`) | `gamewe_amx_psay <userid> 0 "<msg>"`, `gamewe_amx_msay <time> <userid> 0 "<lines>"`, `gamewe_amx_browse` (Counter-Strike 1.6 and Condition Zero only: the other games show the MOTD as text, the address goes to chat), `gamewe_amx_console_event`, `gamewe_amx_chat_event`; no raw messages |
 
 The AMX plugin also offers `gamewe_amx_psay2`, `_say`, `_csay`, `_hint`,
 `_browse`, `_swap` and `gamewe_block_commands_values` (and the same as

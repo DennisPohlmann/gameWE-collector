@@ -67,7 +67,7 @@ ids or codes from the database; nothing the player typed goes into it.
   address (no user, query or fragment), the commands answer *The web address
   of the statistics is not configured on this server.* and `!statsme` shows
   the stats panel of `!session`.
-- The MOTD window of GoldSrc games other than Counter-Strike 1.6 shows text
+- The MOTD window of GoldSrc games other than Counter-Strike 1.6 and Condition Zero shows text
   only: there the address is sent as a chat line and `!statsme` shows the
   stats panel. CS:GO shows no web pages; the SourceMod plugin prints the
   address in chat.

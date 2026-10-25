@@ -367,6 +367,10 @@ func TestBrowseCommands(t *testing.T) {
 	if got := say(now, "!clans"); len(got) != 1 || got[0] != `gamewe_amx_browse 2 "https://stats.example.com/css/clans"` {
 		t.Errorf("cstrike !clans: %q", got)
 	}
+	p.srv.info.Base = "czero" // Condition Zero: the same plugin and MOTD as Counter-Strike 1.6
+	if got := say(now, "!clans"); len(got) != 1 || got[0] != `gamewe_amx_browse 2 "https://stats.example.com/css/clans"` {
+		t.Errorf("czero !clans: %q", got)
+	}
 	p.srv.info.Engine, p.srv.info.Base = games.Source, "css"
 	// no or an unusable site address: a chat line, !statsme falls back to the stats
 	for _, site := range []string{"", "javascript:alert(1)", `https://x.example/";quit`, "https://x.example/?a=1", "ftp://x.example", "https://user@x.example", "https://x.example/ä"} {

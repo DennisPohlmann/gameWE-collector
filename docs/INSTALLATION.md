@@ -405,7 +405,7 @@ server without a stored secret is not checked (CONFIG.md, "Log secret"). Install
 for the in-game replies (`!rank`, `!top10`, menus) and the extra statistics
 (weapon accuracy, positions, roles).
 
-**GoldSrc (CS 1.6, DoD, TFC, HL1, NS)**: `log on`,
+**GoldSrc (CS 1.6, CS: Condition Zero, DoD, TFC, HL1, NS)**: `log on`,
 `logaddress_add 203.0.113.5 41337` and `rcon_password`; in-game replies through
 the gameWE AMX Mod X plugin ([GAMES.md](GAMES.md)).
 

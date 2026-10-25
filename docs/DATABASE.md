@@ -71,7 +71,7 @@ then warns, and a database admin grants the rights with
 `gamewe db grants -print | mariadb -u root -p gamewe`.
 
 The reference data: games `css`, `csgo`, `tf`, `dods`, `hl2mp`, `l4d`,
-`l4d2`, `insurgency` and the GoldSrc games `cstrike`, `dod`, `tfc`, `valve`,
+`l4d2`, `insurgency` and the GoldSrc games `cstrike`, `czero`, `dod`, `tfc`, `valve`,
 `ns`, with their teams (and roles where the game has them), actions with
 rewards, weapons with modifiers, awards, ranks and ribbons (GAMES.md), and the
 `gamewe_*` options. Change them in the web admin or with `gamewe game` /
@@ -183,6 +183,7 @@ What it does:
 | 5 | `server-info` | columns `hlstats_Servers.server_version` (varchar(64)), `server_os` (varchar(8): `linux`, `windows`, `mac`) and `server_vac` (varchar(8): `secure`, `insecure`), `''` = unknown, for `features.server_info`; `gamewe_web` may read them (the rights step of the migration grants them) |
 | 6 | `act-bots` | column `hlstats_Servers.act_bots` (int unsigned, default 0): the bots among `act_players`, per server; `gamewe_web` may read it (the rights step of the migration grants it) |
 | 7 | `cs2` | Counter-Strike 2: column `neck` (smallint unsigned, default 0) after `head` in `hlstats_Players_Weapons` and `hlstats_Players_Weapons_History_Months` (readable by `gamewe_web` like the whole table); the reference data of the game `cs2` (game, teams, actions, weapons, awards, ranks, ribbons; `INSERT IGNORE`, existing rows are kept) |
+| 8 | `czero` | Counter-Strike: Condition Zero: the reference data of the game `czero`, a copy of the cstrike definitions (game, teams, actions, weapons, awards, ranks, ribbons, ribbon classes; `INSERT IGNORE`, existing rows are kept); no structure change |
 
 The SQL files of older packages (`/opt/gamewe/collector/doc/schema/hlstatsx.sql`,
 `init/01_schema.sql`, `02_seed.sql`, `03_grants.sql` and the PostgreSQL

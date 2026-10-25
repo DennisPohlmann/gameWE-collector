@@ -411,11 +411,11 @@ func siteBase(raw string) (base string, ok bool) {
 }
 
 // canBrowse reports whether the server's plugin can show a web page: the
-// SourceMod plugin (CS:GO prints the address in chat itself) and Counter-
-// Strike 1.6, whose MOTD window shows HTML. The other GoldSrc games show
-// the MOTD as plain text.
+// SourceMod plugin (CS:GO prints the address in chat itself), Counter-Strike
+// 1.6 and Condition Zero, whose MOTD window shows HTML. The other GoldSrc
+// games show the MOTD as plain text.
 func canBrowse(srv *serverState) bool {
-	return srv.info.Engine != games.GoldSrc || srv.info.Base == "cstrike"
+	return srv.info.Engine != games.GoldSrc || srv.info.Base == "cstrike" || srv.info.Base == "czero"
 }
 
 // browse opens a page of the web frontend for the player

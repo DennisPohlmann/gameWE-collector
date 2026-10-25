@@ -1,7 +1,7 @@
 # gameWE - collector
 
 gameWE is a statistics system for Source, GoldSrc and Source 2 game servers
-(Counter-Strike: Source, CS:GO, CS 1.6, TF2, Counter-Strike 2, ...), in the style of gameME /
+(Counter-Strike: Source, CS:GO, CS 1.6, CS: Condition Zero, TF2, Counter-Strike 2, ...), in the style of gameME /
 HLstatsX. The **collector** is its core: one static Go binary that
 
 - receives the logs of many game servers at once over UDP (`logaddress_add`)
@@ -41,7 +41,7 @@ Current version: see `VERSION` and [CHANGELOG.md](CHANGELOG.md).
 | Engine | Games | Logs | In-game replies |
 |--------|-------|------|-----------------|
 | Source | CS:S, CS:GO, TF2, DoD:S, HL2:DM, L4D, L4D2, Insurgency | UDP | gameWE SourceMod plugin |
-| GoldSrc | CS 1.6, DoD, TFC, HL1, NS | UDP | gameWE AMX Mod X plugin |
+| GoldSrc | CS 1.6, CS: Condition Zero, DoD, TFC, HL1, NS | UDP | gameWE AMX Mod X plugin |
 | Source 2 | Counter-Strike 2 | HTTP (`listen.http`) | none (no plugin; stats from the game's own logs) |
 
 Details per game: [docs/GAMES.md](docs/GAMES.md).

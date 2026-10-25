@@ -72,7 +72,7 @@ func adminCmd(kind string, args []string) error {
 	path := fs.String("config", config.DefaultPath, "path to the YAML config file")
 	dry := fs.Bool("dry-run", false, "only show what would change")
 	template := fs.String("template", "", "game whose definitions a new game copies")
-	realgame := fs.String("realgame", "", "base game (css, cstrike, tf, ...); default: the template's")
+	realgame := fs.String("realgame", "", "base game (css, cstrike, czero, tf, ...); default: the template's")
 	hidden := fs.Bool("hidden", false, "add the game hidden; game set: -hidden=true|false")
 	order := fs.Int("order", 0, "game set: position in the web's game list (hlstats_Games.display_id)")
 	var game, name, rcon, rconFile, public, logSecret optional

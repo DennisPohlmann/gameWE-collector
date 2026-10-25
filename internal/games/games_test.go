@@ -15,6 +15,9 @@ func TestResolve(t *testing.T) {
 	}{
 		{"css", "css1", "css", Source, false},
 		{"cstrike", "cs16_public", "cstrike", GoldSrc, false},
+		{"czero", "cz_public", "czero", GoldSrc, false},
+		{"", "czero", "czero", GoldSrc, false},
+		{"", "czero_bots", "czero", GoldSrc, true},
 		{"cs2", "cs2", "cs2", Source2, false},
 		{"", "cs2", "cs2", Source2, false},
 		{"", "cs2_retake", "cs2", Source2, true},
