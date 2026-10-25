@@ -77,6 +77,13 @@ var Migrations = []Migration{
 		Desc: "hlstats_Servers.act_bots: the bots among act_players (RCON status or the tracked players; readable by gamewe_web)",
 		Sync: true,
 	},
+	{
+		Version: 7, Name: "cs2",
+		Desc: "Counter-Strike 2 (Source 2): neck hits in hlstats_Players_Weapons and hlstats_Players_Weapons_History_Months (readable by gamewe_web); " +
+			"the cs2 game with its teams, actions, weapons, awards and ranks",
+		Sync: true,
+		Seed: true,
+	},
 }
 
 // Latest is the newest schema version this collector knows.

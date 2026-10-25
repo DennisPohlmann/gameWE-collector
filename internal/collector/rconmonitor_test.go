@@ -85,7 +85,7 @@ func TestParseLogAddresses(t *testing.T) {
 // fakeGameServer keeps a logaddress list and answers status.
 func fakeGameServer(t *testing.T) *rcontest.Server {
 	var mu sync.Mutex
-	var list []string
+	var list, httpList []string
 	logging := false
 	return rcontest.Start(t, "pw", func(cmd string) string {
 		mu.Lock()
@@ -101,6 +101,10 @@ func fakeGameServer(t *testing.T) *rcontest.Server {
 		case strings.HasPrefix(cmd, "logaddress_add "):
 			list = append(list, strings.TrimPrefix(cmd, "logaddress_add "))
 			return "logaddress_add:  " + strings.TrimPrefix(cmd, "logaddress_add ") + "\n"
+		case cmd == "logaddress_list_http":
+			return "logaddress_list_http:  " + strconv.Itoa(len(httpList)) + " entries\n" + strings.Join(httpList, "\n") + "\n"
+		case strings.HasPrefix(cmd, "logaddress_add_http "):
+			httpList = append(httpList, strings.Trim(strings.TrimPrefix(cmd, "logaddress_add_http "), `"`))
 		case cmd == "log on":
 			logging = true
 		case cmd == "log":
@@ -356,5 +360,67 @@ func TestStatus48SlotsMultiPacket(t *testing.T) {
 	}
 	if p.srv.info.Map != "de_dust2" || len(p.srv.players) != 0 {
 		t.Errorf("after a stale poll: map %q, %d players, want de_dust2 and 0", p.srv.info.Map, len(p.srv.players))
+	}
+}
+
+func TestEnsureHTTPLogAddress(t *testing.T) {
+	gs := fakeGameServer(t)
+	c := &rcon.Client{Address: gs.Addr, Password: "pw", Timeout: 2 * time.Second}
+	defer c.Close()
+	if _, err := c.Exec("echo"); err != nil {
+		t.Fatal(err)
+	}
+	u, err := HTTPLogURL(c, "", 41338, "", 27015)
+	if err != nil || u != "http://127.0.0.1:41338/27015" {
+		t.Fatalf("auto url %q %v", u, err)
+	}
+	if u, _ := HTTPLogURL(c, "http://stats.example.org:8080/", 41338, "abcdefghijklmnop1234", 27016); u != "http://stats.example.org:8080/abcdefghijklmnop1234/27016" {
+		t.Errorf("public url %q", u)
+	}
+	if r := RedactURL("http://x:1/abcdefghijklmnop1234/27016", "abcdefghijklmnop1234"); r != "http://x:1/<token>/27016" {
+		t.Errorf("redacted %q", r)
+	}
+	srv := stats.Server{ID: 3, AddrPort: netip.MustParseAddrPort("127.0.0.1:27015"), Engine: games.Source2}
+	cfg := MonitorConfig{LogAddress: true, HTTP: true, HTTPPort: 41338, ListenPort: 41337}
+	var st httpAddState
+	for i := 0; i < 3; i++ {
+		if err := ensureLogAddress(c, srv, cfg, &st, quiet); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := strings.Join(gs.Commands(), ",")
+	if strings.Count(got, "logaddress_add_http") != 1 || strings.Contains(got, "logaddress_add ") || !strings.Contains(got, "log on") {
+		t.Errorf("commands %s", got)
+	}
+	cfg.HTTP = false // CS2 without the HTTP registration: nothing
+	n := len(gs.Commands())
+	if err := ensureLogAddress(c, srv, cfg, &st, quiet); err != nil || len(gs.Commands()) != n {
+		t.Errorf("http off sent %v (%v)", gs.Commands()[n:], err)
+	}
+}
+
+// A server whose logaddress_list_http never shows the URL gets
+// logaddress_add_http once, not every interval.
+func TestHTTPLogAddressUnconfirmed(t *testing.T) {
+	gs := rcontest.Start(t, "pw", func(cmd string) string { return "" })
+	c := &rcon.Client{Address: gs.Addr, Password: "pw", Timeout: 2 * time.Second}
+	defer c.Close()
+	srv := stats.Server{ID: 4, AddrPort: netip.MustParseAddrPort("127.0.0.1:27015"), Engine: games.Source2}
+	cfg := MonitorConfig{LogAddress: true, HTTP: true, HTTPPort: 41338}
+	var st httpAddState
+	for i := 0; i < 3; i++ {
+		if err := ensureLogAddress(c, srv, cfg, &st, quiet); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := strings.Count(strings.Join(gs.Commands(), ","), "logaddress_add_http"); n != 1 {
+		t.Errorf("logaddress_add_http sent %d times, want 1", n)
+	}
+	st.last = time.Now().Add(-httpReAdd) // an hour later: once more
+	if err := ensureLogAddress(c, srv, cfg, &st, quiet); err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(strings.Join(gs.Commands(), ","), "logaddress_add_http"); n != 2 {
+		t.Errorf("after an hour: %d, want 2", n)
 	}
 }

@@ -4,7 +4,7 @@ The collector has three sources of settings:
 
 | What | Where | Changed by |
 |------|-------|------------|
-| UDP listen address, database connection | config file `/etc/gamewe/collector/config.yaml` | the admin of the host; restart needed |
+| Log inputs (UDP, HTTP), database connection | config file `/etc/gamewe/collector/config.yaml` | the admin of the host; restart needed |
 | Game servers | `hlstats_Servers` | the web admin; picked up within a minute |
 | Points, commands, privacy switches | `hlstats_Options` (keys `gamewe_*`) | the web admin; picked up within a minute |
 | Rewards and weapon modifiers | `hlstats_Actions`, `hlstats_Weapons` | the web admin; picked up within 10 minutes (cache) |
@@ -20,21 +20,56 @@ database connection uses utf8mb4, and the queue holds 4096 lines per server.
 
 YAML, default path `/etc/gamewe/collector/config.yaml` (`-config` overrides it).
 Unknown keys are an error. Keys of an older format (`servers`, `stats`,
-`commands`, `log`, `listen.udp`, ...) are rejected with a hint where the setting
+`commands`, `log`, `listen.http_port`, `listen.udp` as an address, ...) are rejected with a hint where the setting
 went. The file contains the database password, so keep it at `640 root:gamewe`.
 
 ### listen
 
-Where the game servers send their logs (`logaddress_add <ip>:<port>`). Both keys
-are optional.
+Where the game servers send their logs. There are two inputs; at least one must
+be on, and both can run at the same time.
+
+- `listen.udp`: GoldSrc and Source servers (`logaddress_add <ip>:<port>`). On
+  by default.
+- `listen.http`: Counter-Strike 2 (Source 2), which logs only over HTTP
+  (`logaddress_add_http "http://<ip>:<port>/<game port>"`). Off by default.
+  CS2 sends plain HTTP; HTTPS is not supported by the game.
+
+All keys are optional.
+
+#### listen.udp
 
 | Key | Default | Meaning |
 |-----|---------|---------|
+| `enabled` | `true` | receive UDP logs; `false` closes the UDP port and stops `logaddress_add` |
 | `address` | `0.0.0.0` | IP to listen on (`0.0.0.0` = all IPv4, `::` = all) |
 | `port` | `41337` | UDP port |
 | `public_address` | – | `ip:port` the game servers send their logs to, registered with `logaddress_add` (`features.log_address`). Default: the collector's address of the RCON connection to the game server, with `port` (or the port of `-listen`). Set it when the servers reach the collector at another address (NAT, several IPs). |
 
-`gamewe run -listen IP:PORT` overrides `address` and `port`, e.g. for a test.
+The older form, `address`, `port` and `public_address` directly under `listen`,
+is still read as the UDP input. Using it together with `listen.udp` is an error.
+`gamewe run -listen IP:PORT` overrides the UDP `address` and `port` and switches
+UDP on, e.g. for a test.
+
+#### listen.http
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `enabled` | `false` | receive the HTTP logs of Counter-Strike 2 |
+| `address` | `0.0.0.0` | IP to listen on |
+| `port` | `41338` | TCP port |
+| `public_url` | – | `http://host:port` (no path) the CS2 servers post to, registered with `logaddress_add_http` (`features.log_address.http`). The collector adds `/<token>/<game port>`. Default: `http://`, the collector's address of the RCON connection and `port`. |
+| `token` | – | a secret first path segment, 16 to 128 letters, digits, `-` or `_`. When it is set, only posts to `/<token>/<game port>` are accepted and everything else gets 404. Recommended, because CS2's HTTP logs carry no `sv_logsecret`. The token is never logged; `gamewe logaddress` and the log show it as `<token>`. |
+| `max_body` | `128KiB` | largest post, `4KiB` to `16MiB` (`KiB`, `MiB`, `KB`, `MB` or bytes); a larger one gets 413 |
+| `read_timeout` | `10s` | time to read one post, `1s` to `2m` |
+| `max_connections` | `64` | open connections at most (1 to 4096); more are closed at once |
+| `max_connections_per_ip` | `8` | open connections from one IP at most (1 to `max_connections`) |
+| `trusted_proxies` | – | IPs or networks (CIDR) of reverse proxies in front of the collector. Only for a request from one of them the sender is taken from `X-Forwarded-For` (the right-most address that is not itself a trusted proxy). |
+
+A post is checked before its body is read. The sender's IP and the game port
+from the URL must be a server in `hlstats_Servers` whose game is a Source 2
+game (`cs2`); every other post gets 403. Only `POST` is accepted (405
+otherwise). Lines longer than 8 KiB are dropped. Rejected posts are logged the
+first time per sender and reason, then every 1000th time.
 
 ### features
 
@@ -48,6 +83,7 @@ config file (changing them needs a restart); the old key `gamewe_daily_awards` o
 | `rcon_status.enabled` | `true` | RCON `status` to each server every `interval`, over one connection that stays open: fills the live view, `act_players`, `act_map`, `max_players` and the name if none is set also when no log lines arrive (empty server, collector restart); see DB-SEMANTICS.md, "RCON status". The old form `rcon_status: true` / `false` still works and means `enabled`. |
 | `rcon_status.interval` | `10s` | how often, a duration (`10s`, `1m`) or seconds; at least `2s`. While a server does not answer, the wait doubles up to one minute. |
 | `log_address.enabled` | `true` | RCON `logaddress_list` to each server every `interval`; if the collector's address (`listen.public_address` or automatic) is missing, `logaddress_add <ip:port>` and `log on`, logged once. Also `log on` if the server stopped logging. Addresses of other tools are left alone. The old form `log_address: true` / `false` still works and means `enabled`. |
+| `log_address.http` | `true` | Counter-Strike 2 servers (when `listen.http` is on): `logaddress_list_http`, and if the collector's URL is missing, `logaddress_add_http "<url>"` and `log on`. If the server's list does not show the URL after adding it, it is added again at most once an hour. `false`: register CS2 servers by hand. GoldSrc and Source servers are not affected, and nothing is registered over UDP for CS2. |
 | `log_address.interval` | `1m` | how often, a duration (`30s`, `5m`) or seconds; at least `10s`. Only `logaddress_list` is sent each time (`logaddress_add` only when the address is missing), so a game server that restarted without the collector in its `server.cfg` sends logs again within this time. A shorter interval loses fewer log lines after such a restart, a longer one sends fewer RCON commands. |
 | `log_secret.enabled` | `true` | the log secret (`sv_logsecret`) in the log packets, see "Log secret" below. `true`: a server with `hlstats_Servers.log_secret` set must send exactly that secret, other packets are rejected; a server without one is not checked. You set the secret yourself, per server with `gamewe server set -logsecret` or in the web admin, and the same `sv_logsecret` in the game server's `server.cfg`. `false`: never checked (a secret in the packet is cut off). The short form `log_secret: true` / `false` works too. The automatic mode of 0.4.0 to 0.5.1 is gone: an old `auto` counts as `true` and an old `interval` is ignored, both with a warning at start and in `gamewe check`. |
 | `server_info.enabled` | `true` | ask every server for its version, operating system and VAC state every `interval`: an `A2S_INFO` query (Valve's server browser query, UDP to the game port in `hlstats_Servers`, no `rcon_password` needed; one answer of at most 1400 bytes, 3 s timeout, a challenge answer is answered once), and with `rcon_status` also the `version` (and `os` / `os/type`) line of each RCON `status`. Stored in `hlstats_Servers.server_version`, `server_os`, `server_vac` only when a value changes; `A2S_INFO` wins where both answer. A server that does not answer is logged once (warning) until it answers again. `false`: neither is stored. The short form `server_info: true` / `false` works too. |
@@ -55,6 +91,7 @@ config file (changing them needs a restart); the old key `gamewe_daily_awards` o
 | `daily_awards.enabled` | `true` | decide the daily awards of the previous day (DB-SEMANTICS.md) every day at `time`; `gamewe awards -date YYYY-MM-DD` works also when it is off. The old form `daily_awards: true` / `false` still works and means `enabled`. |
 | `daily_awards.timezone` | `UTC` | IANA time zone (`UTC`, `Europe/Berlin`, ...) of `time` and of the day: the awards of a day count from 00:00 to 24:00 in this zone (23 or 25 hours on daylight saving days) |
 | `daily_awards.time` | `"00:00"` | when the previous day is decided, `HH:MM` in `timezone` (on the day summer time starts, a time that does not exist runs an hour later) |
+| `cs2_hitgroups.enabled` | `true` | Counter-Strike 2: count hits per body part (`head`, `neck`, `chest`, `stomach`, arms, legs) and damage per weapon from the `attacked` lines and kills, headshots and deaths per weapon from the kill lines, stored in `hlstats_Players_Weapons` at the end of every round and when a player leaves. CS2 has no plugin that reports `weaponstats`, so shots and accuracy stay empty. The short form `cs2_hitgroups: true` / `false` works too. |
 
 ### `geoip`
 
@@ -205,6 +242,11 @@ Then:
 - **GoldSrc servers** (cstrike, valve, dod, tfc, ns, ... by the game's engine,
   GAMES.md) are never checked; logged once as a note. (Assumption: HLDS has
   no `sv_logsecret`.)
+- **Source 2 servers** (cs2) are never checked either: their HTTP logs carry
+  no secret. Logged once as a note. Protect the HTTP input with
+  `listen.http.token` and the firewall instead (only TCP connections from the
+  server's own IP and game port in `hlstats_Servers` are accepted; TCP cannot
+  forge its sender address the way UDP can).
 
 The secret travels in plain text in every UDP packet: it protects against
 packets with a forged sender address from elsewhere, not against someone who

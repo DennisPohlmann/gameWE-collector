@@ -37,6 +37,6 @@ COPY --from=dirs --chown=nonroot:nonroot /out/var/lib/gamewe /var/lib/gamewe
 COPY --chown=nonroot:nonroot geoip-data/dbip-city-lite.mmdb /var/lib/gamewe/collector/
 VOLUME /var/lib/gamewe
 USER nonroot:nonroot
-EXPOSE 41337/udp
+EXPOSE 41337/udp 41338/tcp
 ENTRYPOINT ["/opt/gamewe/collector/bin/gamewe"]
 CMD ["run", "-config", "/etc/gamewe/collector/config.yaml"]

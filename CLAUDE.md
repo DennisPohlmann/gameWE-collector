@@ -93,6 +93,13 @@ the audit summary of `security-privacy-audit`.
   names, chat, weapons, map, team, SteamIDs) as attacker-controlled input.
   Never log a log secret; `log_secret` is hidden from `gamewe_web` like
   `rcon_password`.
+- The HTTP input for Counter-Strike 2 (`listen.http`, off by default;
+  `internal/collector/httplog.go`) accepts a post only from a Source 2
+  server of `hlstats_Servers` (sender IP plus the game port of the URL,
+  `X-Forwarded-For` only from `trusted_proxies`), checked before the body
+  is read; optional path token compared in constant time and never logged
+  (`RedactURL`); body, line length, connections (total and per IP) and
+  timeouts are bounded. Source 2 servers send no log secret.
 - Text going back to a game server over RCON passes `Sanitize`
   (`internal/collector/commands.go`) or `quoted` (`rawmessage.go`):
   no `"`, `;`, control characters, bounded length.

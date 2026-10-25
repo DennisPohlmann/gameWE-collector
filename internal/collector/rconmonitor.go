@@ -67,6 +67,13 @@ var (
 	reStatusGoldSrcHead = regexp.MustCompile(`(?m)^#\s+name\s+userid\s+uniqueid`)
 	reStatusGoldSrc     = regexp.MustCompile(`(?m)^#\s*(\d+)\s+"(.*)"\s+(\d+)\s+(\S+)\s+-?\d+\s+(\d+:\d+(?::\d+)?)\s+(\d+)\s+\d+(?:[ \t]+(\S+))?`)
 	reStatusPlayer      = regexp.MustCompile(`(?m)^#\s*(\d+)\s+(?:\d+\s+)?"(.*)"\s+(\S+)\s+(?:(\d+:\d+(?::\d+)?)\s+(\d+)\s+\d+\s+)?(\w+)(?:[ \t]+(?:\d+[ \t]+)?(\S+))?`)
+	// Source 2 (CS2): "  id     time ping loss      state   rate adr name",
+	// no SteamIDs; bots "1 BOT 0 0 active 0 'Bot'", humans
+	// "2 04:12 25 0 active 786432 192.0.2.1:27005 'Name'"; slot 65535 is a
+	// connection still being set up. The map is in "loaded spawngroup".
+	reStatusS2Head   = regexp.MustCompile(`(?m)^\s*id\s+time\s+ping\s+loss\s+state\s+rate`)
+	reStatusS2Player = regexp.MustCompile(`(?m)^\s*(\d+)\s+(BOT|\d+:\d+(?::\d+)?|\[[^\]]*\]|\S+)\s+(\d+)\s+\d+\s+(\w+)\s+\d+\S*(?:[ \t]+(\S+))?[ \t]+'(.*)'[ \t]*$`)
+	reStatusS2Map    = regexp.MustCompile(`(?m)spawngroup\s*\(\s*\d+\)\s*:\s*SV:\s*\[\d+:\s*([^\s|\]]+)`)
 )
 
 // ParseStatus reads the answer of "status".
@@ -82,7 +89,25 @@ func ParseStatus(out string) (Status, error) {
 		st.MaxPlayers, _ = strconv.Atoi(m[1])
 	}
 	st.Info = parseStatusInfo(out)
-	if reStatusGoldSrcHead.MatchString(out) {
+	if reStatusS2Head.MatchString(out) {
+		if st.Map == "" {
+			if m := reStatusS2Map.FindStringSubmatch(out); m != nil {
+				st.Map = m[1]
+			}
+		}
+		for _, m := range reStatusS2Player.FindAllStringSubmatch(out, -1) {
+			if m[1] == "65535" || strings.EqualFold(m[4], "challenging") {
+				continue
+			}
+			// No SteamID: a bot is BOT, a human is matched to the player of
+			// the log lines by userid (Processor.Status).
+			id, connected, ping := "", m[2], m[3]
+			if m[2] == "BOT" {
+				id, connected, ping = "BOT", "", "0"
+			}
+			st.Players = append(st.Players, statusPlayer(m[6], m[1], id, connected, ping, m[5]))
+		}
+	} else if reStatusGoldSrcHead.MatchString(out) {
 		for _, m := range reStatusGoldSrc.FindAllStringSubmatch(out, -1) {
 			// # slot "name" userid uniqueid frag time ping loss [adr]
 			st.Players = append(st.Players, statusPlayer(m[2], m[3], m[4], m[5], m[6], m[7]))
@@ -238,6 +263,13 @@ type MonitorConfig struct {
 	InfoInterval   time.Duration // how often (default DefaultServerInfoInterval)
 	PublicAddress  string        // listen.public_address
 	ListenPort     int
+	NoUDP          bool // listen.udp.enabled is false: no logaddress_add
+	// HTTP registers Source 2 (CS2) servers with logaddress_add_http
+	// (listen.http on and features.log_address.http).
+	HTTP          bool
+	HTTPPublicURL string // listen.http.public_url
+	HTTPPort      int    // listen.http.port
+	HTTPToken     string // listen.http.token
 }
 
 // monitor polls one game server over RCON until ctx is done: "status" every
@@ -313,6 +345,7 @@ func monitor(ctx context.Context, srv func() stats.Server, cfg MonitorConfig, de
 		return c
 	}
 	noPassword := errors.New("no rcon_password in hlstats_Servers: status and logaddress skipped")
+	var httpAdd httpAddState
 	for {
 		select {
 		case <-ctx.Done():
@@ -358,7 +391,8 @@ func monitor(ctx context.Context, srv func() stats.Server, cfg MonitorConfig, de
 				continue
 			}
 			if cfg.LogAddress {
-				report("logaddress", ensureLogAddress(c, srv().Engine, cfg, log))
+				s := srv()
+				report("logaddress", ensureLogAddress(c, s, cfg, &httpAdd, log))
 			}
 		}
 	}
@@ -373,8 +407,19 @@ func pollStatus(c rcon.Conn) (Status, error) {
 	return ParseStatus(out)
 }
 
-// ensureLogAddress keeps the collector registered on the game server.
-func ensureLogAddress(c rcon.Conn, engine games.Engine, cfg MonitorConfig, log *slog.Logger) error {
+// ensureLogAddress keeps the collector registered on the game server:
+// logaddress_add (UDP), or logaddress_add_http for Source 2 (CS2).
+func ensureLogAddress(c rcon.Conn, srv stats.Server, cfg MonitorConfig, st *httpAddState, log *slog.Logger) error {
+	engine := srv.Engine
+	if engine == games.Source2 {
+		if !cfg.HTTP {
+			return nil // CS2 logs over HTTP only; registered by hand
+		}
+		return ensureHTTPLogAddress(c, srv, cfg, st, log)
+	}
+	if cfg.NoUDP {
+		return nil
+	}
 	if _, err := c.Exec("echo"); err != nil { // connect, for the local address
 		return err
 	}
@@ -392,6 +437,98 @@ func ensureLogAddress(c rcon.Conn, engine games.Engine, cfg MonitorConfig, log *
 	}
 	if added {
 		log.Info("collector registered on the game server (logaddress_add, log on)", "log_address", addr.String())
+	}
+	return nil
+}
+
+// HTTPLogURL returns the URL to register on a CS2 server with
+// logaddress_add_http: public (listen.http.public_url, http://host:port)
+// or http:// and the collector's address of the RCON connection with the
+// HTTP port, then the token (if set) and the game server's port.
+func HTTPLogURL(c rcon.Conn, public string, httpPort int, token string, gamePort uint16) (string, error) {
+	base := strings.TrimRight(public, "/")
+	if base == "" {
+		ap, err := LogAddress(c, "", httpPort)
+		if err != nil {
+			return "", err
+		}
+		base = "http://" + ap.String()
+	}
+	if token != "" {
+		base += "/" + token
+	}
+	return fmt.Sprintf("%s/%d", base, gamePort), nil
+}
+
+// RedactURL hides the token of a log URL for logs and output.
+func RedactURL(u, token string) string {
+	if token == "" {
+		return u
+	}
+	return strings.ReplaceAll(u, "/"+token+"/", "/<token>/")
+}
+
+// httpAddState remembers a logaddress_add_http that logaddress_list_http
+// did not show afterwards, so that it is not repeated every interval.
+type httpAddState struct {
+	url  string
+	last time.Time
+}
+
+// httpReAdd is how long an unconfirmed logaddress_add_http is not repeated.
+const httpReAdd = time.Hour
+
+// EnsureHTTPLogAddress checks with logaddress_list_http whether url is
+// registered on a CS2 server and, if add is true and it is not, registers
+// it with logaddress_add_http and switches logging on. listed reports
+// whether the URL was in the list.
+func EnsureHTTPLogAddress(c rcon.Conn, url string, add bool) (listed, added bool, err error) {
+	out, err := c.Exec("logaddress_list_http")
+	if err != nil {
+		return false, false, err
+	}
+	if strings.Contains(out, url) {
+		if lg, err := c.Exec("log"); err == nil && strings.Contains(strings.ToLower(lg), "not currently logging") && add {
+			_, err = c.Exec("log on")
+			return true, true, err
+		}
+		return true, false, nil
+	}
+	if !add {
+		return false, false, nil
+	}
+	if _, err := c.Exec(`logaddress_add_http "` + url + `"`); err != nil {
+		return false, false, err
+	}
+	_, err = c.Exec("log on")
+	return false, true, err
+}
+
+func ensureHTTPLogAddress(c rcon.Conn, srv stats.Server, cfg MonitorConfig, st *httpAddState, log *slog.Logger) error {
+	if _, err := c.Exec("echo"); err != nil { // connect, for the local address
+		return err
+	}
+	url, err := HTTPLogURL(c, cfg.HTTPPublicURL, cfg.HTTPPort, cfg.HTTPToken, srv.AddrPort.Port())
+	if err != nil {
+		return err
+	}
+	shown := RedactURL(url, cfg.HTTPToken)
+	// Added before but not listed since: the list may look different on
+	// this server version; add again only after httpReAdd.
+	add := st.url != url || time.Since(st.last) >= httpReAdd
+	listed, added, err := EnsureHTTPLogAddress(c, url, add)
+	if err != nil {
+		return fmt.Errorf("logaddress_add_http: %w", err)
+	}
+	if listed {
+		st.url = ""
+	}
+	if added && !listed {
+		if st.url == url {
+			log.Warn("logaddress_list_http does not show the collector's URL after logaddress_add_http; adding it again only every hour", "log_url", shown)
+		}
+		st.url, st.last = url, time.Now()
+		log.Info("collector registered on the CS2 server (logaddress_add_http, log on)", "log_url", shown)
 	}
 	return nil
 }

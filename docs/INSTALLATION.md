@@ -16,7 +16,8 @@ passwords.
 
 | What | Default |
 |------|---------|
-| UDP port for game-server logs (Source, GoldSrc) | `41337` (`listen.port`) |
+| UDP port for game-server logs (Source, GoldSrc) | `41337` (`listen.udp.port`) |
+| TCP port for the HTTP logs of Counter-Strike 2 (off by default) | `41338` (`listen.http.port`) |
 | Config file | `/etc/gamewe/collector/config.yaml` |
 | State directory (GeoIP database) | `/var/lib/gamewe/collector` |
 | Binary, docs, init scripts | `/opt/gamewe/collector/bin/gamewe`, `/opt/gamewe/collector/doc/` |
@@ -140,12 +141,16 @@ the log limits. Other commands run the same way, e.g.
 `docker run --rm --network host -v ...config.yaml:ro ghcr.io/dennispohlmann/gamewe-collector:latest check`.
 
 Open the port on the host's firewall for your game servers only: UDP 41337,
-for example:
+and TCP 41338 if Counter-Strike 2 servers log over HTTP (`listen.http`), for
+example:
 
 ```bash
 ufw allow from 198.51.100.7 to any port 41337 proto udp            # ufw
+ufw allow from 198.51.100.7 to any port 41338 proto tcp            # ufw, CS2 (HTTP)
 firewall-cmd --permanent --add-rich-rule='rule family=ipv4 source address=198.51.100.7 port port=41337 protocol=udp accept' \
   && firewall-cmd --reload                                          # firewalld
+firewall-cmd --permanent --add-rich-rule='rule family=ipv4 source address=198.51.100.7 port port=41338 protocol=tcp accept' \
+  && firewall-cmd --reload                                          # firewalld, CS2 (HTTP)
 ```
 
 ## B. Release archive (tar.gz)
@@ -193,9 +198,22 @@ Then edit `/etc/gamewe/collector/config.yaml`. All keys, with their defaults
 ```yaml
 # /etc/gamewe/collector/config.yaml  (root:gamewe 0640)
 listen:
-  address: 0.0.0.0              # IP for the log packets (0.0.0.0 = all IPv4, :: = all)
-  port: 41337                   # UDP port (Source, GoldSrc)
-  # public_address: 203.0.113.5:41337   # address the servers send to, if not the collector's RCON address (NAT)
+  udp:                          # Source, GoldSrc (logaddress_add)
+    enabled: true
+    address: 0.0.0.0            # IP for the log packets (0.0.0.0 = all IPv4, :: = all)
+    port: 41337                 # UDP port
+    # public_address: 203.0.113.5:41337   # address the servers send to, if not the collector's RCON address (NAT)
+  http:                         # Counter-Strike 2 (logaddress_add_http)
+    enabled: false
+    address: 0.0.0.0
+    port: 41338                 # TCP port
+    # public_url: http://203.0.113.5:41338   # URL the CS2 servers post to, if not the collector's RCON address (NAT)
+    # token: ""                 # secret path segment, 16-128 of A-Z a-z 0-9 - _ (recommended)
+    max_body: 128KiB
+    read_timeout: 10s
+    max_connections: 64
+    max_connections_per_ip: 8
+    # trusted_proxies: []       # reverse proxies whose X-Forwarded-For is used
 
 database:
   type: mariadb                 # mariadb (= mysql) or postgres
@@ -390,10 +408,26 @@ for the in-game replies (`!rank`, `!top10`, menus) and the extra statistics
 `logaddress_add 203.0.113.5 41337` and `rcon_password`; in-game replies through
 the gameWE AMX Mod X plugin ([GAMES.md](GAMES.md)).
 
-Counter-Strike 2 is not supported (no UDP logs, no SourceMod).
+**Counter-Strike 2**: CS2 logs only over HTTP. Switch on `listen.http` in
+the config (and open TCP 41338 for the server), add the server with a cs2
+game (`gamewe server add 198.51.100.7:27015 -game cs2 ...`), then in
+`server.cfg`:
 
-Restrict the collector's port (UDP 41337) with a firewall to your
-game servers: packets from addresses that are not in `hlstats_Servers` are
+```
+log on
+logaddress_add_http "http://203.0.113.5:41338/27015"    // collector IP and HTTP port, then the game port
+rcon_password "change-me"                                // the same as in hlstats_Servers
+```
+
+With a `listen.http.token` the URL is `http://203.0.113.5:41338/<token>/27015`.
+With the RCON password the collector registers this URL itself
+(`features.log_address.http`). There is no plugin for CS2: no in-game replies,
+and no weapon accuracy; hits per body part come from the game's own log
+([GAMES.md](GAMES.md#counter-strike-2)). `gamewe logaddress -server <id>`
+shows whether the URL is registered (the token as `<token>`).
+
+Restrict the collector's ports (UDP 41337, TCP 41338 for CS2) with a firewall
+to your game servers: packets from addresses that are not in `hlstats_Servers` are
 rejected anyway (`rejected log packet` in the journal). Test the whole chain
 from the collector host with the sample game:
 
@@ -475,6 +509,7 @@ drop it (`DROP DATABASE gamewe;` and the three users).
 | `hlstats_Servers serverId N is ignored: ...` | The row's address is not an IP, the port is invalid, or its game is not in `hlstats_Games`. Fix it in the web admin. |
 | No `game server active` in the log | Check `logaddress_add` and the firewall (UDP port). |
 | `rejected log packet ... not in hlstats_Servers` | Register the shown source `IP:port` in the web admin. With `known server IP but a port ...` another game server on the same host sends logs: add it with its own port (logs are never attributed by IP alone). |
+| `rejected HTTP log post` (CS2) | `reason` says why: not in `hlstats_Servers` (register the server; the URL must end with its game port, `/27015`), `not Source 2` (the server's game must have realgame `cs2`; other games log over UDP), `HTTP path ...` (wrong port or token in the `logaddress_add_http` URL), `larger than listen.http.max_body`, or `too many open HTTP connections`. |
 | `rejected log packet ... missing or wrong log secret` | The server has a secret in `hlstats_Servers.log_secret` and the game server sends no or another `sv_logsecret`: set the same number in `server.cfg` and with `gamewe server set <id> -logsecret <n>` (or the web admin), or clear it with `-logsecret ""` to accept all its packets. |
 | Commands get no answer | `rcon_password` is empty or wrong (`rcon authentication failed`), the plugin is missing, or the RCON port is blocked (TCP). `gamewe check` shows servers without a password. |
 | `systemctl start` fails, `status=78/CONFIG` | The config file (or a `-` flag in `ExecStart`) is wrong, or the schema is not migrated automatically: the journal names it. Fix it, then `systemctl start gamewe-collector` (it is not restarted by itself). `gamewe check` tests the config without the service. |

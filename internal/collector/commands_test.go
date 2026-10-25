@@ -5,6 +5,7 @@ package collector
 import (
 	"context"
 	"fmt"
+	"net/netip"
 	"regexp"
 	"strings"
 	"testing"
@@ -547,5 +548,28 @@ func TestConsoleAndChatEvents(t *testing.T) {
 		got[2] != `gamewe_console_event 3 "+3 points: Planted_The_Bomb."` ||
 		got[3] != `gamewe_chat_event 2,3 "[gameWE] Bob got +3 points for Planted_The_Bomb."` {
 		t.Errorf("events: %q", got)
+	}
+}
+
+// CS2 has no plugin: in-game commands are answered by nobody, no RCON
+// command is sent.
+func TestSource2NoReplies(t *testing.T) {
+	st := newMemStore()
+	rec := &recorder{}
+	hub := newTestHub(st, rec, []string{"192.0.2.20:27015"}, map[string]string{"192.0.2.20:27015": "cs2"})
+	src := netip.MustParseAddrPort("192.0.2.20:27015")
+	p := `"Pat<2><[U:1:42]><%s>"`
+	for _, l := range []string{
+		fmt.Sprintf(p, "") + ` connected, address "198.51.100.7:27005"`,
+		fmt.Sprintf(p, "Unassigned") + ` joined team "CT"`,
+		fmt.Sprintf(p, "CT") + ` say "!rank"`,
+	} {
+		if err := hub.Dispatch(src, pkt(l), time.Now().UTC()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	hub.Close(context.Background())
+	if got := rec.get("192.0.2.20:27015"); len(got) != 0 {
+		t.Errorf("replies sent to CS2: %v", got)
 	}
 }

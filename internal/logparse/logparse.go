@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Package logparse parses Source-engine (HL2) server log lines as sent by
-// logaddress_add, including the extra lines of the gameWE SourceMod plugin.
+// logaddress_add, including the extra lines of the gameWE SourceMod plugin,
+// and the lines of Counter-Strike 2 (Source 2), which come over HTTP
+// (logaddress_add_http) without the "L " prefix and with milliseconds.
 package logparse
 
 import (
@@ -223,6 +225,15 @@ type (
 		Player Player
 		Role   string
 	}
+	// Attacked is a hit of CS:GO / CS2 (mp_logdetail 3):
+	// `"A" [x y z] attacked "V" [x y z] with "ak47" (damage "27")
+	// (damage_armor "3") (health "73") (armor "96") (hitgroup "chest")`.
+	Attacked struct {
+		Attacker, Victim Player
+		Weapon           string
+		Damage           int
+		Hitgroup         string // head, neck, chest, stomach, left arm, ... ("" if not logged)
+	}
 	// KillAssist is CS:GO's `"A" assisted killing "V"`, or
 	// `"A" flash-assisted killing "V"` (Flash).
 	KillAssist struct {
@@ -258,6 +269,7 @@ func (Setup) event()           {}
 func (KillAssist) event()      {}
 func (WorldDeath) event()      {}
 func (Accolade) event()        {}
+func (Attacked) event()        {}
 
 // Names must not contain a double quote. This keeps chat text or crafted
 // names from being parsed as a different event (log injection).
@@ -269,7 +281,9 @@ const (
 )
 
 var (
-	reTimestamp  = regexp.MustCompile(`^L \d\d/\d\d/\d{4} - \d\d:\d\d:\d\d: `)
+	// "L 10/25/2026 - 21:00:00: " (Source 1, GoldSrc), CS2 over HTTP
+	// "10/25/2026 - 21:00:00.123 - " (and with "L " over UDP).
+	reTimestamp  = regexp.MustCompile(`^(?:L )?\d\d/\d\d/\d{4} - \d\d:\d\d:\d\d(?:: |\.\d{1,3} - )`)
 	reKill       = regexp.MustCompile(`^` + pref + posC + ` killed ` + pref + posC + ` with "([^"]*)"(.*)$`)
 	reSuicide    = regexp.MustCompile(`^` + pref + posC + ` committed suicide with "([^"]*)"`)
 	rePosProp    = regexp.MustCompile(`\((attacker|victim)_position "(-?\d+) (-?\d+) (-?\d+)"\)`)
@@ -294,6 +308,7 @@ var (
 	reRole   = regexp.MustCompile(`^` + pref + ` changed role to "([^"]*)"$`)
 	reAssist = regexp.MustCompile(`^` + pref + pos + ` (flash-)?assisted killing ` + pref + pos + `$`)
 	reBomb   = regexp.MustCompile(`^` + pref + pos + ` was killed by the bomb\.?$`)
+	reAttack = regexp.MustCompile(`^` + pref + pos + ` attacked ` + pref + pos + ` with "([^"]*)"(.*)$`)
 	reAccol  = regexp.MustCompile(`^ACCOLADE, FINAL: \{(\w+)\},\s+(.*?)<(\d+)>,\s+VALUE: [-\d.]+,\s+POS: (\d+),`)
 	reFlags  = regexp.MustCompile(`\(([a-z]+(?: [a-z]+)*)\)`)
 	reSetup  = regexp.MustCompile(`^` + pref + ` setup "([^"]*)" \(value "([^"]*)"\)$`)
@@ -398,6 +413,11 @@ func ParseLine(line string) (Event, bool) {
 			}
 		}
 		return k, true
+	}
+	if m := reAttack.FindStringSubmatch(line); m != nil {
+		pr := props(m[10])
+		dmg, _ := strconv.Atoi(pr["damage"])
+		return Attacked{Attacker: player(m[1:5]), Victim: player(m[5:9]), Weapon: m[9], Damage: max(dmg, 0), Hitgroup: pr["hitgroup"]}, true
 	}
 	if m := reSuicide.FindStringSubmatch(line); m != nil {
 		return Suicide{Player: player(m[1:5]), Weapon: m[8], Pos: position(m[5:8])}, true

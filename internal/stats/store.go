@@ -1132,10 +1132,11 @@ func teamRoleRounds(ev Ev, winners, losers []Live, survivors map[int64]bool) []s
 }
 
 // WeaponStats are the counters of the plugin's weaponstats and weaponstats2
-// lines (deltas since the previous line). Missing values are zero.
+// lines (deltas since the previous line), or of the attacked lines of CS2.
+// Missing values are zero. Neck: CS2 only.
 type WeaponStats struct {
-	Shots, Hits, Kills, Headshots, Teamkills, Damage, Deaths   int
-	Head, Chest, Stomach, LeftArm, RightArm, LeftLeg, RightLeg int
+	Shots, Hits, Kills, Headshots, Teamkills, Damage, Deaths         int
+	Head, Neck, Chest, Stomach, LeftArm, RightArm, LeftLeg, RightLeg int
 }
 
 // AddWeaponStats adds the counters to this week's row in
@@ -1150,16 +1151,16 @@ func (s *Store) AddWeaponStats(ctx context.Context, ev Ev, p Live, weaponCode st
 	}
 	// smallint unsigned columns are capped instead of failing in strict mode.
 	sets := []set{{"shots", "{old} + {new}"}, {"damage", "{old} + {new}"}}
-	for _, c := range []string{"hits", "headshots", "kills", "deaths", "head", "chest", "stomach", "leftarm", "rightarm", "leftleg", "rightleg"} {
+	for _, c := range []string{"hits", "headshots", "kills", "deaths", "head", "neck", "chest", "stomach", "leftarm", "rightarm", "leftleg", "rightleg"} {
 		sets = append(sets, set{c, "LEAST({old} + {new}, 65535)"})
 	}
 	steps := []step{{s.upsert(`INSERT INTO hlstats_Players_Weapons (player_id, yearweek_id, game_id, weapon_id, shots, hits, headshots, damage, kills, deaths,
-		head, chest, stomach, leftarm, rightarm, leftleg, rightleg)
+		head, neck, chest, stomach, leftarm, rightarm, leftleg, rightleg)
 		VALUES (?, ?, ?, ?, ?, LEAST(?, 65535), LEAST(?, 65535), ?, LEAST(?, 65535), LEAST(?, 65535),
-		LEAST(?, 65535), LEAST(?, 65535), LEAST(?, 65535), LEAST(?, 65535), LEAST(?, 65535), LEAST(?, 65535), LEAST(?, 65535))`,
+		LEAST(?, 65535), LEAST(?, 65535), LEAST(?, 65535), LEAST(?, 65535), LEAST(?, 65535), LEAST(?, 65535), LEAST(?, 65535), LEAST(?, 65535))`,
 		"hlstats_Players_Weapons", "player_id, yearweek_id, game_id, weapon_id", sets...),
 		[]any{p.ID, YearWeek(ev.Time), ev.Srv.GameID, w.id, x.Shots, x.Hits, x.Headshots, x.Damage, x.Kills, x.Deaths,
-			x.Head, x.Chest, x.Stomach, x.LeftArm, x.RightArm, x.LeftLeg, x.RightLeg}}}
+			x.Head, x.Neck, x.Chest, x.Stomach, x.LeftArm, x.RightArm, x.LeftLeg, x.RightLeg}}}
 	if x.Shots != 0 || x.Hits != 0 {
 		steps = append(steps,
 			step{`UPDATE hlstats_Players SET shots = shots + ?, hits = hits + ? WHERE playerId = ?`, []any{x.Shots, x.Hits, p.ID}},

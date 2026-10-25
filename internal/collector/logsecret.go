@@ -115,6 +115,8 @@ func SecretNote(mode SecretMode, s stats.Server) (msg string, info bool) {
 		return "", false
 	case s.Engine == games.GoldSrc:
 		return fmt.Sprintf("log_secret: server %d %s is GoldSrc (no sv_logsecret), its log packets are not checked", s.ID, s.Address), true
+	case s.Engine == games.Source2:
+		return fmt.Sprintf("log_secret: server %d %s is Source 2 (CS2), its HTTP logs carry no log secret and are not checked (protect the HTTP input with listen.http.token)", s.ID, s.Address), true
 	case s.LogSecret == "":
 		return fmt.Sprintf("log_secret: server %d %s has no log secret, all its log packets are accepted (set one with gamewe server set -logsecret or in the web admin, and the same sv_logsecret in server.cfg)", s.ID, s.Address), true
 	}

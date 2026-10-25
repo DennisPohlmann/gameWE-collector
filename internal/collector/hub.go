@@ -57,6 +57,9 @@ type Hub struct {
 	// server's hlstats_Servers.log_secret if one is stored. Set it before
 	// the first SetServers.
 	Secret SecretConfig
+	// Source2Hits is features.cs2_hitgroups (Processor.Source2Hits). Set it
+	// before the first SetServers.
+	Source2Hits bool
 
 	mu      sync.RWMutex
 	byID    map[int64]*worker
@@ -227,6 +230,7 @@ func (h *Hub) SetServers(list []stats.Server) (added, removed int) {
 		w := &worker{id: id, addr: srv.Address, srv: srv, queue: make(chan packet, QueueSize), proc: NewProcessor(h.store, h.set, srv, h.reply, h.log),
 			gate: newSecretGate()}
 		w.proc.Geo = h.Geo
+		w.proc.Source2Hits = h.Source2Hits
 		h.applySecret(w, srv, now, grace)
 		if h.Monitor.Status || h.Monitor.LogAddress || h.Monitor.ServerInfo {
 			ctx, cancel := context.WithCancel(context.Background())
@@ -278,10 +282,11 @@ func (h *Hub) logEvery() time.Duration {
 }
 
 // applySecret hands the log secret of srv's row to w's gate. GoldSrc
-// servers have no sv_logsecret: never checked.
+// servers have no sv_logsecret, and the HTTP logs of Source 2 (CS2) carry
+// none: never checked.
 func (h *Hub) applySecret(w *worker, srv stats.Server, now time.Time, grace time.Duration) {
 	secret := srv.LogSecret
-	if h.Secret.Mode == SecretOff || srv.Engine == games.GoldSrc {
+	if h.Secret.Mode == SecretOff || srv.Engine == games.GoldSrc || srv.Engine == games.Source2 {
 		secret = ""
 	}
 	w.gate.fromDB(secret, now, grace)

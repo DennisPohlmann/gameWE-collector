@@ -12,9 +12,9 @@ Type=notify
 NotifyAccess=main
 User=gamewe
 Group=gamewe
-# The UDP address for game-server logs is listen: in the config (default
-# 0.0.0.0:41337). Game servers and settings come from the database and are
-# re-read every minute.
+# The inputs for game-server logs are listen: in the config (UDP, default
+# 0.0.0.0:41337; HTTP for Counter-Strike 2, default off, TCP 41338). Game
+# servers and settings come from the database and are re-read every minute.
 ExecStart=/opt/gamewe/collector/bin/gamewe run -config /etc/gamewe/collector/config.yaml
 Restart=on-failure
 RestartSec=5s

@@ -15,7 +15,10 @@ func TestResolve(t *testing.T) {
 	}{
 		{"css", "css1", "css", Source, false},
 		{"cstrike", "cs16_public", "cstrike", GoldSrc, false},
-		{"cs2", "cs2", "css", Source, true}, // CS2 is not supported: unknown, guessed
+		{"cs2", "cs2", "cs2", Source2, false},
+		{"", "cs2", "cs2", Source2, false},
+		{"", "cs2_retake", "cs2", Source2, true},
+		{"", "csgo5", "csgo", Source, true},
 		{"", "css3", "css", Source, true},
 		{"", "dods", "dods", Source, false},
 		{"", "dod_x", "dod", GoldSrc, true},
@@ -38,7 +41,7 @@ func TestIsBase(t *testing.T) {
 			t.Errorf("IsBase(%q) = false", code)
 		}
 	}
-	for _, code := range []string{"", "css1", "gungame", "cs2", "dod_x", "tf2"} {
+	for _, code := range []string{"", "css1", "gungame", "cs2_retake", "dod_x", "tf2"} {
 		if IsBase(code) {
 			t.Errorf("IsBase(%q) = true", code)
 		}

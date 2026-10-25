@@ -1,12 +1,14 @@
 # gameWE - collector
 
-gameWE is a statistics system for Source and GoldSrc game servers
-(Counter-Strike: Source, CS:GO, CS 1.6, TF2, ...), in the style of gameME /
+gameWE is a statistics system for Source, GoldSrc and Source 2 game servers
+(Counter-Strike: Source, CS:GO, CS 1.6, TF2, Counter-Strike 2, ...), in the style of gameME /
 HLstatsX. The **collector** is its core: one static Go binary that
 
-- receives the logs of many game servers at once over UDP (`logaddress_add`);
-  only servers registered in `hlstats_Servers` are accepted, on Source servers
-  with a log secret (`sv_logsecret`) per server set in the CLI or the web admin,
+- receives the logs of many game servers at once over UDP (`logaddress_add`)
+  and, for Counter-Strike 2, over HTTP (`logaddress_add_http`); both inputs
+  can be switched on and off. Only servers registered in `hlstats_Servers` are
+  accepted, on Source servers with a log secret (`sv_logsecret`) per server set
+  in the CLI or the web admin,
 - tracks connects, disconnects, team changes, kills (weapon, headshot), suicides,
   teamkills, round wins and team scores, plus per-weapon stats from the gameWE plugins,
 - writes players, kills, skill, rounds, weapon and action statistics into an
@@ -20,7 +22,7 @@ HLstatsX. The **collector** is its core: one static Go binary that
 - runs daily awards, ranking resets queued by the web admin, GeoIP locations
   (DB-IP database included) and the RCON status of every server.
 
-The config file holds only the UDP listen address and the database connection.
+The config file holds only the log inputs (UDP, HTTP) and the database connection.
 Game servers and all point and command settings come from the database, so
 they are managed in the web admin; the collector re-reads them every minute,
 without a restart.
@@ -32,7 +34,7 @@ Current version: see `VERSION` and [CHANGELOG.md](CHANGELOG.md).
 - Linux x86_64 (static binary) or a container runtime (Docker / Podman)
 - MariaDB 11.4 or 12.3, or PostgreSQL 17 or 18 (tested in CI)
 - Game servers with a [supported game](#supported-games) that can send their
-  logs over UDP to the collector
+  logs to the collector (UDP; HTTP for Counter-Strike 2)
 
 ## Supported games
 
@@ -40,9 +42,9 @@ Current version: see `VERSION` and [CHANGELOG.md](CHANGELOG.md).
 |--------|-------|------|-----------------|
 | Source | CS:S, CS:GO, TF2, DoD:S, HL2:DM, L4D, L4D2, Insurgency | UDP | gameWE SourceMod plugin |
 | GoldSrc | CS 1.6, DoD, TFC, HL1, NS | UDP | gameWE AMX Mod X plugin |
+| Source 2 | Counter-Strike 2 | HTTP (`listen.http`) | none (no plugin; stats from the game's own logs) |
 
-Counter-Strike 2 is not supported: it sends no UDP logs and SourceMod does
-not run on it. Details per game: [docs/GAMES.md](docs/GAMES.md).
+Details per game: [docs/GAMES.md](docs/GAMES.md).
 
 ## Quick start
 
@@ -68,6 +70,10 @@ not run on it. Details per game: [docs/GAMES.md](docs/GAMES.md).
    logaddress_add 203.0.113.5:41337     // the collector's IP and UDP port
    rcon_password "change-me"            // the same as in hlstats_Servers
    ```
+
+   Counter-Strike 2: switch on `listen.http` in the config and use
+   `logaddress_add_http "http://203.0.113.5:41338/27015"` (the collector's
+   IP and HTTP port, then the game server's port) instead of `logaddress_add`.
 
 Every step in detail: [docs/INSTALLATION.md](docs/INSTALLATION.md).
 
@@ -109,6 +115,15 @@ make package      # dist/gamewe-collector-<version>-linux-amd64.tar.gz (+ .sha25
 
 Requirements, integration tests and the release process:
 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+## Credits
+
+The Counter-Strike 2 support follows HLstatsX:CE by lovasatt
+(https://github.com/lovasatt/hlstatsx-community-edition, GPL-2.0-or-later):
+its CS2 game definitions and its handling of CS2's HTTP logs were the
+reference for gameWE's Source 2 engine. The other games' default data comes
+from HLstatsX:CE (https://github.com/A1mDev/hlstatsx-community-edition).
+Thanks to both projects.
 
 ## License
 

@@ -13,23 +13,27 @@ type Engine int
 const (
 	Source  Engine = iota // Source 1: TCP RCON, SourceMod plugin (gamewe_psay, ...)
 	GoldSrc               // Half-Life 1: UDP challenge RCON, AMX Mod X plugin (gamewe_amx_psay, ...)
+	Source2               // Source 2 (CS2): logs over HTTP (logaddress_add_http), TCP RCON, no plugin
 )
 
 func (e Engine) String() string {
 	switch e {
 	case GoldSrc:
 		return "goldsrc"
+	case Source2:
+		return "source2"
 	}
 	return "source"
 }
 
 // engines are the known base games. The order matters for prefix guesses:
-// longer codes first (dods before dod, tfc before tf, l4d2 before l4d).
+// longer codes first (dods before dod, tfc before tf, l4d2 before l4d,
+// cs2 and csgo before css).
 var engines = []struct {
 	code   string
 	engine Engine
 }{
-	{"cstrike", GoldSrc}, {"csgo", Source}, {"css", Source},
+	{"cstrike", GoldSrc}, {"cs2", Source2}, {"csgo", Source}, {"css", Source},
 	{"dods", Source}, {"dod", GoldSrc}, {"tfc", GoldSrc}, {"tf", Source},
 	{"hl2mp", Source}, {"hl2ctf", Source}, {"l4d2", Source}, {"l4d", Source},
 	{"insurgency", Source}, {"valve", GoldSrc}, {"ns", GoldSrc},

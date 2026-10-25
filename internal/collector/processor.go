@@ -97,6 +97,10 @@ type Processor struct {
 	// ServerStats asks the game server for its load (RCON "stats"); tests
 	// replace it.
 	ServerStats func(srv stats.Server, timeout time.Duration) (ServerStats, error)
+	// Source2Hits counts the hit groups of the attacked lines of Source 2
+	// servers (features.cs2_hitgroups); CS2 has no plugin that reports them.
+	// Set before the first line.
+	Source2Hits bool
 }
 
 // GeoLookup finds the location of an IP address (*geoip.DB).
@@ -169,6 +173,17 @@ type serverState struct {
 	upSince    time.Time // first line after a silence of LoadInterval (uptime without RCON)
 }
 
+// keyByUserID returns the key of the tracked human player with this
+// userid ("" if there is none).
+func (srv *serverState) keyByUserID(userID int) string {
+	for key, ps := range srv.players {
+		if ps.userID == userID && !stats.IsBot(ps.live.UniqueID) {
+			return key
+		}
+	}
+	return ""
+}
+
 // playerState is a player on this server, with the counters of the
 // current visit (for !session) and the current streaks.
 type playerState struct {
@@ -207,6 +222,10 @@ type playerState struct {
 	// the last counted assist, so the second line is not counted again.
 	assistBy int64 // player id of the assister
 	assistAt time.Time
+
+	// Hits of a Source 2 server by weapon (attacked lines), not stored yet:
+	// written at the round end and when the visit ends.
+	hitStats map[string]*stats.WeaponStats
 }
 
 type heldKill struct {
@@ -311,7 +330,12 @@ func (p *Processor) Handle(ctx context.Context, line string, now time.Time) erro
 		}
 	}
 	ev := stats.Ev{Srv: p.srv.info, MapID: p.srv.mapID, Time: now}
+	if p.srv.info.Engine == games.Source2 {
+		e = source2Weapons(e)
+	}
 	switch e := e.(type) {
+	case logparse.Attacked:
+		return p.attacked(ctx, ev, e)
 	case logparse.MapStarted:
 		return p.mapStarted(ctx, ev, e)
 	case logparse.Connected:
@@ -490,6 +514,9 @@ func (p *Processor) Handle(ctx context.Context, line string, now time.Time) erro
 			}
 			return p.store.RoundStart(ctx, ev)
 		case "Round_End", "Round_Win", "Mini_Round_Win":
+			if err := p.flushAllHits(ctx, ev); err != nil {
+				return err
+			}
 			return p.endStreaks(ctx, ev)
 		}
 	case logparse.Say:
@@ -671,10 +698,19 @@ func (p *Processor) Status(ctx context.Context, st Status, at time.Time) error {
 	pings := map[string]int{}
 	for _, sp := range st.Players {
 		ref := logparse.Player{Name: sp.Name, UserID: sp.UserID, SteamID: sp.SteamID}
-		if !ref.Trackable() {
+		var key string
+		switch {
+		case sp.SteamID == "" && srv.info.Engine == games.Source2:
+			// CS2 lists no SteamIDs: the player of the log lines with this
+			// userid; players not seen in a log line yet wait for one.
+			if key = srv.keyByUserID(sp.UserID); key == "" {
+				continue
+			}
+		case !srv.tracks(ref):
 			continue
+		default:
+			key = ref.Key()
 		}
-		key := ref.Key()
 		listed[key] = true
 		ps := srv.players[key]
 		if ps == nil {
@@ -841,7 +877,7 @@ func UniqueID(ref logparse.Player) string {
 // first sight. It returns nil for references that are not tracked
 // (console, pending ids).
 func (p *Processor) player(ctx context.Context, ev stats.Ev, ref logparse.Player) (*playerState, error) {
-	if !ref.Trackable() {
+	if !p.srv.tracks(ref) {
 		return nil, nil
 	}
 	key := ref.Key()
@@ -1001,7 +1037,7 @@ func (p *Processor) join(ctx context.Context, ev stats.Ev, ref logparse.Player, 
 // starting a visit: for lines that come after the disconnect (the plugin
 // flushes weaponstats on disconnect). It returns nil for untracked players.
 func (p *Processor) absent(ctx context.Context, ev stats.Ev, ref logparse.Player) (*stats.Live, error) {
-	if !ref.Trackable() {
+	if !p.srv.tracks(ref) {
 		return nil, nil
 	}
 	uid := UniqueID(ref)
@@ -1239,6 +1275,9 @@ func (p *Processor) endStreaks(ctx context.Context, ev stats.Ev) error {
 // leave ends the visit of st at ev.Time: its time in the team and role,
 // then the connection time.
 func (p *Processor) leave(ctx context.Context, ev stats.Ev, st *playerState, logged bool) error {
+	if err := p.flushHits(ctx, ev, st); err != nil {
+		return err
+	}
 	if err := p.playTime(ctx, ev, st); err != nil {
 		return err
 	}
@@ -1326,6 +1365,7 @@ func (p *Processor) kill(ctx context.Context, ev stats.Ev, e logparse.Kill) erro
 		return err
 	}
 	k.live.Skill, v.live.Skill = r.KillerSkill, r.VictimSkill
+	p.source2Kill(k, v, e.Weapon, headshot, teamkill)
 	k.skillDelta += r.KillerDelta
 	v.skillDelta += r.VictimDelta
 	p.cmds.ConsoleEvent(&p.srv, k, r.KillerDelta, "ev_kill", v.live.Name, e.Weapon)

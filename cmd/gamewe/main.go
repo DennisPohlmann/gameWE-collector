@@ -20,6 +20,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -96,8 +97,9 @@ command: gamewe -o json server list): text (default), json, yaml; the lists
 tsv and name (only the id / code / key, one per line). Passwords and log
 secrets are never printed, in no format: only whether they are set.
 
-The config file (default ` + config.DefaultPath + `) holds the UDP
-listen address (default 0.0.0.0:41337) and the database connection. Game
+The config file (default ` + config.DefaultPath + `) holds the inputs
+for the game server logs (UDP, default 0.0.0.0:41337; HTTP for Counter-Strike
+2, default off, 0.0.0.0:41338) and the database connection. Game
 servers come from hlstats_Servers and settings from hlstats_Options; both are
 re-read every -reload interval (default 60s).
 `
@@ -240,7 +242,7 @@ func runCmd(args []string) error {
 	var listen, level string
 	var reload time.Duration
 	cfg, err := loadConfig("run", args, func(fs *flag.FlagSet) {
-		fs.StringVar(&listen, "listen", "", "UDP address for game-server logs, overrides listen: in the config (IP:port)")
+		fs.StringVar(&listen, "listen", "", "UDP address for game-server logs, overrides listen.udp in the config and switches UDP on (IP:port)")
 		fs.StringVar(&level, "log-level", "info", "debug, info, warn or error")
 		fs.DurationVar(&reload, "reload", time.Minute, "how often hlstats_Servers and hlstats_Options are re-read")
 	})
@@ -342,9 +344,11 @@ func runCmd(args []string) error {
 		return ""
 	}}
 	hub.Geo = auto
+	udpOn := cfg.Listen.UDPEnabled || listen != ""
 	if listen == "" {
 		listen = cfg.Listen.UDP()
 	}
+	lh := cfg.Listen.HTTP
 	rs := cfg.Features.RconStatus
 	every, _ := rs.Every() // checked by config.Validate
 	la := cfg.Features.LogAddress
@@ -353,7 +357,9 @@ func runCmd(args []string) error {
 	siEvery, _ := si.Every() // checked by config.Validate
 	hub.Monitor = collector.MonitorConfig{Status: rs.Enabled, StatusInterval: every, LogAddress: la.Enabled, LogInterval: laEvery,
 		ServerInfo: si.Enabled, InfoInterval: siEvery,
-		PublicAddress: cfg.Listen.PublicAddress, ListenPort: listenPort(listen, cfg.Listen.Port)}
+		PublicAddress: cfg.Listen.PublicAddress, ListenPort: listenPort(listen, cfg.Listen.Port), NoUDP: !udpOn,
+		HTTP: lh.Enabled && la.HTTP, HTTPPublicURL: lh.PublicURL, HTTPPort: lh.Port, HTTPToken: lh.Token}
+	hub.Source2Hits = cfg.Features.CS2Hitgroups.Enabled
 	ls := cfg.Features.LogSecret
 	hub.Secret = collector.SecretConfig{Mode: secretMode(ls.Enabled)}
 	if len(ls.Obsolete) > 0 {
@@ -403,12 +409,28 @@ func runCmd(args []string) error {
 		go collector.RunDailyAwards(ctx, store, collector.Schedule{Loc: loc, Hour: h, Minute: m}, log)
 	}
 	log.Info("features", "rcon_status", rs.Enabled, "rcon_status_every", every.String(), "log_address", la.Enabled, "log_address_every", laEvery.String(),
-		"log_secret", ls.Enabled, "server_info", si.Enabled, "server_info_every", siEvery.String(), "daily_awards", da.Enabled, "daily_awards_at", da.Time+" "+da.Timezone)
+		"log_address_http", la.HTTP, "log_secret", ls.Enabled, "server_info", si.Enabled, "server_info_every", siEvery.String(),
+		"daily_awards", da.Enabled, "daily_awards_at", da.Time+" "+da.Timezone, "cs2_hitgroups", cfg.Features.CS2Hitgroups.Enabled)
 
-	// Config, database and servers are fine; READY=1 once the UDP port is
+	// Config, database and servers are fine; READY=1 once every input is
 	// open, so that systemctl start / restart report every failure before.
-	err = collector.Serve(ctx, listen, hub, log, func(a net.Addr) {
-		if err := sdnotify.Ready("listening for game server logs on udp " + a.String()); err != nil {
+	var inputs []input
+	if udpOn {
+		inputs = append(inputs, input{"udp", func(ctx context.Context, ready func(net.Addr)) error {
+			return collector.Serve(ctx, listen, hub, log, ready)
+		}})
+	}
+	if lh.Enabled {
+		hc, err := httpConfig(lh)
+		if err != nil {
+			return err
+		}
+		inputs = append(inputs, input{"http", func(ctx context.Context, ready func(net.Addr)) error {
+			return collector.ServeHTTP(ctx, hc, hub, log, ready)
+		}})
+	}
+	err = serveInputs(ctx, inputs, func(open string) {
+		if err := sdnotify.Ready("listening for game server logs on " + open); err != nil {
 			log.Warn("systemd notification failed", "err", err)
 		}
 	})
@@ -418,6 +440,81 @@ func runCmd(args []string) error {
 	hub.Close(sctx)
 	log.Info("gameWE collector stopped")
 	return err
+}
+
+// input is one way the game server logs come in (UDP, HTTP).
+type input struct {
+	name  string
+	serve func(ctx context.Context, ready func(net.Addr)) error
+}
+
+// serveInputs runs all inputs until ctx is done or one fails (then the
+// others are stopped too). ready is called once every input is open, with
+// their addresses ("udp 0.0.0.0:41337, http 0.0.0.0:41338").
+func serveInputs(ctx context.Context, inputs []input, ready func(open string)) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var mu sync.Mutex
+	open := make([]string, len(inputs))
+	left := len(inputs)
+	errs := make(chan error, len(inputs))
+	for i, in := range inputs {
+		go func() {
+			err := in.serve(ctx, func(a net.Addr) {
+				mu.Lock()
+				defer mu.Unlock()
+				open[i] = in.name + " " + a.String()
+				if left--; left == 0 {
+					ready(strings.Join(open, ", "))
+				}
+			})
+			if err != nil {
+				err = fmt.Errorf("%s input: %w", in.name, err)
+			}
+			cancel()
+			errs <- err
+		}()
+	}
+	var first error
+	for range inputs {
+		if err := <-errs; err != nil && first == nil {
+			first = err
+		}
+	}
+	return first
+}
+
+// httpConfig converts listen.http (checked by config.Validate).
+func httpConfig(h config.ListenHTTP) (collector.HTTPConfig, error) {
+	body, err := h.BodyLimit()
+	if err != nil {
+		return collector.HTTPConfig{}, err
+	}
+	timeout, err := h.Timeout()
+	if err != nil {
+		return collector.HTTPConfig{}, err
+	}
+	proxies, err := h.Proxies()
+	if err != nil {
+		return collector.HTTPConfig{}, err
+	}
+	return collector.HTTPConfig{Addr: h.Addr(), Token: h.Token, MaxBody: body, ReadTimeout: timeout,
+		MaxConnections: h.MaxConnections, MaxConnectionsPerIP: h.MaxConnectionsPerIP, TrustedProxies: proxies}, nil
+}
+
+// listenText describes the inputs for gamewe check.
+func listenText(l config.Listen) (udp, http string) {
+	udp, http = "off", "off"
+	if l.UDPEnabled {
+		udp = l.UDP()
+	}
+	if l.HTTP.Enabled {
+		http = l.HTTP.Addr()
+		if l.HTTP.Token != "" {
+			http += " (token set)"
+		}
+	}
+	return udp, http
 }
 
 // secretMode converts features.log_secret.enabled.
@@ -436,6 +533,7 @@ type checkReport struct {
 	Error         string         `json:"error,omitempty"`
 	Config        string         `json:"config"`
 	Listen        string         `json:"listen"`
+	ListenHTTP    string         `json:"listen_http"`
 	Features      checkFeatures  `json:"features"`
 	Database      checkDatabase  `json:"database"`
 	Schema        *checkSchema   `json:"schema,omitempty"`
@@ -453,12 +551,14 @@ type checkFeatures struct {
 	RconStatusEvery     string `json:"rcon_status_every"`
 	LogAddress          bool   `json:"log_address"`
 	LogAddressEvery     string `json:"log_address_every"`
+	LogAddressHTTP      bool   `json:"log_address_http"`
 	LogSecret           bool   `json:"log_secret"`
 	ServerInfo          bool   `json:"server_info"`
 	ServerInfoEvery     string `json:"server_info_every"`
 	DailyAwards         bool   `json:"daily_awards"`
 	DailyAwardsTime     string `json:"daily_awards_time"`
 	DailyAwardsTimezone string `json:"daily_awards_timezone"`
+	CS2Hitgroups        bool   `json:"cs2_hitgroups"`
 }
 
 type checkDatabase struct {
@@ -533,18 +633,20 @@ func check(cfg config.Config, out io.Writer, rep *checkReport) error {
 	fmt.Fprintln(out, "config:    ok")
 	rep.Config = "ok"
 	d := cfg.Database
-	fmt.Fprintf(out, "listen:    udp %s\n", cfg.Listen.UDP())
-	rep.Listen = cfg.Listen.UDP()
+	udp, http := listenText(cfg.Listen)
+	fmt.Fprintf(out, "listen:    udp %s, http %s\n", udp, http)
+	rep.Listen, rep.ListenHTTP = udp, http
 	da := cfg.Features.DailyAwards
 	every, _ := cfg.Features.RconStatus.Every()
 	laEvery, _ := cfg.Features.LogAddress.Every()
 	si := cfg.Features.ServerInfo
 	siEvery, _ := si.Every()
-	fmt.Fprintf(out, "features:  rcon_status %v (every %v), log_address %v (every %v), log_secret %v, server_info %v (every %v), daily_awards %v (%s %s)\n",
-		cfg.Features.RconStatus.Enabled, every, cfg.Features.LogAddress.Enabled, laEvery, cfg.Features.LogSecret.Enabled,
-		si.Enabled, siEvery, da.Enabled, da.Time, da.Timezone)
+	fmt.Fprintf(out, "features:  rcon_status %v (every %v), log_address %v (every %v, http %v), log_secret %v, server_info %v (every %v), daily_awards %v (%s %s), cs2_hitgroups %v\n",
+		cfg.Features.RconStatus.Enabled, every, cfg.Features.LogAddress.Enabled, laEvery, cfg.Features.LogAddress.HTTP, cfg.Features.LogSecret.Enabled,
+		si.Enabled, siEvery, da.Enabled, da.Time, da.Timezone, cfg.Features.CS2Hitgroups.Enabled)
 	rep.Features = checkFeatures{cfg.Features.RconStatus.Enabled, every.String(), cfg.Features.LogAddress.Enabled, laEvery.String(),
-		cfg.Features.LogSecret.Enabled, si.Enabled, siEvery.String(), da.Enabled, da.Time, da.Timezone}
+		cfg.Features.LogAddress.HTTP, cfg.Features.LogSecret.Enabled, si.Enabled, siEvery.String(), da.Enabled, da.Time, da.Timezone,
+		cfg.Features.CS2Hitgroups.Enabled}
 	if o := cfg.Features.LogSecret.Obsolete; len(o) > 0 {
 		warn(fmt.Sprintf("features.log_secret: %s ignored, the automatic log secret was removed (set it per server with gamewe server set -logsecret)", strings.Join(o, ", ")))
 	}
@@ -928,7 +1030,7 @@ func logaddressCmd(args []string) error {
 	var add bool
 	cfg, err := loadConfig("logaddress", args, func(fs *flag.FlagSet) {
 		fs.StringVar(&server, "server", "all", "serverId, ip:port or all")
-		fs.BoolVar(&add, "add", false, "register the collector where it is missing (logaddress_add, log on)")
+		fs.BoolVar(&add, "add", false, "register the collector where it is missing (logaddress_add, CS2: logaddress_add_http; log on)")
 		fs.StringVar(&address, "address", "", "ip:port to register (default: listen.public_address, else the address of the RCON connection and listen.port)")
 	})
 	if err != nil {
@@ -960,6 +1062,9 @@ func logaddressCmd(args []string) error {
 			defer c.Close()
 			if _, err := c.Exec("echo"); err != nil {
 				return err
+			}
+			if s.Engine == games.Source2 {
+				return httpLogAddress(c, cfg, s, add, text, &d)
 			}
 			addr, err := collector.LogAddress(c, address, cfg.Listen.Port)
 			if err != nil {
@@ -1040,6 +1145,40 @@ func (l statusList) Rows() [][]string {
 		}
 	}
 	return out
+}
+
+// httpLogAddress is gamewe logaddress for a CS2 server: logaddress_list_http
+// and logaddress_add_http with listen.http (the token shown as <token>).
+func httpLogAddress(c rcon.Conn, cfg config.Config, s stats.Server, add, text bool, d *logaddressDoc) error {
+	h := cfg.Listen.HTTP
+	if !h.Enabled {
+		return errors.New("Counter-Strike 2 logs over HTTP only: switch on listen.http in the config")
+	}
+	url, err := collector.HTTPLogURL(c, h.PublicURL, h.Port, h.Token, s.AddrPort.Port())
+	if err != nil {
+		return err
+	}
+	listed, added, err := collector.EnsureHTTPLogAddress(c, url, add)
+	if err != nil {
+		return err
+	}
+	shown := collector.RedactURL(url, h.Token)
+	d.Collector, d.Added, d.Registered = shown, added, listed || added
+	if !text {
+		return nil
+	}
+	fmt.Printf("  collector %s (http): ", shown)
+	switch {
+	case added && !listed:
+		fmt.Println("registered now (logaddress_add_http, log on)")
+	case added:
+		fmt.Println("registered, logging switched on now (log on)")
+	case listed:
+		fmt.Println("registered")
+	default:
+		fmt.Println("NOT registered (use -add)")
+	}
+	return nil
 }
 
 type logaddressDoc struct {

@@ -682,6 +682,11 @@ func (c Commands) prefix(srv *serverState) string {
 }
 
 func (c Commands) send(srv *serverState, cmd string) {
+	if srv.info.Engine == games.Source2 {
+		// CS2 has no gameWE plugin to show the reply: nothing to send.
+		c.log.Debug("Source 2 server (CS2) has no plugin for replies, reply dropped", "server", srv.info.Address)
+		return
+	}
 	if srv.info.RconPassword == "" {
 		c.log.Debug("no rcon_password in hlstats_Servers, reply dropped", "server", srv.info.Address, "cmd", cmd)
 		return

@@ -238,3 +238,59 @@ func TestLogSecret(t *testing.T) {
 		t.Errorf("listen.log_secret: %v", err)
 	}
 }
+
+func TestListenInputs(t *testing.T) {
+	base := "database:\n  host: db\n  user: u\n  name: n\n"
+	cfg, err := Parse([]byte(base))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l := cfg.Listen; !l.UDPEnabled || l.Port != DefaultListenPort || l.HTTP.Enabled || l.HTTP.Port != DefaultHTTPPort ||
+		l.HTTP.MaxConnections != 64 || l.HTTP.MaxConnectionsPerIP != 8 {
+		t.Errorf("defaults %+v", l)
+	}
+	if !cfg.Features.CS2Hitgroups.Enabled {
+		t.Error("cs2_hitgroups off by default")
+	}
+	cfg, err = Parse([]byte(base + "listen:\n  udp:\n    enabled: false\n    port: 27600\n    public_address: 203.0.113.5:27600\n" +
+		"  http:\n    enabled: true\n    port: 8080\n    public_url: http://stats.example.org:8080\n    token: abcdefghijklmnop1234\n" +
+		"    max_body: 1MiB\n    read_timeout: 30s\n    max_connections: 10\n    max_connections_per_ip: 2\n    trusted_proxies: [10.0.0.1, 192.168.0.0/16]\n" +
+		"features:\n  cs2_hitgroups: false\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := cfg.Listen
+	if l.UDPEnabled || l.Port != 27600 || l.PublicAddress != "203.0.113.5:27600" || !l.HTTP.Enabled || l.HTTP.Addr() != "0.0.0.0:8080" {
+		t.Errorf("parsed %+v", l)
+	}
+	if n, _ := l.HTTP.BodyLimit(); n != 1<<20 {
+		t.Errorf("max_body %d", n)
+	}
+	if p, err := l.HTTP.Proxies(); err != nil || len(p) != 2 || p[0].Bits() != 32 {
+		t.Errorf("proxies %v %v", p, err)
+	}
+	if cfg.Features.CS2Hitgroups.Enabled {
+		t.Error("cs2_hitgroups: false ignored")
+	}
+	bad := map[string]string{
+		"both off":      "listen:\n  udp:\n    enabled: false\n",
+		"udp twice":     "listen:\n  port: 1\n  udp:\n    port: 2\n",
+		"https url":     "listen:\n  http:\n    public_url: https://x:1\n",
+		"url path":      "listen:\n  http:\n    public_url: http://x:1/a\n",
+		"short token":   "listen:\n  http:\n    token: abc\n",
+		"token chars":   "listen:\n  http:\n    token: abcdefghijklmnop/x\n",
+		"example token": "listen:\n  http:\n    token: change-me\n",
+		"body small":    "listen:\n  http:\n    max_body: 1KiB\n",
+		"body huge":     "listen:\n  http:\n    max_body: 1GiB\n",
+		"timeout":       "listen:\n  http:\n    read_timeout: 1h\n",
+		"per ip":        "listen:\n  http:\n    max_connections: 4\n    max_connections_per_ip: 5\n",
+		"proxy":         "listen:\n  http:\n    trusted_proxies: [nope]\n",
+		"http port":     "listen:\n  http:\n    port: 0\n",
+		"unknown":       "listen:\n  http:\n    tls: true\n",
+	}
+	for name, in := range bad {
+		if _, err := Parse([]byte(base + in)); err == nil {
+			t.Errorf("%s: expected error", name)
+		}
+	}
+}

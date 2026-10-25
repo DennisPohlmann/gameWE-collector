@@ -127,8 +127,11 @@ func TestCSGOLines(t *testing.T) {
 	if kill := k.(Kill); kill.Headshot || len(kill.Flags) != 0 {
 		t.Errorf("plain kill %+v", kill)
 	}
-	if _, ok := ParseLine(`"A<12><[U:1:22]><CT>" [-1 2 -3] attacked "B<20><BOT><TERRORIST>" [4 -5 6] with "m4a1_silencer" (damage "27") (damage_armor "3") (health "73") (armor "96") (hitgroup "left arm")`); ok {
-		t.Error("damage lines are not used (the plugin reports hits)")
+	// Parsed for CS2 (no plugin); the collector ignores them for CS:GO,
+	// where the plugin reports the hits.
+	h, ok := ParseLine(`"A<12><[U:1:22]><CT>" [-1 2 -3] attacked "B<20><BOT><TERRORIST>" [4 -5 6] with "m4a1_silencer" (damage "27") (damage_armor "3") (health "73") (armor "96") (hitgroup "left arm")`)
+	if at, isAt := h.(Attacked); !ok || !isAt || at.Attacker.Name != "A" || at.Victim.SteamID != "BOT" || at.Weapon != "m4a1_silencer" || at.Damage != 27 || at.Hitgroup != "left arm" {
+		t.Errorf("attacked %+v", h)
 	}
 	f, ok := ParseLine(`"C<13><[U:1:44]><CT>" flash-assisted killing "B<20><BOT><TERRORIST>"`)
 	if fa, isFa := f.(KillAssist); !ok || !isFa || !fa.Flash || fa.Assister.Name != "C" || fa.Victim.Name != "B" {

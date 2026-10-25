@@ -16,13 +16,42 @@
 # Where the game servers send their logs (logaddress_add <ip>:<port>).
 # Both keys are optional.
 listen:
-  address: 0.0.0.0        # IP to listen on (0.0.0.0 = all IPv4, :: = all)
-  port: 41337             # UDP port
-  # The address the game servers send their logs to (registered with
-  # logaddress_add, see features.log_address). Default: the collector's
-  # address of the RCON connection to the server, with port. Set it when the
-  # game servers reach the collector at another address (NAT).
-  # public_address: 203.0.113.4:41337
+  # UDP: the logs of GoldSrc and Source servers (logaddress_add). The older
+  # form with address, port and public_address directly under listen is
+  # still read.
+  udp:
+    enabled: true
+    address: 0.0.0.0      # IP to listen on (0.0.0.0 = all IPv4, :: = all)
+    port: 41337           # UDP port
+    # The address the game servers send their logs to (registered with
+    # logaddress_add, see features.log_address). Default: the collector's
+    # address of the RCON connection to the server, with port. Set it when
+    # the game servers reach the collector at another address (NAT).
+    # public_address: 203.0.113.4:41337
+  # HTTP: the logs of Counter-Strike 2 (Source 2), which sends them only
+  # over HTTP: logaddress_add_http "http://<collector>:41338/<game port>".
+  # Plain HTTP (CS2 offers no HTTPS); open the TCP port only for the game
+  # servers. Only servers of hlstats_Servers with a Source 2 game are
+  # accepted.
+  http:
+    enabled: false
+    address: 0.0.0.0      # IP to listen on
+    port: 41338           # TCP port
+    # The URL the CS2 servers post to (registered with logaddress_add_http,
+    # see features.log_address), http://host:port without a path. Default:
+    # http:// and the collector's address of the RCON connection, with port.
+    # public_url: http://203.0.113.4:41338
+    # A secret first path segment (16 to 128 letters, digits, - or _): only
+    # posts to /<token>/<game port> are accepted. Recommended, since CS2's
+    # HTTP logs carry no sv_logsecret.
+    # token: ""
+    max_body: 128KiB      # largest post (4KiB to 16MiB)
+    read_timeout: 10s     # time to read one post (1s to 2m)
+    max_connections: 64   # open connections at most
+    max_connections_per_ip: 8
+    # Reverse proxies in front of the collector (IPs or CIDR): only for
+    # them the sender is taken from X-Forwarded-For.
+    # trusted_proxies: [127.0.0.1]
 
 database:
   type: mariadb           # mariadb (= mysql) or postgres
@@ -65,6 +94,7 @@ features:
   log_address:         # logaddress_list; logaddress_add + "log on" if the collector is missing
     enabled: true
     interval: 1m       # how often (at least 10s)
+    http: true         # CS2 servers: logaddress_list_http / logaddress_add_http (when listen.http is on)
   log_secret:          # sv_logsecret: a server with hlstats_Servers.log_secret set must send it
     enabled: true      # (set it with gamewe server set -logsecret or in the web admin, and the
                        # same sv_logsecret in server.cfg); a server without one is not checked.
@@ -76,3 +106,5 @@ features:
     enabled: true
     timezone: UTC      # IANA time zone of the day and the time, e.g. Europe/Berlin
     time: "00:00"      # HH:MM in that time zone
+  cs2_hitgroups:       # Counter-Strike 2: hits per body part (head, neck, chest, ...) and damage
+    enabled: true      # from the attacked lines (CS2 has no plugin that reports them)

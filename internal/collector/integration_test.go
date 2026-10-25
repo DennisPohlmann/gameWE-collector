@@ -22,6 +22,7 @@ import (
 	"log/slog"
 	"net/netip"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -345,7 +346,8 @@ func loadSeed(t *testing.T, db *database.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, stmt := range strings.Split(string(seed), ";\n") {
+	// A statement ends with ";" at the end of a line (a comment may follow).
+	for _, stmt := range regexp.MustCompile(`;[ \t]*(?:--[^\n]*)?\n`).Split(string(seed)+"\n", -1) {
 		var lines []string
 		for _, l := range strings.Split(stmt, "\n") {
 			if !strings.HasPrefix(strings.TrimSpace(l), "--") {
@@ -1402,5 +1404,61 @@ func TestIntegrationEventServerID(t *testing.T) {
 	}
 	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Events_Entries WHERE server_id = ?`, ids[b]); n != 1 {
 		t.Errorf("entries of server b: %d, want 1", n)
+	}
+}
+
+// Counter-Strike 2 over HTTP: lines without "L " and with milliseconds,
+// [U:1:n] SteamIDs, hit groups from the attacked lines (neck included),
+// kills per weapon from the kill lines and the _off weapon names of CS2
+// counted as the weapon.
+func TestIntegrationCS2(t *testing.T) {
+	db := testDB(t)
+	if _, err := db.Exec(`INSERT INTO hlstats_Games (id, code, name, realgame) VALUES (3, 'cs2', 'Counter-Strike 2', 'cs2')`); err != nil {
+		t.Fatal(err)
+	}
+	addr := "198.51.100.9:27015"
+	insertServer(t, db, addr, "cs2")
+	set := settings.NewLive(settings.Defaults())
+	hub := NewHub(stats.NewStore(db, set), set, &recorder{}, strictLog(t))
+	hub.Source2Hits = true
+	if err := hub.Reload(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	a := `"Pat<2><[U:1:42]><%s>"`
+	b := `"Bob<3><[U:1:43]><%s>"`
+	f := func(p, team string) string { return fmt.Sprintf(p, team) }
+	ts := "10/25/2026 - 12:00:00.250 - "
+	lines := []string{
+		`World triggered "Round_Start"`,
+		f(a, "") + ` connected, address "192.0.2.41:27005"`,
+		f(b, "") + ` connected, address "192.0.2.42:27005"`,
+		f(a, "Unassigned") + ` joined team "CT"`,
+		f(b, "Unassigned") + ` joined team "TERRORIST"`,
+		f(a, "CT") + ` [10 20 30] attacked ` + f(b, "TERRORIST") + ` [40 50 60] with "m4a1_silencer_off" (damage "27") (damage_armor "3") (health "73") (armor "97") (hitgroup "neck")`,
+		f(a, "CT") + ` [10 20 30] attacked ` + f(b, "TERRORIST") + ` [40 50 60] with "m4a1_silencer_off" (damage "73") (damage_armor "0") (health "0") (armor "97") (hitgroup "head")`,
+		f(a, "CT") + ` [10 20 30] killed ` + f(b, "TERRORIST") + ` [40 50 60] with "m4a1_silencer_off" (headshot)`,
+		`World triggered "Round_End"`,
+	}
+	var body []string
+	for _, l := range lines {
+		body = append(body, ts+l)
+	}
+	if n, err := hub.DispatchLines(netip.MustParseAddrPort(addr), body, time.Now().UTC()); err != nil || n != len(body) {
+		t.Fatalf("dispatch: %d %v", n, err)
+	}
+	hub.Close(context.Background())
+	if got := count(t, db, `SELECT COUNT(*) FROM hlstats_PlayerUniqueIds WHERE game = 'cs2'`); got != 2 {
+		t.Errorf("cs2 players: %d, want 2", got)
+	}
+	m4 := `SELECT COALESCE(SUM(%s), 0) FROM hlstats_Players_Weapons w JOIN hlstats_Weapons x ON x.weaponId = w.weapon_id WHERE x.code = 'm4a1_silencer'`
+	// Kills, headshots and the victim's death per weapon come from the kill
+	// line; CS2 logs no shots, so shots and hits stay 0.
+	for col, want := range map[string]int{"neck": 1, "head": 1, "damage": 100, "kills": 1, "headshots": 1, "deaths": 1, "shots": 0, "hits": 0} {
+		if got := count(t, db, fmt.Sprintf(m4, "w."+col)); got != want {
+			t.Errorf("m4a1_silencer %s: %d, want %d", col, got, want)
+		}
+	}
+	if got := count(t, db, `SELECT COUNT(*) FROM hlstats_Events_Frags f JOIN hlstats_Weapons x ON x.weaponId = f.weapon WHERE x.code = 'm4a1_silencer' AND f.headshot = 1`); got != 1 {
+		t.Errorf("headshot frags with m4a1_silencer: %d, want 1", got)
 	}
 }

@@ -271,7 +271,10 @@ default):
   `logaddress_add <ip:port>` and `log on`. The address is
   `listen.public_address`, or the collector's address of the RCON connection
   with the listen port. So a game server that restarted without
-  `logaddress_add` in its config is back within that interval.
+  `logaddress_add` in its config is back within that interval. Counter-Strike 2
+  servers instead get `logaddress_list_http` and, if the collector's URL is
+  missing, `logaddress_add_http "<url>"` (`listen.http` on,
+  `features.log_address.http`).
 - **stats** every 10 minutes for `hlstats_server_load` (`gamewe_server_load`).
 
 Without RCON, every 5 minutes (`features.server_info.interval`) the collector
@@ -289,6 +292,7 @@ gamewe status -server 3                       # one server: serverId or ip:port
 gamewe logaddress                             # is the collector registered on every server?
 gamewe logaddress -add                        # register it where it is missing
 gamewe logaddress -server 198.51.100.7:27015 -address 203.0.113.4:41337 -add
+gamewe logaddress -server 198.51.100.8:27015 -add  # a CS2 server: logaddress_add_http with listen.http (token shown as <token>)
 gamewe rcon -server 3 sv_maxplayers           # any RCON command, prints the answer
 gamewe awards -date 2026-10-21                # decide the daily awards of a day again
 ```

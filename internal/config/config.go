@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Package config loads the gameWE collector's YAML configuration: the
-// database connection and the UDP address for game-server logs. Game
+// database connection and the inputs for game-server logs (UDP, and HTTP
+// for Counter-Strike 2). Game
 // servers and all statistics settings are read from the database
 // (hlstats_Servers, hlstats_Options, ...).
 package config
@@ -13,7 +14,9 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -56,24 +59,158 @@ type GeoIP struct {
 	AutoUpdate bool `yaml:"auto_update"`
 }
 
-// Listen is where the collector receives game-server logs (logaddress_add).
+// Listen is where the collector receives game-server logs: UDP
+// (logaddress_add; Source 1 and GoldSrc) and HTTP (logaddress_add_http;
+// Counter-Strike 2). In the file the UDP input is listen.udp, or (older
+// form, still read) address, port and public_address directly under
+// listen.
 type Listen struct {
+	// The UDP input, from listen.udp or the older keys; Parse fills them.
 	Address string `yaml:"address"` // IP to listen on, default 0.0.0.0
 	Port    int    `yaml:"port"`    // UDP port, default 41337
 	// PublicAddress is the ip:port the game servers send their logs to
 	// (logaddress_add); empty: the collector's address of the RCON
 	// connection and Port.
 	PublicAddress string `yaml:"public_address"`
+	// UDPEnabled is listen.udp.enabled (default true).
+	UDPEnabled bool       `yaml:"-"`
+	UDPConf    *ListenUDP `yaml:"udp"`
+	HTTP       ListenHTTP `yaml:"http"`
+}
+
+// ListenUDP is listen.udp.
+type ListenUDP struct {
+	Enabled       *bool  `yaml:"enabled"`
+	Address       string `yaml:"address"`
+	Port          int    `yaml:"port"`
+	PublicAddress string `yaml:"public_address"`
+}
+
+// ListenHTTP is listen.http: the HTTP input for the logs of Counter-Strike
+// 2 (logaddress_add_http "http://<ip>:<port>/<game server port>"). Off by
+// default.
+type ListenHTTP struct {
+	Enabled bool   `yaml:"enabled"`
+	Address string `yaml:"address"` // IP to listen on, default 0.0.0.0
+	Port    int    `yaml:"port"`    // TCP port, default 41338
+	// PublicURL is the http://host:port the game servers post their logs
+	// to (logaddress_add_http); empty: http://, the collector's address of
+	// the RCON connection and Port.
+	PublicURL string `yaml:"public_url"`
+	// Token, if set, is a secret first path segment: only posts to
+	// /<token>/<port> are accepted.
+	Token string `yaml:"token"`
+	// MaxBody is the largest request body ("128KiB", "1MiB" or bytes).
+	MaxBody string `yaml:"max_body"`
+	// ReadTimeout is how long reading one request may take ("10s").
+	ReadTimeout string `yaml:"read_timeout"`
+	// MaxConnections and MaxConnectionsPerIP bound the open connections.
+	MaxConnections      int `yaml:"max_connections"`
+	MaxConnectionsPerIP int `yaml:"max_connections_per_ip"`
+	// TrustedProxies are the IPs or networks (CIDR) of reverse proxies in
+	// front of the collector: only for their requests the sender is read
+	// from X-Forwarded-For.
+	TrustedProxies []string `yaml:"trusted_proxies"`
+}
+
+// DefaultHTTPPort is the default TCP port of the HTTP input.
+const DefaultHTTPPort = 41338
+
+// Limits of listen.http.
+const (
+	MinHTTPBody        = 4 << 10
+	MaxHTTPBody        = 16 << 20
+	MinHTTPReadTimeout = time.Second
+	MaxHTTPReadTimeout = 2 * time.Minute
+	MaxHTTPConnections = 4096
+)
+
+var reToken = regexp.MustCompile(`^[A-Za-z0-9_-]{16,128}$`)
+
+// Addr returns the listen address of the HTTP input as host:port.
+func (h ListenHTTP) Addr() string {
+	return net.JoinHostPort(h.Address, strconv.Itoa(h.Port))
+}
+
+// BodyLimit returns MaxBody in bytes.
+func (h ListenHTTP) BodyLimit() (int64, error) { return parseSize(h.MaxBody) }
+
+// Timeout returns ReadTimeout as a duration.
+func (h ListenHTTP) Timeout() (time.Duration, error) { return interval(h.ReadTimeout) }
+
+// Proxies returns TrustedProxies as networks (a plain IP is a /32 or /128).
+func (h ListenHTTP) Proxies() ([]netip.Prefix, error) {
+	var out []netip.Prefix
+	for _, p := range h.TrustedProxies {
+		p = strings.TrimSpace(p)
+		if pf, err := netip.ParsePrefix(p); err == nil {
+			out = append(out, pf.Masked())
+			continue
+		}
+		ip, err := netip.ParseAddr(p)
+		if err != nil {
+			return nil, fmt.Errorf("listen.http.trusted_proxies: %q is not an IP address or network", p)
+		}
+		ip = ip.Unmap()
+		out = append(out, netip.PrefixFrom(ip, ip.BitLen()))
+	}
+	return out, nil
+}
+
+// parseSize reads "128KiB", "1MiB", "64KB" or a number of bytes.
+func parseSize(v string) (int64, error) {
+	s := strings.ToUpper(strings.TrimSpace(v))
+	mul := int64(1)
+	for _, u := range []struct {
+		suffix string
+		mul    int64
+	}{{"KIB", 1 << 10}, {"MIB", 1 << 20}, {"KB", 1000}, {"MB", 1000 * 1000}, {"B", 1}} {
+		if strings.HasSuffix(s, u.suffix) {
+			s, mul = strings.TrimSpace(strings.TrimSuffix(s, u.suffix)), u.mul
+			break
+		}
+	}
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil || n < 0 || n > (1<<40)/mul {
+		return 0, fmt.Errorf("%q is not a size", v)
+	}
+	return n * mul, nil
 }
 
 // Features switches the collector's optional jobs on or off; all are on
 // by default.
 type Features struct {
-	RconStatus  RconStatus  `yaml:"rcon_status"`  // poll every server's "status" over RCON
-	LogAddress  LogAddress  `yaml:"log_address"`  // register the collector with logaddress_add
-	LogSecret   LogSecret   `yaml:"log_secret"`   // check sv_logsecret of the log packets
-	DailyAwards DailyAwards `yaml:"daily_awards"` // the daily awards job
-	ServerInfo  ServerInfo  `yaml:"server_info"`  // version, OS and VAC of every server (A2S_INFO, status)
+	RconStatus RconStatus `yaml:"rcon_status"` // poll every server's "status" over RCON
+	// CS2Hitgroups counts the hit groups of Counter-Strike 2's attacked
+	// lines (CS2 has no plugin that reports them).
+	CS2Hitgroups Toggle      `yaml:"cs2_hitgroups"`
+	LogAddress   LogAddress  `yaml:"log_address"`  // register the collector with logaddress_add
+	LogSecret    LogSecret   `yaml:"log_secret"`   // check sv_logsecret of the log packets
+	DailyAwards  DailyAwards `yaml:"daily_awards"` // the daily awards job
+	ServerInfo   ServerInfo  `yaml:"server_info"`  // version, OS and VAC of every server (A2S_INFO, status)
+}
+
+// Toggle is a feature without settings: a mapping with enabled, or just
+// true / false.
+type Toggle struct {
+	Enabled bool `yaml:"enabled"`
+}
+
+// UnmarshalYAML accepts "x: true" and the mapping.
+func (t *Toggle) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode {
+		return n.Decode(&t.Enabled)
+	}
+	if n.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: want true / false or enabled", n.Line)
+	}
+	for i := 0; i < len(n.Content); i += 2 {
+		if k := n.Content[i].Value; k != "enabled" {
+			return fmt.Errorf("line %d: unknown key %q (enabled)", n.Content[i].Line, k)
+		}
+	}
+	type plain Toggle
+	return n.Decode((*plain)(t))
 }
 
 // RconStatus polls every game server's "status" over RCON. In the config
@@ -122,6 +259,9 @@ func interval(v string) (time.Duration, error) {
 type LogAddress struct {
 	Enabled  bool   `yaml:"enabled"`
 	Interval string `yaml:"interval"` // Go duration ("1m") or seconds
+	// HTTP registers Counter-Strike 2 servers with logaddress_add_http
+	// (when listen.http is on; default true).
+	HTTP bool `yaml:"http"`
 }
 
 // MinLogAddressInterval is the shortest features.log_address.interval.
@@ -137,9 +277,9 @@ func (l *LogAddress) UnmarshalYAML(n *yaml.Node) error {
 	}
 	for i := 0; i < len(n.Content); i += 2 {
 		switch k := n.Content[i].Value; k {
-		case "enabled", "interval":
+		case "enabled", "interval", "http":
 		default:
-			return fmt.Errorf("line %d: features.log_address: unknown key %q (enabled, interval)", n.Content[i].Line, k)
+			return fmt.Errorf("line %d: features.log_address: unknown key %q (enabled, interval, http)", n.Content[i].Line, k)
 		}
 	}
 	type plain LogAddress
@@ -306,17 +446,20 @@ type TLS struct {
 
 // Defaults returns a configuration with all optional values filled in.
 func Defaults() Config {
-	return Config{Listen: Listen{Address: "0.0.0.0", Port: DefaultListenPort}, Database: Database{
+	return Config{Listen: Listen{Address: "0.0.0.0", Port: DefaultListenPort, UDPEnabled: true,
+		HTTP: ListenHTTP{Address: "0.0.0.0", Port: DefaultHTTPPort, MaxBody: "128KiB", ReadTimeout: "10s",
+			MaxConnections: 64, MaxConnectionsPerIP: 8}}, Database: Database{
 		Type:           MySQL,
 		MaxOpenConns:   8,
 		ConnectTimeout: 10,
 		TLS:            TLS{Mode: TLSDisable},
 		AutoMigrate:    true,
 	}, GeoIP: GeoIP{AutoUpdate: true}, Features: Features{RconStatus: RconStatus{Enabled: true, Interval: "10s"},
-		LogAddress:  LogAddress{Enabled: true, Interval: "1m"},
-		LogSecret:   LogSecret{Enabled: true},
-		DailyAwards: DailyAwards{Enabled: true, Timezone: "UTC", Time: "00:00"},
-		ServerInfo:  ServerInfo{Enabled: true, Interval: "5m"}}}
+		LogAddress:   LogAddress{Enabled: true, Interval: "1m", HTTP: true},
+		LogSecret:    LogSecret{Enabled: true},
+		DailyAwards:  DailyAwards{Enabled: true, Timezone: "UTC", Time: "00:00"},
+		ServerInfo:   ServerInfo{Enabled: true, Interval: "5m"},
+		CS2Hitgroups: Toggle{Enabled: true}}}
 }
 
 // Load reads, decodes and validates the YAML file at path.
@@ -348,11 +491,21 @@ func Parse(data []byte) (Config, error) {
 		}
 		if l, ok := top["listen"].(map[string]any); ok {
 			if _, ok := l["http_port"]; ok {
-				return Config{}, fmt.Errorf("listen.http_port is no longer used: the HTTP logs of CS2 are not supported; remove it")
+				return Config{}, fmt.Errorf("listen.http_port is no longer used: the HTTP input for CS2 is listen.http (enabled, address, port)")
 			}
-			for _, k := range []string{"udp", "log_secret", "allowed_sources", "queue_size"} {
+			if v, ok := l["udp"]; ok && v != nil {
+				if _, isMap := v.(map[string]any); !isMap {
+					return Config{}, fmt.Errorf("listen.udp as an address is no longer used: listen.udp is a mapping (enabled, address, port, public_address)")
+				}
+				for _, k := range []string{"address", "port", "public_address"} {
+					if _, ok := l[k]; ok {
+						return Config{}, fmt.Errorf("listen.%s and listen.udp are both set: move it to listen.udp.%s", k, k)
+					}
+				}
+			}
+			for _, k := range []string{"log_secret", "allowed_sources", "queue_size"} {
 				if _, ok := l[k]; ok {
-					return Config{}, fmt.Errorf("listen.%s is no longer used: listen has address and port; game servers are allowed by hlstats_Servers, the log secret is features.log_secret", k)
+					return Config{}, fmt.Errorf("listen.%s is no longer used: listen has udp and http; game servers are allowed by hlstats_Servers, the log secret is features.log_secret", k)
 				}
 			}
 		}
@@ -365,6 +518,18 @@ func Parse(data []byte) (Config, error) {
 			return Config{}, errors.New("config is empty")
 		}
 		return Config{}, fmt.Errorf("parse yaml: %w", err)
+	}
+	if u := cfg.Listen.UDPConf; u != nil {
+		if u.Enabled != nil {
+			cfg.Listen.UDPEnabled = *u.Enabled
+		}
+		if u.Address != "" {
+			cfg.Listen.Address = u.Address
+		}
+		if u.Port != 0 {
+			cfg.Listen.Port = u.Port
+		}
+		cfg.Listen.PublicAddress = u.PublicAddress
 	}
 	d := &cfg.Database
 	switch strings.ToLower(strings.TrimSpace(d.Type)) {
@@ -393,6 +558,41 @@ func Parse(data []byte) (Config, error) {
 	return cfg, cfg.Validate()
 }
 
+// validate checks listen.http (also while it is off, so a mistake shows
+// before it is switched on).
+func (h ListenHTTP) validate() error {
+	if net.ParseIP(h.Address) == nil {
+		return fmt.Errorf("listen.http.address %q: must be an IP address (0.0.0.0 for all)", h.Address)
+	}
+	if h.Port < 1 || h.Port > 65535 {
+		return fmt.Errorf("listen.http.port %d out of range", h.Port)
+	}
+	if h.PublicURL != "" {
+		u, err := url.Parse(h.PublicURL)
+		if err != nil || u.Scheme != "http" || u.Host == "" || u.User != nil || (u.Path != "" && u.Path != "/") ||
+			u.RawQuery != "" || u.Fragment != "" {
+			return fmt.Errorf("listen.http.public_url %q: must be http://host:port (CS2 sends plain HTTP; no path, the collector adds it)", h.PublicURL)
+		}
+	}
+	if h.Token != "" && (!reToken.MatchString(h.Token) || strings.EqualFold(h.Token, "change-me")) {
+		return errors.New("listen.http.token: want 16 to 128 letters, digits, - or _ (it is part of the URL), not the example value")
+	}
+	if n, err := h.BodyLimit(); err != nil || n < MinHTTPBody || n > MaxHTTPBody {
+		return fmt.Errorf("listen.http.max_body %q: want a size from 4KiB to 16MiB, e.g. \"128KiB\"", h.MaxBody)
+	}
+	if d, err := h.Timeout(); err != nil || d < MinHTTPReadTimeout || d > MaxHTTPReadTimeout {
+		return fmt.Errorf("listen.http.read_timeout %q: want a duration from %v to %v, e.g. \"10s\"", h.ReadTimeout, MinHTTPReadTimeout, MaxHTTPReadTimeout)
+	}
+	if h.MaxConnections < 1 || h.MaxConnections > MaxHTTPConnections {
+		return fmt.Errorf("listen.http.max_connections %d: want 1 to %d", h.MaxConnections, MaxHTTPConnections)
+	}
+	if h.MaxConnectionsPerIP < 1 || h.MaxConnectionsPerIP > h.MaxConnections {
+		return fmt.Errorf("listen.http.max_connections_per_ip %d: want 1 to max_connections (%d)", h.MaxConnectionsPerIP, h.MaxConnections)
+	}
+	_, err := h.Proxies()
+	return err
+}
+
 // Validate checks all values and returns the first problem found.
 func (c Config) Validate() error {
 	if net.ParseIP(c.Listen.Address) == nil {
@@ -400,6 +600,12 @@ func (c Config) Validate() error {
 	}
 	if c.Listen.Port < 1 || c.Listen.Port > 65535 {
 		return fmt.Errorf("listen.port %d out of range", c.Listen.Port)
+	}
+	if err := c.Listen.HTTP.validate(); err != nil {
+		return err
+	}
+	if !c.Listen.UDPEnabled && !c.Listen.HTTP.Enabled {
+		return errors.New("listen: udp and http are both off; enable at least one input for the game server logs")
 	}
 	if d, err := c.Features.RconStatus.Every(); err != nil || d < MinStatusInterval {
 		return fmt.Errorf("features.rcon_status.interval %q: want a duration of at least %v, e.g. \"10s\"", c.Features.RconStatus.Interval, MinStatusInterval)

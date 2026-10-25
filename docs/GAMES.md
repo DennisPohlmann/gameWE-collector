@@ -1,8 +1,9 @@
 # Games and engines
 
-The collector handles Source and GoldSrc (Half-Life 1) servers.
-Counter-Strike 2 (Source 2) is not supported: it sends no UDP logs and
-SourceMod does not run on it. A game server belongs to a game (`hlstats_Servers.game` =
+The collector handles three engines: GoldSrc (Half-Life 1), Source
+(Half-Life 2) and Source 2 (Counter-Strike 2). CS2 is read from its own logs
+only, over HTTP (`listen.http`); there is no gameWE plugin for it, so no
+in-game replies (see [Counter-Strike 2](#counter-strike-2)). A game server belongs to a game (`hlstats_Servers.game` =
 `hlstats_Games.code`, a ranking); the game's `realgame` is the base game,
 and the base game decides the engine. Everything engine-specific follows from
 it: log transport, RCON protocol, `status` format, how the collector
@@ -12,6 +13,7 @@ registers itself as log address, and the commands of in-game replies.
 
 | realgame | Game | Engine |
 |----------|------|--------|
+| `cs2` | Counter-Strike 2 | Source 2 |
 | `css` | Counter-Strike: Source | Source |
 | `csgo` | Counter-Strike: Global Offensive | Source |
 | `tf` | Team Fortress 2 | Source |
@@ -28,7 +30,7 @@ registers itself as log address, and the commands of in-game replies.
 A ranking cloned from a game keeps the template's realgame (`css1` ... `css6`
 have `realgame = css`; `gamewe game add ... -template css` and the web admin
 copy it). An empty or unknown realgame is guessed from the code's prefix
-(`css3` → css, `tf2fun` → tf), else css; the collector logs a warning once.
+(`css3` → css, `tf2fun` → tf, `cs2_retake` → cs2), else css; the collector logs a warning once.
 A database without the realgame column (plain HLstatsX): the collector then
 guesses every game from its code.
 
@@ -56,6 +58,8 @@ gameWE changes:
   `hlstats_Ranks` (one global list) have no counterpart: the collector's
   settings are `hlstats_Options`, every game gets the css ranks;
 - csgo: see [CS:GO](#csgo) below;
+- cs2: the csgo definitions for the game cs2, see
+  [Counter-Strike 2](#counter-strike-2) below;
 - insurgency, l4d, l4d2: no weapons and actions (HLstatsX:CE has none; weapons
   are created with modifier 1.00 when first used), but the game-independent
   awards, the ranks and the ribbon classes like every game;
@@ -72,9 +76,14 @@ css adds 3 and 8, one cloned from dod 2 and 35.
 |--------|-----------|---------------|
 | Source | UDP to `listen.port` | `\xff\xff\xff\xffRL 10/23/2026 - 12:00:00: <event>` |
 | GoldSrc | UDP to `listen.port` | `\xff\xff\xff\xfflog L 10/23/2026 - 12:00:00: <event>` |
+| Source 2 | HTTP `POST` to `listen.http` `/<game port>` (or `/<token>/<game port>`) | one or more lines per post: `10/23/2026 - 12:00:00.250 - <event>` |
 
 UDP packets are accepted only from servers in `hlstats_Servers` (exactly the
-source ip:port).
+source ip:port). An HTTP post is accepted only from a Source 2 server in
+`hlstats_Servers`: the sender's IP plus the game port from the URL (the TCP
+source port of a post is random). A Source 2 server may also send UDP lines
+(e.g. through a forwarder from the server's own ip:port); they are read the
+same way.
 
 ## Log formats
 
@@ -114,7 +123,9 @@ engine: `STEAM_x:y:z` → `y:z`; Steam3 `[U:1:n]` → `n%2:n/2`; bots
 
 **Hitgroups** (`hlstats_Players_Weapons` hit areas) come from `weaponstats2`
 lines: the SourceMod plugin on CS:S, CS:GO, DoD:S, HL2DM (not TF2), the AMX
-plugin on cstrike, dod and tfc. valve and ns have none.
+plugin on cstrike, dod and tfc. valve and ns have none. On CS2 they come from
+the game's own `attacked` lines (`features.cs2_hitgroups`), with `neck` as an
+extra area.
 
 ## CS:GO
 
@@ -149,12 +160,51 @@ The log lines the collector reads on CS:GO (`mp_logdetail 3` is not needed):
 | `ACCOLADE, FINAL: {mvp}, Name<12>, VALUE: 3.000000, POS: 1, SCORE: 40.000000` | the winner (POS 1) gets `accolade_<name>`; the player is found by userid and name |
 | plugin: `"P" triggered "mvp"`, `"weaponstats"`, `"weaponstats2"`, `"headshot"`, roles from the player model | round MVP, shots/hits/damage/hit areas per weapon, roles |
 
+## Counter-Strike 2
+
+CS2 runs on Source 2. It sends its log only over HTTP (`logaddress_add_http`,
+plain HTTP; the game offers no HTTPS), and SourceMod and AMX Mod X do not run
+on it. Set up:
+
+1. Switch on `listen.http` in the collector's config (TCP port 41338 by
+   default; a `token` is recommended) and open the port for the CS2 servers.
+2. Add the server in the web admin or with `gamewe server add` with a game
+   whose realgame is `cs2` (the seed has `cs2`).
+3. With `rcon_password` and `features.log_address.http` (default) the
+   collector registers itself (`logaddress_add_http "http://<collector>:41338/<game port>"`
+   and `log on`). By hand, in the server's `server.cfg` or start line:
+   `log on; logaddress_add_http "http://203.0.113.5:41338/27015"` (with a
+   token: `.../<token>/27015`).
+
+The base data of `cs2` is the csgo data (see [CS:GO](#csgo)) without the VIP
+actions, the old weapon code `galil` (CS2 logs `galilar`) and the player-model
+roles, plus the team actions `SFUI_Notice_Target_Saved` and
+`SFUI_Notice_Hostages_Not_Rescued` and the knives `knife_kukri` and
+`knife_twinblade`. The CS2 rows were cross-checked against HLstatsX:CE by
+lovasatt (github.com/lovasatt/hlstatsx-community-edition, GPL-2.0-or-later).
+
+What the collector reads on CS2, besides the CS:GO lines above:
+
+| Line | Stored |
+|------|--------|
+| `10/23/2026 - 12:00:00.250 - <event>` (HTTP), also with `L ` and the milliseconds over UDP | the event; milliseconds are ignored |
+| `"A<2><[U:1:42]><CT>" [x y z] attacked "V<3><[U:1:43]><TERRORIST>" [x y z] with "ak47" (damage "27") (damage_armor "3") (health "73") (armor "97") (hitgroup "neck")` | with `features.cs2_hitgroups`: damage and one hit of the area (`head`, `neck`, `chest`, `stomach`, `left arm`, ...) for A's weapon, written to `hlstats_Players_Weapons` at the end of the round and when A leaves. Hits on oneself are not counted, damage is capped at 1000 per hit. Shots and hits stay empty (no `weaponstats`), so CS2 has no accuracy. The kill lines add, per weapon, the killer's kill (or team kill) and headshot and the victim's death, like the plugin's `weaponstats` on the other engines. |
+| weapon names `usp_silencer_off`, `m4a1_silencer_off` (silencer removed) | counted as `usp_silencer`, `m4a1_silencer` |
+| `inferno` of a Counter-Terrorist (CS2 logs the fire of both fire grenades as `inferno`) | counted as `incgrenade` (the CT incendiary grenade); a Terrorist's stays `inferno` |
+| the bots `<BOT>`, SourceTV (`SourceTV<0><BOT><>`) and the demo recorder (`<UNKNOWN>`) | bots as on CS:GO; SourceTV and the demo recorder are not tracked |
+
+RCON `status` of CS2 shows no SteamIDs: its players are matched to the
+tracked players by userid (a player not seen in the log yet is skipped), the
+map comes from the `loaded spawngroup` line, and `BOT` rows count as bots.
+In-game commands (`!rank`, ...) are recorded as chat, but not answered.
+
 ## RCON
 
 | Engine | Protocol | `status` | Log address |
 |--------|----------|----------|-------------|
 | Source | TCP on the game port | `# userid name uniqueid connected ping loss state adr` | `logaddress_list`, `logaddress_add ip:port`, `log on` |
 | GoldSrc | UDP on the game port: `challenge rcon`, then `rcon <challenge> "<password>" <command>` | `# slot "name" userid uniqueid frag time ping loss adr` | `logaddress_add ip port` (space), `log on` |
+| Source 2 | TCP on the game port (as Source) | `id time ping loss state rate adr name` (no SteamID), map from `loaded spawngroup` | `logaddress_list_http`, `logaddress_add_http "<url>"`, `log on` |
 
 GoldSrc RCON passwords must not contain `"`. A GoldSrc server bans addresses
 after too many wrong passwords; the error says so.
@@ -164,6 +214,7 @@ after too many wrong passwords; the error says so.
 | Engine | Plugin | Commands (prefix `gamewe`, or `gameme` with `gamewe_command_prefix` = gameme) |
 |--------|--------|------|
 | Source | gameWE SourceMod plugin | `gamewe_psay <userid> 0 "<msg>"`, `gamewe_msay <time> <userid> 0 "<line>\n<line>"`, `gamewe_browse`, `gamewe_console_event`, `gamewe_chat_event`, raw messages `gamewe_raw_message` (`gamewe_raw_messages` = 1) |
+| Source 2 | none | no replies: the collector sends nothing to CS2 servers |
 | GoldSrc | gameWE AMX Mod X plugins (`gamewe_cstrike`, `_dod`, `_tfc`, `_ns`, `_hlmp`) | `gamewe_amx_psay <userid> 0 "<msg>"`, `gamewe_amx_msay <time> <userid> 0 "<lines>"`, `gamewe_amx_browse` (Counter-Strike only: the other games show the MOTD as text, the address goes to chat), `gamewe_amx_console_event`, `gamewe_amx_chat_event`; no raw messages |
 
 The AMX plugin also offers `gamewe_amx_psay2`, `_say`, `_csay`, `_hint`,
