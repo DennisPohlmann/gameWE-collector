@@ -295,8 +295,8 @@ func TestDuplicateLogAddresses(t *testing.T) {
 // and 18 humans with Steam3 ids, more than one RCON packet.
 func css48Status() string {
 	var b strings.Builder
-	b.WriteString("hostname: GunGame 24/7 | GERMANY\nversion : 9540945/24 9540945 secure\n" +
-		"udp/ip  : 5.9.158.136:27315  (public ip: 5.9.158.136)\nmap     : gg_simpsons at: 0 x, 0 y, 0 z\n" +
+	b.WriteString("hostname: GunGame 24/7 | Example\nversion : 9540945/24 9540945 secure\n" +
+		"udp/ip  : 203.0.113.48:27315  (public ip: 203.0.113.48)\nmap     : gg_simpsons at: 0 x, 0 y, 0 z\n" +
 		"tags    : gungame\nplayers : 18 humans, 30 bots (48 max)\nedicts  : 900 used of 2048 max\n" +
 		"# userid name                uniqueid            connected ping loss state  adr\n")
 	b.WriteString("#      2 \"SourceTV\"          BOT                                     active\n")

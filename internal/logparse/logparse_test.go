@@ -98,8 +98,8 @@ func TestParseLine(t *testing.T) {
 		{`"Alice<2><STEAM_1:0:123><CT>" setup "cl_connectmethod" (value "serverbrowser_internet")`, Setup{Player: alice, Name: "cl_connectmethod", Value: "serverbrowser_internet"}},
 		{`"Alice<2><STEAM_1:0:123><CT>" triggered "headshot" (position "1 2 3")`,
 			PlayerTriggered{Player: alice, Trigger: "headshot", Props: map[string]string{"position": "1 2 3"}}},
-		{`"Laam4<7><[U:1:213129]><Unassigned>" triggered "clantag" (value "Kuningas")`,
-			PlayerTriggered{Player: Player{"Laam4", 7, "[U:1:213129]", "Unassigned"}, Trigger: "clantag", Props: map[string]string{"value": "Kuningas"}}},
+		{`"Player4<7><[U:1:200001]><Unassigned>" triggered "clantag" (value "ExampleClan")`,
+			PlayerTriggered{Player: Player{"Player4", 7, "[U:1:200001]", "Unassigned"}, Trigger: "clantag", Props: map[string]string{"value": "ExampleClan"}}},
 	}
 	for _, c := range cases {
 		got, ok := ParseLine(c.line)

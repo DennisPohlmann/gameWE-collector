@@ -54,9 +54,9 @@ func TestUniqueID(t *testing.T) {
 		// Steam3 ids are the same players: [U:1:n] is STEAM_0:(n%2):(n/2).
 		{logparse.Player{SteamID: "[U:1:246]"}, "0:123"},
 		{logparse.Player{SteamID: "[U:1:24691]"}, "1:12345"},
-		// Pairs from a live database (Steam3 and STEAM_x lines of one server).
+		// Pairs of the Steam3 and STEAM_x forms, also a large id.
 		{logparse.Player{SteamID: "[U:1:2469]"}, "1:1234"},
-		{logparse.Player{SteamID: "[U:1:746496705]"}, "1:373248352"},
+		{logparse.Player{SteamID: "[U:1:900000001]"}, "1:450000000"},
 		{logparse.Player{SteamID: "[U:1:4690]"}, "0:2345"},
 		{logparse.Player{SteamID: "STEAM_0:0:2345"}, "0:2345"},
 		{logparse.Player{SteamID: "[U:1:x]"}, "[U:1:x]"},
