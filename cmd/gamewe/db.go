@@ -68,6 +68,12 @@ init. An upgrade: make a backup, replace the binary, start the collector (or
 first gamewe db migrate with database.auto_migrate: false).`
 
 // exitError ends the program with code (and msg on stderr if not empty).
+// exitConfig is the exit code of gamewe run for a problem that only an
+// admin fixes (config file, flags, a database schema that is not migrated
+// automatically): EX_CONFIG of sysexits.h. The systemd unit does not
+// restart on it (RestartPreventExitStatus).
+const exitConfig = 78
+
 type exitError struct {
 	code int
 	msg  string

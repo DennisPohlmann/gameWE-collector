@@ -104,7 +104,7 @@ missing, or a table, column or index of the current schema):
   a backup ([MIGRATION-HLSTATSX.md](MIGRATION-HLSTATSX.md)); afterwards it has
   versions and later updates run automatically.
 - **`database.auto_migrate: false`**: the collector **does not start**
-  (exit code 1, the systemd unit fails) and names the command to run:
+  (exit code 78, the systemd unit fails and is not restarted) and names the command to run:
 
 ```
 gamewe run: the database structure does not match the layout this collector needs (schema version 0, needs 4; 8 steps pending; database.auto_migrate is false). Make a backup, then run: /opt/gamewe/collector/bin/gamewe db migrate

@@ -82,7 +82,7 @@ sudo -u gamewe /opt/gamewe/collector/bin/gamewe awards -date 2026-10-21
 
 | Command | What it does |
 |---------|--------------|
-| `gamewe run` | the collector (systemd starts it); migrates an outdated database schema at start (`database.auto_migrate`), with `auto_migrate: false` it refuses to start (exit code 1) until `gamewe db migrate` ran |
+| `gamewe run` | the collector (systemd starts it); migrates an outdated database schema at start (`database.auto_migrate`), with `auto_migrate: false` it refuses to start (exit code 78) until `gamewe db migrate` ran; reports "ready" to systemd (`Type=notify`) once the config, database and UDP port are fine, exit code 78 for a config error (not restarted by the unit), 1 for other errors |
 | `gamewe check` | config, database connection and TLS, schema version and pending migrations, game servers and settings |
 | `gamewe db migrate` | create the tables of a new database, bring an older one to this version (below); `gamewe run` does it at start with `database.auto_migrate` |
 | `gamewe db status`, `gamewe db grants`, `gamewe db seed` | schema version and migrations; the web users' rights again; missing reference data |

@@ -3,6 +3,8 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -51,6 +53,35 @@ func TestVersionFlags(t *testing.T) {
 		}
 		if got := strings.TrimSpace(string(out)); !strings.HasPrefix(got, "gamewe "+version.Version) {
 			t.Errorf("%v: output %q", args, got)
+		}
+	}
+}
+
+// A config problem ends gamewe run with exitConfig, which the systemd unit
+// does not restart (RestartPreventExitStatus); it happens before anything
+// is sent to systemd.
+func TestRunConfigErrorExitCode(t *testing.T) {
+	dir := t.TempDir()
+	bad := dir + "/config.yaml"
+	if err := os.WriteFile(bad, []byte("listen: {port: notanumber}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"-config", dir + "/missing.yaml"},
+		{"-config", bad},
+	} {
+		var ee exitError
+		if err := runCmd(args); !errors.As(err, &ee) || ee.code != exitConfig {
+			t.Errorf("run %v: %v, want exit code %d", args, err, exitConfig)
+		}
+	}
+	unit, err := os.ReadFile("../../packaging/gamewe-collector.service")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"\nType=notify\n", fmt.Sprintf("\nRestartPreventExitStatus=2 %d\n", exitConfig)} {
+		if !strings.Contains(string(unit), want) {
+			t.Errorf("unit without %q", strings.TrimSpace(want))
 		}
 	}
 }

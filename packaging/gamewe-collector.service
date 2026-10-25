@@ -5,7 +5,11 @@ Wants=network-online.target
 After=network-online.target mariadb.service mysql.service
 
 [Service]
-Type=simple
+# notify: gamewe tells systemd "ready" only once the config, the database
+# (and its migration) and the UDP port are fine, so "systemctl start" and
+# "restart" wait for that and fail visibly when the collector cannot start.
+Type=notify
+NotifyAccess=main
 User=gamewe
 Group=gamewe
 # The UDP address for game-server logs is listen: in the config (default
@@ -14,6 +18,13 @@ Group=gamewe
 ExecStart=/opt/gamewe/collector/bin/gamewe run -config /etc/gamewe/collector/config.yaml
 Restart=on-failure
 RestartSec=5s
+# Exit code 78: the config (or a schema that is not migrated automatically)
+# needs an admin; restarting does not help, the unit stays failed. 2: wrong
+# command line. Other failures (database not reachable yet) are retried.
+RestartPreventExitStatus=2 78
+# The start includes the database connection; a long automatic migration
+# extends this itself while it runs.
+TimeoutStartSec=2min
 
 # Hardening. The collector only needs to read /etc/gamewe and talk to the
 # network (UDP logs in, database and RCON out).

@@ -253,6 +253,14 @@ journalctl -u gamewe-collector -f
 The unit is in `/etc/systemd/system/` (units installed by hand); change it with
 `systemctl edit gamewe-collector`, not in place.
 
+The unit is `Type=notify`: `systemctl start` and `restart` wait until the
+collector has read its config, connected to the database (and migrated it),
+loaded the game servers and opened the UDP port. If any of that fails, the
+command itself fails (`Job for gamewe-collector.service failed ...`) and the
+reason is in `journalctl -u gamewe-collector`. A config error (exit code
+78) leaves the unit `failed` until you fix it and start it again; a database
+that is not reachable yet is retried every 5 seconds.
+
 ## C. Database
 
 MariaDB (tested: 11.4 and 12.3) or PostgreSQL (tested: 17 and 18). Three
@@ -301,9 +309,9 @@ The database schema is built into the binary. At every start the collector
 compares the database with it; if the database is older (or something is
 missing), it **migrates it itself** before it starts working
 (`database.auto_migrate: true`, the default; the steps are in the journal).
-With `auto_migrate: false` it **does not start** (exit code 1, `systemctl
-status gamewe-collector` and the journal name the command) until `gamewe db
-migrate` brought it up. `gamewe db status` shows the version, `gamewe db
+With `auto_migrate: false` it **does not start** (exit code 78, `systemctl
+start` fails, `systemctl status gamewe-collector` and the journal name the
+command) until `gamewe db migrate` brought it up. `gamewe db status` shows the version, `gamewe db
 migrate -n` the plan; details, what a migration may do and the list of
 versions are in [DATABASE.md](DATABASE.md#schema-versions-and-upgrades).
 Emptying, dropping and cleaning up old events: `gamewe db reset`, `drop`,
@@ -465,6 +473,9 @@ drop it (`DROP DATABASE gamewe;` and the three users).
 | `rejected log packet ... not in hlstats_Servers` | Register the shown source `IP:port` in the web admin. With `known server IP but a port ...` another game server on the same host sends logs: add it with its own port (logs are never attributed by IP alone). |
 | `rejected log packet ... missing or wrong log secret` | The server has a secret in `hlstats_Servers.log_secret` and the game server sends no or another `sv_logsecret`: set the same number in `server.cfg` and with `gamewe server set <id> -logsecret <n>` (or the web admin), or clear it with `-logsecret ""` to accept all its packets. |
 | Commands get no answer | `rcon_password` is empty or wrong (`rcon authentication failed`), the plugin is missing, or the RCON port is blocked (TCP). `gamewe check` shows servers without a password. |
+| `systemctl start` fails, `status=78/CONFIG` | The config file (or a `-` flag in `ExecStart`) is wrong, or the schema is not migrated automatically: the journal names it. Fix it, then `systemctl start gamewe-collector` (it is not restarted by itself). `gamewe check` tests the config without the service. |
+| `systemctl start` fails, `status=1/FAILURE`, `activating (auto-restart)` | Usually the database is not reachable; it is retried every 5 seconds. The journal has the error. |
+| `systemctl restart` does not report a broken config (units from 0.5.3 and older, `Type=simple`) | Install the unit of the current archive (section E) and `systemctl daemon-reload`. |
 | Service does not start, `status=31/SYS` | A hardening option in the unit blocks something on your system. See `journalctl -u gamewe-collector` and relax `SystemCallFilter` with `systemctl edit gamewe-collector`. |
 
 **What you see in `journalctl -u gamewe-collector -f`:** every log line a game

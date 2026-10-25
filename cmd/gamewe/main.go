@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/netip"
 	"os"
 	"os/signal"
@@ -27,6 +28,7 @@ import (
 	"gamewe-collector/internal/games"
 	"gamewe-collector/internal/geoip"
 	"gamewe-collector/internal/rcon"
+	"gamewe-collector/internal/sdnotify"
 	"gamewe-collector/internal/settings"
 	"gamewe-collector/internal/simulate"
 	"gamewe-collector/internal/stats"
@@ -205,10 +207,10 @@ func runCmd(args []string) error {
 		fs.DurationVar(&reload, "reload", time.Minute, "how often hlstats_Servers and hlstats_Options are re-read")
 	})
 	if err != nil {
-		return err
+		return exitError{exitConfig, err.Error()}
 	}
 	if reload < 5*time.Second {
-		return errors.New("-reload must be at least 5s")
+		return exitError{exitConfig, "-reload must be at least 5s"}
 	}
 	if warnRoot(os.Stderr) {
 		defer func() { warnRoot(os.Stderr) }() // again at the end, after all other output
@@ -250,7 +252,12 @@ func runCmd(args []string) error {
 		log.Warn(w)
 	}
 	if !plan.UpToDate() && cfg.Database.AutoMigrate {
-		if plan, err = autoMigrate(ctx, log, db, cfg.Database, plan); err != nil {
+		// A migration can take longer than systemd's start timeout.
+		sdnotify.Status("migrating the database schema")
+		stop := sdnotify.ExtendStart(ctx, 30*time.Second)
+		plan, err = autoMigrate(ctx, log, db, cfg.Database, plan)
+		stop()
+		if err != nil {
 			return err
 		}
 	}
@@ -269,7 +276,7 @@ func runCmd(args []string) error {
 			}
 			log.Error(r.String())
 		}
-		return schemaOutdated(plan, cfg.Database.AutoMigrate)
+		return exitError{exitConfig, schemaOutdated(plan, cfg.Database.AutoMigrate).Error()}
 	}
 	log.Info("database schema up to date", "version", plan.Current)
 
@@ -348,10 +355,14 @@ func runCmd(args []string) error {
 	log.Info("features", "rcon_status", rs.Enabled, "rcon_status_every", every.String(), "log_address", la.Enabled, "log_address_every", laEvery.String(),
 		"log_secret", ls.Enabled, "daily_awards", da.Enabled, "daily_awards_at", da.Time+" "+da.Timezone)
 
-	if listen == "" {
-		listen = cfg.Listen.UDP()
-	}
-	err = collector.Serve(ctx, listen, hub, log)
+	// Config, database and servers are fine; READY=1 once the UDP port is
+	// open, so that systemctl start / restart report every failure before.
+	err = collector.Serve(ctx, listen, hub, log, func(a net.Addr) {
+		if err := sdnotify.Ready("listening for game server logs on udp " + a.String()); err != nil {
+			log.Warn("systemd notification failed", "err", err)
+		}
+	})
+	sdnotify.Stopping()
 	sctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	hub.Close(sctx)

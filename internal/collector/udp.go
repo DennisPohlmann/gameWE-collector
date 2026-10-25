@@ -12,13 +12,17 @@ import (
 )
 
 // Serve listens for UDP log packets on addr and hands them to the hub
-// until ctx is done.
-func Serve(ctx context.Context, addr string, hub *Hub, log *slog.Logger) error {
+// until ctx is done. ready (if not nil) is called with the bound address
+// once the socket is open, before the first packet is read.
+func Serve(ctx context.Context, addr string, hub *Hub, log *slog.Logger, ready func(net.Addr)) error {
 	conn, err := net.ListenPacket("udp", addr)
 	if err != nil {
 		return err
 	}
 	log.Info("listening for game server logs", "udp", conn.LocalAddr().String())
+	if ready != nil {
+		ready(conn.LocalAddr())
+	}
 	return ServeConn(ctx, conn.(*net.UDPConn), hub, log)
 }
 
