@@ -41,7 +41,7 @@ func TestTestFlag(t *testing.T) {
 	}
 }
 
-func writeConfig(t *testing.T, body string) string {
+func writeTestConfig(t *testing.T, body string) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(p, []byte(body), 0o640); err != nil {
@@ -53,7 +53,7 @@ func writeConfig(t *testing.T, body string) string {
 const testDB = "database:\n  host: 127.0.0.1\n  user: gamewe\n  password: a-long-database-password\n  name: gamewe\n"
 
 func TestConfigTestFlags(t *testing.T) {
-	p := writeConfig(t, testDB)
+	p := writeTestConfig(t, testDB)
 	opt := config.LintOptions{}
 	cases := []struct {
 		name   string
@@ -83,13 +83,13 @@ func TestConfigTestTLS(t *testing.T) {
 	if err := os.WriteFile(ca, []byte("not a certificate\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	p := writeConfig(t, testDB+"  tls:\n    mode: verify-full\n    ca_file: "+ca+"\n")
+	p := writeTestConfig(t, testDB+"  tls:\n    mode: verify-full\n    ca_file: "+ca+"\n")
 	r := configTest(p, config.LintOptions{}, "info", time.Minute)
 	if r.Errors() != 1 || r.Findings[0].Key != "database.tls.ca_file" || !strings.Contains(r.Findings[0].Msg, "no PEM certificates") {
 		t.Errorf("bad CA file: %+v", r.Findings)
 	}
 	// A missing file is reported once, by the lint.
-	p = writeConfig(t, testDB+"  tls:\n    mode: verify-full\n    ca_file: "+filepath.Join(dir, "missing.pem")+"\n")
+	p = writeTestConfig(t, testDB+"  tls:\n    mode: verify-full\n    ca_file: "+filepath.Join(dir, "missing.pem")+"\n")
 	if r := configTest(p, config.LintOptions{}, "info", time.Minute); r.Errors() != 1 || !strings.Contains(r.Findings[0].Msg, "file not found") {
 		t.Errorf("missing CA file: %+v", r.Findings)
 	}
@@ -124,8 +124,8 @@ func TestWriteConfigTest(t *testing.T) {
 // Every spelling runs the test, with exit code 0, 1 on errors, 2 on wrong
 // usage; nothing is started (no database, no port).
 func TestConfigTestCommand(t *testing.T) {
-	good := writeConfig(t, testDB)
-	bad := writeConfig(t, testDB+"listen:\n  udp:\n    enabled: false\n")
+	good := writeTestConfig(t, testDB)
+	bad := writeTestConfig(t, testDB+"listen:\n  udp:\n    enabled: false\n")
 	cases := []struct {
 		args []string
 		code int
