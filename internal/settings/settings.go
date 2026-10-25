@@ -105,6 +105,58 @@ func Keys() []Key {
 	}
 }
 
+// WebKeys lists the gamewe_* keys in hlstats_Options that belong to the web
+// frontend (src/lib/settings.ts, admin-settings.ts, voice.ts of gameWE-web).
+// The collector does not read them, `gamewe check` only must not report
+// them as typos. Keep it in step with the web; slot and per-user keys are
+// matched in otherKey.
+var WebKeys = []string{
+	"gamewe_default_game", "gamewe_page_size", "gamewe_site_url", "gamewe_logo_url", "gamewe_header_logo",
+	"gamewe_favicon", "gamewe_apple_icon", "gamewe_title_format", "gamewe_title_ranking", "gamewe_geoip_credit",
+	"gamewe_sig_brand", "gamewe_chat_public", "gamewe_game_events", "gamewe_player_events", "gamewe_skin",
+	"gamewe_game_skins", "gamewe_map_live", "gamewe_map_players", "gamewe_map_style", "gamewe_sourcebans_url",
+	"gamewe_seo_description", "gamewe_seo_keywords", "gamewe_seo_image", "gamewe_seo_index", "gamewe_seo_twitter",
+	"gamewe_header_home", "gamewe_header_order", "gamewe_metrics_token",
+	"gamewe_voice_type", "gamewe_discord_guild", "gamewe_discord_invite",
+	"gamewe_ts_host", "gamewe_ts_port", "gamewe_ts_query_port", "gamewe_ts_query_user", "gamewe_ts_query_password",
+	"gamewe_ts_password", "gamewe_ts_name", "gamewe_ts_link", "gamewe_ts_display", "gamewe_ts_country",
+	"gamewe_ts_show_clients",
+}
+
+var webKeys = func() map[string]bool {
+	m := map[string]bool{}
+	for _, k := range WebKeys {
+		m[k] = true
+	}
+	return m
+}()
+
+// otherKey reports gamewe_* keys that are not collector settings but are
+// expected in hlstats_Options: web settings, header link slots
+// (gamewe_link_<n>), web admin TOTP secrets (gamewe_totp_<hash>, pending
+// gamewe_totpp_<hash>), the collector's heartbeat and retired keys that the
+// migrations delete.
+func otherKey(k string) bool {
+	switch k {
+	case "gamewe_heartbeat", // written by the collector
+		"gamewe_daily_awards", // 1.4.x; now features.daily_awards in the config file
+		"gamewe_ignore_bots":  // reported above
+		return true
+	}
+	if webKeys[k] {
+		return true
+	}
+	if n, ok := strings.CutPrefix(k, "gamewe_link_"); ok {
+		return n != "" && strings.Trim(n, "0123456789") == ""
+	}
+	for _, p := range []string{"gamewe_totp_", "gamewe_totpp_"} {
+		if h, ok := strings.CutPrefix(k, p); ok {
+			return len(h) == 32 && strings.Trim(h, "0123456789abcdef") == ""
+		}
+	}
+	return false
+}
+
 // FromOptions builds settings from hlstats_Options rows. Invalid values
 // keep the default and are reported in the returned warnings.
 func FromOptions(opts map[string]string) (Settings, []string) {
@@ -196,9 +248,7 @@ func FromOptions(opts map[string]string) (Settings, []string) {
 	}
 	var unknown []string
 	for k := range opts {
-		if !known[k] && strings.HasPrefix(k, "gamewe_") && k != "gamewe_default_game" && k != "gamewe_page_size" &&
-			k != "gamewe_daily_awards" /* 1.4.x; now features.daily_awards in the config file */ && k != "gamewe_ignore_bots" &&
-			k != "gamewe_heartbeat" /* written by the collector */ {
+		if !known[k] && strings.HasPrefix(k, "gamewe_") && !otherKey(k) {
 			unknown = append(unknown, k)
 		}
 	}

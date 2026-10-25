@@ -30,6 +30,33 @@ func TestFromOptions(t *testing.T) {
 	}
 }
 
+// Keys of the web frontend are expected in hlstats_Options and are no typo.
+func TestWebKeysNotReported(t *testing.T) {
+	opts := map[string]string{
+		"gamewe_link_1":  "Forum|https://example.com",
+		"gamewe_link_12": "",
+		"gamewe_totp_8c6976e5b5410415bde908bd4dee15df":  "secret",
+		"gamewe_totpp_c2fca2aa3a976ccd7b980318e0416b0d": "secret",
+		"gamewe_heartbeat": "1792889000",
+	}
+	for _, k := range WebKeys {
+		opts[k] = "x"
+	}
+	if _, warn := FromOptions(opts); len(warn) != 0 {
+		t.Errorf("web keys reported: %q", warn)
+	}
+	for _, k := range []string{"gamewe_link_", "gamewe_link_x", "gamewe_totp_", "gamewe_totp_abc", "gamewe_ts_hots", "gamewe_kill_point"} {
+		if _, warn := FromOptions(map[string]string{k: "1"}); len(warn) != 1 {
+			t.Errorf("%s: warnings %q, want one", k, warn)
+		}
+	}
+	for _, k := range Keys() {
+		if webKeys[k.Name] {
+			t.Errorf("%s is a collector and a web key", k.Name)
+		}
+	}
+}
+
 func TestDefaultsMatchKeys(t *testing.T) {
 	opts := map[string]string{}
 	for _, k := range Keys() {

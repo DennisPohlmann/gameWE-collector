@@ -247,5 +247,9 @@ seed only adds missing keys and never changes values that are already set.
 | `gamewe_server_load` | `1` | 1 = write a row of `hlstats_server_load` every 10 minutes per server (DB-SEMANTICS.md) |
 | `gamewe_heartbeat` | – | **written by the collector** (Unix time, every 60 s), not a setting: the web and `gamewe reset` see from it whether a collector runs |
 
-`gamewe_default_game` and `gamewe_page_size` are settings of the web frontend;
-the collector ignores them.
+The other `gamewe_*` keys the web admin writes are settings of the web frontend
+(`gamewe_default_game`, `gamewe_page_size`, site, header, SEO, map, voice and
+TeamSpeak settings, the header links `gamewe_link_<n>` and the admins' TOTP
+secrets `gamewe_totp_<hash>`); the collector ignores them and `gamewe check`
+does not report them. The list is `WebKeys` in `internal/settings/settings.go`;
+a new web setting needs an entry there.
