@@ -259,9 +259,14 @@ func TestCommandsToAll(t *testing.T) {
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Errorf("!place: %q", got)
 	}
+	if got := say(now.Add(time.Second), "!place"); len(got) != 0 {
+		t.Errorf("!place again within AllCooldown: %q", got)
+	}
+	now = now.Add(AllCooldown)
 	if got := say(now, "!kdeath"); len(got) != 4 || !strings.HasPrefix(got[0], "gamewe_psay 2 0 ") || !strings.Contains(got[3], "Kills 1, Tode 0") {
 		t.Errorf("!kdeath: %q", got)
 	}
+	now = now.Add(AllCooldown)
 	if got := say(now, "session_data"); len(got) != 2 || !strings.Contains(got[0], "Alice this session: 1 kills") {
 		t.Errorf("session_data: %q", got)
 	}

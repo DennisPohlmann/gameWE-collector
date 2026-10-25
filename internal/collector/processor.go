@@ -189,6 +189,7 @@ type playerState struct {
 	lastLatency              time.Time  // last ping sample (hlstats_Events_Latency)
 	lastHide                 time.Time  // last !hideranking change (cooldown)
 	resetAsked               time.Time  // last !gamewe_reset that waits for !gamewe_reset 1
+	lastAll                  time.Time  // last answer to everybody (!place, ...; AllCooldown)
 	lang                     string     // language of the answers ("" = English), see langCode
 	langChosen               bool       // lang is the player's gamewe_lang, not the game's cl_language
 	dead                     bool       // died since the round started (survived rounds)

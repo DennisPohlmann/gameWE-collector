@@ -221,10 +221,21 @@ func (c Commands) Run(ctx context.Context, srv *serverState, st *playerState, na
 	return c.stats(ctx, srv, st, name, now)
 }
 
+// AllCooldown is how often a player may send an answer to every player
+// (!place, !kdeath, !session_data); more are ignored, so nobody can flood
+// the chat of the whole server.
+const AllCooldown = 15 * time.Second
+
 // stats answers the commands with the player's numbers: rank, kpd,
 // session, next and the top lists, and their _all variants.
 func (c Commands) stats(ctx context.Context, srv *serverState, st *playerState, name string, now time.Time) error {
 	uid, lang := st.userID, st.lang
+	if strings.HasSuffix(name, "_all") {
+		if !st.lastAll.IsZero() && now.Sub(st.lastAll) < AllCooldown && !now.Before(st.lastAll) {
+			return nil
+		}
+		st.lastAll = now
+	}
 	if c.set.Get().RawMessages && srv.info.Engine != games.GoldSrc { // the AMX plugin has no raw messages
 		// A message plugin shows the answer (its forwards onGameWEStats...).
 		switch name {

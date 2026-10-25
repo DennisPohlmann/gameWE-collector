@@ -24,7 +24,8 @@ gameME showed it, or chat lines via `gamewe_psay`, see
 `gamewe_command_display`. With `gamewe_raw_messages` = 1, `!rank`, `!next`,
 `!session` and `!top10` are sent as `gamewe_raw_message` for a message plugin
 instead. The variants marked *to all* answer every player on the server (no
-bots) in chat, each in the own language.
+bots) in chat, each in the own language; a player can send one of them at
+most every 15 seconds (more are ignored).
 
 | Command | Answer |
 |---------|--------|
