@@ -366,11 +366,10 @@ rcon_password "change-me"            // the same as in hlstats_Servers
 
 With the RCON password the collector also registers itself (`logaddress_add`,
 `log on`) when a server restarted without it, every minute
-(`features.log_address.interval`), and gives the server a log secret
-(`sv_logsecret`, `features.log_secret: auto`): nothing to put in `server.cfg`
-for it. With `features.log_secret: true` add `sv_logsecret <n>` (a number
-1..2147483647) to `server.cfg` and store the same number with
-`gamewe server set <id> -logsecret <n>` (CONFIG.md, "Log secret"). Install the
+(`features.log_address.interval`). A log secret is optional: add
+`sv_logsecret <n>` (a number 1..2147483647) to `server.cfg` and store the same
+number with `gamewe server set <id> -logsecret <n>` or in the web admin; a
+server without a stored secret is not checked (CONFIG.md, "Log secret"). Install the
 [gameWE SourceMod plugin](https://github.com/DennisPohlmann/gameWE-plugin-sourcemod)
 for the in-game replies (`!rank`, `!top10`, menus) and the extra statistics
 (weapon accuracy, positions, roles).
@@ -421,15 +420,22 @@ docker compose up -d                          # migrates at start; auto_migrate:
 
 `config.yaml` is never in the archive, so it is kept.
 
-**Log secret (schema version 4):** `features.log_secret` is `auto` by default.
-After the update the collector sets `sv_logsecret` on every Source server with
-an `rcon_password` (within a `features.log_address.interval`), stores it in
-`hlstats_Servers.log_secret` and from then on accepts only log packets with
-it; it renews the secret every 24 hours. Servers without RCON and GoldSrc
-servers stay unchecked (`gamewe check` lists them). A `sv_logsecret` in a
-`server.cfg` is overwritten at runtime; remove it there. To keep the old
-behaviour, set `features.log_secret: false` in `config.yaml` before starting
-the new version.
+**Log secret (schema version 4):** a server with
+`hlstats_Servers.log_secret` set must send exactly that `sv_logsecret`; a
+server without one is not checked. You set the secret yourself
+(`gamewe server set <id> -logsecret <n>` or the web admin, and the same value
+in `server.cfg`); the collector never sets or changes it.
+
+**Update from 0.4.0 - 0.5.1 (automatic log secret removed):** the old
+`features.log_secret: auto` counts as `true` and `interval` is ignored (a
+warning at start and in `gamewe check`; change it to `enabled: true` or
+remove the lines). The secrets the old auto mode stored are kept, but the
+collector no longer sets them on the game server: after the game server's
+next restart it would send without the secret and its packets would be
+rejected. For every server that `gamewe server list` shows with a log secret
+either clear it (`gamewe server set <id> -logsecret ""`) or give it a new
+value of your own in both places (`-logsecret <n>` and `sv_logsecret <n>` in
+`server.cfg`).
 
 ## F. Uninstall
 
@@ -457,7 +463,7 @@ drop it (`DROP DATABASE gamewe;` and the three users).
 | `hlstats_Servers serverId N is ignored: ...` | The row's address is not an IP, the port is invalid, or its game is not in `hlstats_Games`. Fix it in the web admin. |
 | No `game server active` in the log | Check `logaddress_add` and the firewall (UDP port). |
 | `rejected log packet ... not in hlstats_Servers` | Register the shown source `IP:port` in the web admin. With `known server IP but a port ...` another game server on the same host sends logs: add it with its own port (logs are never attributed by IP alone). |
-| `rejected log packet ... missing or wrong log secret` | `features.log_secret: true` and the game server sends no or another `sv_logsecret` than `hlstats_Servers.log_secret`: set the same number in `server.cfg` and with `gamewe server set <id> -logsecret <n>`, or use `auto`. With `auto`, `log packets without the right log secret dropped` means the server still had its secret (forged packets) or did not answer over RCON in time. |
+| `rejected log packet ... missing or wrong log secret` | The server has a secret in `hlstats_Servers.log_secret` and the game server sends no or another `sv_logsecret`: set the same number in `server.cfg` and with `gamewe server set <id> -logsecret <n>` (or the web admin), or clear it with `-logsecret ""` to accept all its packets. |
 | Commands get no answer | `rcon_password` is empty or wrong (`rcon authentication failed`), the plugin is missing, or the RCON port is blocked (TCP). `gamewe check` shows servers without a password. |
 | Service does not start, `status=31/SYS` | A hardening option in the unit blocks something on your system. See `journalctl -u gamewe-collector` and relax `SystemCallFilter` with `systemctl edit gamewe-collector`. |
 

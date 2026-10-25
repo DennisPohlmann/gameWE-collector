@@ -143,15 +143,6 @@ default):
   `listen.public_address`, or the collector's address of the RCON connection
   with the listen port. So a game server that restarted without
   `logaddress_add` in its config is back within that interval.
-- **log secret** (`features.log_secret: auto`, the default) at the same
-  interval: `sv_logsecret` is read; a server without a secret (or with an
-  older one than `features.log_secret.interval`, default 24 hours) gets a new
-  random one (set over RCON first, then stored in `hlstats_Servers.log_secret`),
-  a server that lost it (restart) gets it again. Packets without the secret
-  wait up to 30 seconds while the collector asks the server whether it
-  restarted (lines kept) or the packets are forged (dropped, warning in the
-  journal); details in CONFIG.md, "Log secret". GoldSrc servers are not
-  checked.
 - **stats** every 10 minutes for `hlstats_server_load` (`gamewe_server_load`).
 
 Everything can be checked by hand (`-config` as for `run`):
@@ -188,9 +179,9 @@ gamewe game delete css3                            # only a game without servers
 gamewe server list                                 # the RCON password and the log secret only as set / -
 gamewe server add 198.51.100.7:27315 -game css3 -name "GunGame" -rcon-password-file /root/rcon.txt
 gamewe server set 198.51.100.7:27315 -game css1    # or the serverId; only the given fields change
-gamewe server set 3 -logsecret 1234567890          # the log secret (sv_logsecret), a number 1..2147483647
-gamewe server set 3 -logsecret auto                # a random one, stored and set over RCON
-gamewe server set 3 -logsecret ""                  # no secret (with features.log_secret auto the collector sets a new one)
+gamewe server set 3 -logsecret 1234567890          # the log secret, a number 1..2147483647; put the same
+                                                   #   sv_logsecret in the server's server.cfg
+gamewe server set 3 -logsecret ""                  # no secret: all log packets of the server are accepted
 gamewe server remove 3                             # players and statistics are kept
 gamewe option list                                 # the collector settings with values and defaults
 gamewe option get gamewe_command_display

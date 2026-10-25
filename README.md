@@ -6,7 +6,7 @@ HLstatsX. The **collector** is its core: one static Go binary that
 
 - receives the logs of many game servers at once over UDP (`logaddress_add`);
   only servers registered in `hlstats_Servers` are accepted, on Source servers
-  with a log secret (`sv_logsecret`) that the collector sets and rotates over RCON,
+  with a log secret (`sv_logsecret`) per server set in the CLI or the web admin,
 - tracks connects, disconnects, team changes, kills (weapon, headshot), suicides,
   teamkills, round wins and team scores, plus per-weapon stats from the gameWE plugins,
 - writes players, kills, skill, rounds, weapon and action statistics into an

@@ -53,8 +53,9 @@ type Hub struct {
 	// Monitor are the RCON jobs per server (features in the config file);
 	// none if all are off. Set it before the first SetServers.
 	Monitor MonitorConfig
-	// Secret is features.log_secret (default off). Set it before the
-	// first SetServers.
+	// Secret is features.log_secret (default off): packets must carry the
+	// server's hlstats_Servers.log_secret if one is stored. Set it before
+	// the first SetServers.
 	Secret SecretConfig
 
 	mu      sync.RWMutex
@@ -204,7 +205,7 @@ func (h *Hub) SetServers(list []stats.Server) (added, removed int) {
 		srv, ok := want[id]
 		if ok && srv.AddrPort == w.srv.AddrPort && srv.GameID == w.srv.GameID && srv.Game == w.srv.Game && srv.Engine == w.srv.Engine {
 			h.applySecret(w, srv, now, grace)
-			w.srv.LogSecret, w.srv.LogSecretChanged = srv.LogSecret, srv.LogSecretChanged
+			w.srv.LogSecret = srv.LogSecret
 			if srv.Name != w.srv.Name || srv.RconPassword != w.srv.RconPassword || srv.MaxPlayers != w.srv.MaxPlayers {
 				u := srv
 				select {
@@ -226,7 +227,7 @@ func (h *Hub) SetServers(list []stats.Server) (added, removed int) {
 			gate: newSecretGate()}
 		w.proc.Geo = h.Geo
 		h.applySecret(w, srv, now, grace)
-		if h.Monitor.Status || h.Monitor.LogAddress || h.Secret.Mode == SecretAuto {
+		if h.Monitor.Status || h.Monitor.LogAddress {
 			ctx, cancel := context.WithCancel(context.Background())
 			w.stop = cancel
 			id := srv.ID
@@ -241,19 +242,7 @@ func (h *Hub) SetServers(list []stats.Server) (added, removed int) {
 				}
 			}
 			mlog := h.log.With("server", srv.Address, "server_id", srv.ID)
-			var sec *secretJob
-			if h.Secret.Mode == SecretAuto {
-				every := h.Secret.Interval
-				if every <= 0 {
-					every = DefaultSecretInterval
-				}
-				sec = &secretJob{gate: w.gate, interval: every, grace: grace, log: mlog,
-					store: func(ctx context.Context, secret string, changed time.Time) error {
-						return h.store.SetLogSecret(ctx, id, secret, changed)
-					},
-					verdict: func(genuine bool, why string) { h.endQuarantine(w, genuine, why) }}
-			}
-			go monitor(ctx, func() stats.Server { return h.server(id, srv) }, h.Monitor, sec, deliver,
+			go monitor(ctx, func() stats.Server { return h.server(id, srv) }, h.Monitor, deliver,
 				func() time.Duration { return time.Duration(h.set.Get().RconTimeout) * time.Second }, mlog)
 		}
 		h.byID[id] = w
@@ -287,8 +276,7 @@ func (h *Hub) applySecret(w *worker, srv stats.Server, now time.Time, grace time
 	if h.Secret.Mode == SecretOff || srv.Engine == games.GoldSrc {
 		secret = ""
 	}
-	verify := h.Secret.Mode == SecretAuto && srv.RconPassword != "" && srv.Engine != games.GoldSrc
-	w.gate.fromDB(secret, srv.LogSecretChanged, verify, now, grace)
+	w.gate.fromDB(secret, now, grace)
 }
 
 // server returns the current hlstats_Servers row of a worker (def if it

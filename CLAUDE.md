@@ -83,15 +83,16 @@ the audit summary of `security-privacy-audit`.
   `internal/database/rebind.go`). Table/column names in `fmt.Sprintf` SQL
   only from constants or a fixed allowlist, never from log or RCON data.
 - Log packets are accepted only from addresses in `hlstats_Servers` and,
-  with `features.log_secret` true / auto (default auto), only with the
-  server's `hlstats_Servers.log_secret` (`internal/collector/logsecret.go`;
-  servers without a secret, without RCON or GoldSrc are not checked). The
-  secret travels in plain text and only stops spoofed senders: treat every
-  field of a log line (player names, chat, weapons, map, team, SteamIDs) as
-  attacker-controlled input. Never log a log secret or an RCON answer that
-  contains one; `log_secret` is hidden from `gamewe_web` like
-  `rcon_password`; the quarantine for packets without the secret is bounded
-  (lines, bytes, time).
+  with `features.log_secret` true (default), only with the server's
+  `hlstats_Servers.log_secret` when one is stored
+  (`internal/collector/logsecret.go`; servers without a secret and GoldSrc
+  servers are not checked). The secret is set by hand (`gamewe server set
+  -logsecret`, web admin, `sv_logsecret` in server.cfg); the collector never
+  sets or reads `sv_logsecret` over RCON. The secret travels in plain text
+  and only stops spoofed senders: treat every field of a log line (player
+  names, chat, weapons, map, team, SteamIDs) as attacker-controlled input.
+  Never log a log secret; `log_secret` is hidden from `gamewe_web` like
+  `rcon_password`.
 - Text going back to a game server over RCON passes `Sanitize`
   (`internal/collector/commands.go`) or `quoted` (`rawmessage.go`):
   no `"`, `;`, control characters, bounded length.

@@ -30,7 +30,6 @@ import (
 // it; it must be safe for concurrent use by several Processors.
 type Store interface {
 	Servers(ctx context.Context) ([]stats.Server, error)
-	SetLogSecret(ctx context.Context, serverID int64, secret string, changed time.Time) error
 	Options(ctx context.Context) (map[string]string, error)
 	ResetLive(ctx context.Context, serverID int64) error
 	MapID(ctx context.Context, game, name string) (int, error)

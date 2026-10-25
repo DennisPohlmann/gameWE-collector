@@ -148,65 +148,54 @@ func (l *LogAddress) UnmarshalYAML(n *yaml.Node) error {
 // Every returns Interval as a duration ("1m", "30s" or plain seconds).
 func (l LogAddress) Every() (time.Duration, error) { return interval(l.Interval) }
 
-// Log secret modes (features.log_secret.enabled).
-const (
-	SecretOff  = "false" // packets are not checked
-	SecretOn   = "true"  // packets must carry hlstats_Servers.log_secret
-	SecretAuto = "auto"  // as true, and the collector sets and rotates sv_logsecret over RCON
-)
-
 // LogSecret checks the secret (sv_logsecret) in the log packets against
-// hlstats_Servers.log_secret. In the config file it is a mapping, or just
-// false / true / auto.
+// hlstats_Servers.log_secret: a server with a stored secret must send it,
+// a server without one is not checked. The secret is set by hand (gamewe
+// server set -logsecret or the web admin), never by the collector. In the
+// config file it is a mapping, or just false / true.
 type LogSecret struct {
-	Enabled  SecretMode `yaml:"enabled"`
-	Interval string     `yaml:"interval"` // rotation in auto mode: Go duration ("24h") or seconds
+	Enabled bool `yaml:"enabled"`
+	// Obsolete names the settings of the removed auto mode found in the
+	// file ("enabled: auto", "interval"); they are ignored and logged at
+	// start. Not read from YAML.
+	Obsolete []string `yaml:"-"`
 }
 
-// SecretMode is SecretOff, SecretOn or SecretAuto; YAML false / true / auto.
-type SecretMode string
-
-// UnmarshalYAML accepts the booleans and auto.
-func (m *SecretMode) UnmarshalYAML(n *yaml.Node) error {
-	if n.Kind == yaml.ScalarNode && strings.EqualFold(strings.TrimSpace(n.Value), SecretAuto) {
-		*m = SecretAuto
+// decodeEnabled reads false / true and the removed auto (= true).
+func (l *LogSecret) decodeEnabled(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode && strings.EqualFold(strings.TrimSpace(n.Value), "auto") {
+		l.Enabled = true
+		l.Obsolete = append(l.Obsolete, "enabled: auto (now true)")
 		return nil
 	}
-	var b bool
-	if n.Kind != yaml.ScalarNode || n.Decode(&b) != nil {
-		return fmt.Errorf("line %d: features.log_secret.enabled: want false, true or auto", n.Line)
-	}
-	*m = SecretOff
-	if b {
-		*m = SecretOn
+	if n.Kind != yaml.ScalarNode || n.Decode(&l.Enabled) != nil {
+		return fmt.Errorf("line %d: features.log_secret.enabled: want false or true", n.Line)
 	}
 	return nil
 }
 
-// MinLogSecretInterval is the shortest features.log_secret.interval.
-const MinLogSecretInterval = time.Minute
-
-// UnmarshalYAML accepts "log_secret: auto" (or true / false) and the mapping.
+// UnmarshalYAML accepts "log_secret: true" (or false) and the mapping.
 func (l *LogSecret) UnmarshalYAML(n *yaml.Node) error {
 	if n.Kind == yaml.ScalarNode {
-		return l.Enabled.UnmarshalYAML(n)
+		return l.decodeEnabled(n)
 	}
 	if n.Kind != yaml.MappingNode {
-		return fmt.Errorf("line %d: features.log_secret: want false / true / auto or enabled, interval", n.Line)
+		return fmt.Errorf("line %d: features.log_secret: want false / true or enabled", n.Line)
 	}
 	for i := 0; i < len(n.Content); i += 2 {
 		switch k := n.Content[i].Value; k {
-		case "enabled", "interval":
+		case "enabled":
+			if err := l.decodeEnabled(n.Content[i+1]); err != nil {
+				return err
+			}
+		case "interval":
+			l.Obsolete = append(l.Obsolete, "interval")
 		default:
-			return fmt.Errorf("line %d: features.log_secret: unknown key %q (enabled, interval)", n.Content[i].Line, k)
+			return fmt.Errorf("line %d: features.log_secret: unknown key %q (enabled)", n.Content[i].Line, k)
 		}
 	}
-	type plain LogSecret
-	return n.Decode((*plain)(l))
+	return nil
 }
-
-// Every returns Interval as a duration ("24h", "1m" or plain seconds).
-func (l LogSecret) Every() (time.Duration, error) { return interval(l.Interval) }
 
 // DailyAwards is when the daily awards of the previous day are decided.
 // In the config file it is a mapping, or (legacy form) just true / false.
@@ -290,7 +279,7 @@ func Defaults() Config {
 		AutoMigrate:    true,
 	}, GeoIP: GeoIP{AutoUpdate: true}, Features: Features{RconStatus: RconStatus{Enabled: true, Interval: "10s"},
 		LogAddress:  LogAddress{Enabled: true, Interval: "1m"},
-		LogSecret:   LogSecret{Enabled: SecretAuto, Interval: "24h"},
+		LogSecret:   LogSecret{Enabled: true},
 		DailyAwards: DailyAwards{Enabled: true, Timezone: "UTC", Time: "00:00"}}}
 }
 
@@ -381,14 +370,6 @@ func (c Config) Validate() error {
 	}
 	if d, err := c.Features.LogAddress.Every(); err != nil || d < MinLogAddressInterval {
 		return fmt.Errorf("features.log_address.interval %q: want a duration of at least %v, e.g. \"1m\"", c.Features.LogAddress.Interval, MinLogAddressInterval)
-	}
-	switch c.Features.LogSecret.Enabled {
-	case SecretOff, SecretOn, SecretAuto:
-	default:
-		return fmt.Errorf("features.log_secret.enabled %q: want false, true or auto", c.Features.LogSecret.Enabled)
-	}
-	if d, err := c.Features.LogSecret.Every(); err != nil || d < MinLogSecretInterval {
-		return fmt.Errorf("features.log_secret.interval %q: want a duration of at least %v, e.g. \"24h\"", c.Features.LogSecret.Interval, MinLogSecretInterval)
 	}
 	if _, err := c.Features.DailyAwards.Location(); err != nil {
 		return fmt.Errorf("features.daily_awards.timezone %q: %v (an IANA name such as UTC or Europe/Berlin)", c.Features.DailyAwards.Timezone, err)

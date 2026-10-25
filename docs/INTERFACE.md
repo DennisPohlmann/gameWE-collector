@@ -24,11 +24,11 @@ Every UDP packet is `FF FF FF FF` and then one of:
 | `0x53` `S` | `S<secret>L 10/22/2026 - 12:00:00: ...` | Source with `sv_logsecret <secret>` (a number); the secret ends at the first `L ` |
 | – | `log L 10/22/2026 - ...` | GoldSrc (HLDS) |
 
-A trailing NUL and line break are cut off. With `features.log_secret` `true` or
-`auto` an `S` packet must carry `hlstats_Servers.log_secret` of its server
-(CONFIG.md, "Log secret"); with `false` the secret is cut off unchecked. The
-collector sets the secret with the RCON command `sv_logsecret <n>` and reads it
-with `sv_logsecret` (answer `"sv_logsecret" = "<n>" ( def. "0" )`).
+A trailing NUL and line break are cut off. With `features.log_secret` `true`
+(default) a server with `hlstats_Servers.log_secret` set must send `S` packets
+with exactly that secret; packets of a server without one, and every packet
+with `false`, are accepted and the secret is cut off unchecked (CONFIG.md,
+"Log secret"). The collector never sends `sv_logsecret` over RCON.
 
 The gameWE plugin adds these lines:
 

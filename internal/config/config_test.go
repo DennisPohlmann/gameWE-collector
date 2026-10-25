@@ -173,30 +173,41 @@ func TestDailyAwardsSchedule(t *testing.T) {
 func TestLogSecret(t *testing.T) {
 	base := "database:\n  host: db\n  user: u\n  name: n\n"
 	cfg, err := Parse([]byte(base))
-	if d, _ := cfg.Features.LogSecret.Every(); err != nil || cfg.Features.LogSecret.Enabled != SecretAuto || d != 24*time.Hour {
-		t.Errorf("default %+v %v, want auto every 24h", cfg.Features.LogSecret, err)
+	if err != nil || !cfg.Features.LogSecret.Enabled || len(cfg.Features.LogSecret.Obsolete) != 0 {
+		t.Errorf("default %+v %v, want enabled", cfg.Features.LogSecret, err)
 	}
-	for in, want := range map[string]SecretMode{
-		"  log_secret: false\n":                                SecretOff,
-		"  log_secret: true\n":                                 SecretOn,
-		"  log_secret: auto\n":                                 SecretAuto,
-		"  log_secret:\n    enabled: false\n":                  SecretOff,
-		"  log_secret:\n    enabled: yes\n":                    SecretOn,
-		"  log_secret:\n    enabled: \"AUTO\"\n":               SecretAuto,
-		"  log_secret:\n    interval: 1h\n":                    SecretAuto,
-		"  log_secret:\n    enabled: true\n    interval: 60\n": SecretOn,
+	for in, want := range map[string]bool{
+		"  log_secret: false\n":               false,
+		"  log_secret: true\n":                true,
+		"  log_secret:\n    enabled: false\n": false,
+		"  log_secret:\n    enabled: yes\n":   true,
 	} {
 		cfg, err := Parse([]byte(base + "features:\n" + in))
-		if err != nil || cfg.Features.LogSecret.Enabled != want {
-			t.Errorf("%q: %+v %v, want %s", in, cfg.Features.LogSecret, err, want)
+		if err != nil || cfg.Features.LogSecret.Enabled != want || len(cfg.Features.LogSecret.Obsolete) != 0 {
+			t.Errorf("%q: %+v %v, want %v", in, cfg.Features.LogSecret, err, want)
+		}
+	}
+	// The removed auto mode still loads (an old config must not stop the
+	// collector): auto is true, interval is ignored, both are reported.
+	for in, want := range map[string]string{
+		"  log_secret: auto\n":                                     "enabled: auto (now true)",
+		"  log_secret:\n    enabled: \"AUTO\"\n":                   "enabled: auto (now true)",
+		"  log_secret:\n    interval: 1h\n":                        "interval",
+		"  log_secret:\n    enabled: auto\n    interval: 24h\n":    "enabled: auto (now true), interval",
+		"  log_secret:\n    enabled: false\n    interval: daily\n": "interval",
+	} {
+		cfg, err := Parse([]byte(base + "features:\n" + in))
+		if got := strings.Join(cfg.Features.LogSecret.Obsolete, ", "); err != nil || got != want {
+			t.Errorf("%q: obsolete %q %v, want %q", in, got, err, want)
+		}
+		if strings.Contains(in, "false") == cfg.Features.LogSecret.Enabled {
+			t.Errorf("%q: enabled %v", in, cfg.Features.LogSecret.Enabled)
 		}
 	}
 	for _, bad := range []string{
 		"  log_secret: sometimes\n",
 		"  log_secret:\n    enabled: 2\n",
 		"  log_secret:\n    enabled: [true]\n",
-		"  log_secret:\n    interval: 30s\n",
-		"  log_secret:\n    interval: daily\n",
 		"  log_secret:\n    secret: 123\n",
 	} {
 		if _, err := Parse([]byte(base + "features:\n" + bad)); err == nil {

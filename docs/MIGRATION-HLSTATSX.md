@@ -229,8 +229,9 @@ Switch every game server ([INSTALLATION.md](INSTALLATION.md), section D):
 1. Replace the CE SourceMod or AMX Mod X plugin (and SuperLogs, if used) with
    the gameWE plugin.
 2. In `server.cfg`, replace CE's `logaddress_add` with the collector's
-   address. Remove `sv_logsecret`: with `features.log_secret: auto` (default)
-   the collector sets its own secret over RCON (CONFIG.md, "Log secret").
+   address. A `sv_logsecret` can stay: store the same number with
+   `gamewe server set <id> -logsecret <n>` or in the web admin, or remove it
+   (a server without a stored secret is not checked; CONFIG.md, "Log secret").
 3. Start the collector; `gamewe logaddress -server all` shows whether every
    server sends to it.
 

@@ -298,8 +298,11 @@ func runCmd(args []string) error {
 	hub.Monitor = collector.MonitorConfig{Status: rs.Enabled, StatusInterval: every, LogAddress: la.Enabled, LogInterval: laEvery,
 		PublicAddress: cfg.Listen.PublicAddress, ListenPort: listenPort(listen, cfg.Listen.Port)}
 	ls := cfg.Features.LogSecret
-	lsEvery, _ := ls.Every() // checked by config.Validate
-	hub.Secret = collector.SecretConfig{Mode: secretMode(ls.Enabled), Interval: lsEvery}
+	hub.Secret = collector.SecretConfig{Mode: secretMode(ls.Enabled)}
+	if len(ls.Obsolete) > 0 {
+		log.Warn("features.log_secret: the automatic log secret (auto, interval) was removed and is ignored; set the secret per server with gamewe server set -logsecret or in the web admin, and the same sv_logsecret in server.cfg",
+			"ignored", strings.Join(ls.Obsolete, ", "))
+	}
 	rctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	err = hub.Reload(rctx)
 	cancel()
@@ -343,7 +346,7 @@ func runCmd(args []string) error {
 		go collector.RunDailyAwards(ctx, store, collector.Schedule{Loc: loc, Hour: h, Minute: m}, log)
 	}
 	log.Info("features", "rcon_status", rs.Enabled, "rcon_status_every", every.String(), "log_address", la.Enabled, "log_address_every", laEvery.String(),
-		"log_secret", string(ls.Enabled), "log_secret_rotate", lsEvery.String(), "daily_awards", da.Enabled, "daily_awards_at", da.Time+" "+da.Timezone)
+		"log_secret", ls.Enabled, "daily_awards", da.Enabled, "daily_awards_at", da.Time+" "+da.Timezone)
 
 	if listen == "" {
 		listen = cfg.Listen.UDP()
@@ -357,12 +360,9 @@ func runCmd(args []string) error {
 }
 
 // secretMode converts features.log_secret.enabled.
-func secretMode(m config.SecretMode) collector.SecretMode {
-	switch m {
-	case config.SecretOn:
+func secretMode(enabled bool) collector.SecretMode {
+	if enabled {
 		return collector.SecretOn
-	case config.SecretAuto:
-		return collector.SecretAuto
 	}
 	return collector.SecretOff
 }
@@ -379,9 +379,11 @@ func checkCmd(args []string) error {
 	da := cfg.Features.DailyAwards
 	every, _ := cfg.Features.RconStatus.Every()
 	laEvery, _ := cfg.Features.LogAddress.Every()
-	lsEvery, _ := cfg.Features.LogSecret.Every()
-	fmt.Printf("features:  rcon_status %v (every %v), log_address %v (every %v), log_secret %s (rotate every %v), daily_awards %v (%s %s)\n",
-		cfg.Features.RconStatus.Enabled, every, cfg.Features.LogAddress.Enabled, laEvery, cfg.Features.LogSecret.Enabled, lsEvery, da.Enabled, da.Time, da.Timezone)
+	fmt.Printf("features:  rcon_status %v (every %v), log_address %v (every %v), log_secret %v, daily_awards %v (%s %s)\n",
+		cfg.Features.RconStatus.Enabled, every, cfg.Features.LogAddress.Enabled, laEvery, cfg.Features.LogSecret.Enabled, da.Enabled, da.Time, da.Timezone)
+	if o := cfg.Features.LogSecret.Obsolete; len(o) > 0 {
+		fmt.Printf("warning:   features.log_secret: %s ignored, the automatic log secret was removed (set it per server with gamewe server set -logsecret)\n", strings.Join(o, ", "))
+	}
 	fmt.Printf("database:  %s %s@%s:%d/%s, tls mode %s\n", d.Type, d.User, d.Host, d.Port, d.Name, d.TLS.Mode)
 
 	db, err := database.Open(d)

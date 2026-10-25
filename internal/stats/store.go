@@ -73,12 +73,10 @@ type Server struct {
 	Map          string       // act_map
 	MaxPlayers   int          // max_players (from RCON status), 0 if unknown
 	RconPassword string       // empty: no in-game command replies
-	// LogSecret is sv_logsecret (features.log_secret); empty: packets are
-	// not checked. LogSecretChanged is when the collector last set it
-	// (zero: never, e.g. set by hand).
-	LogSecret        string
-	LogSecretChanged time.Time
-	Err              error // why the row cannot be used
+	// LogSecret is sv_logsecret (features.log_secret), set by hand in the
+	// CLI or the web admin; empty: packets are not checked.
+	LogSecret string
+	Err       error // why the row cannot be used
 }
 
 // Ev is the context of one event: server, current map and time.
@@ -227,11 +225,11 @@ func (s *Store) Servers(ctx context.Context) ([]Server, error) {
 	} else if ok {
 		rcon = "s.rcon_password"
 	}
-	secret := "'', 0"
+	secret := "''"
 	if ok, err := s.hasColumn(ctx, "hlstats_Servers", "log_secret"); err != nil {
 		return nil, err
 	} else if ok {
-		secret = "s.log_secret, s.log_secret_changed"
+		secret = "s.log_secret"
 	}
 	realgame := "''"
 	if ok, err := s.hasColumn(ctx, "hlstats_Games", "realgame"); err != nil {
@@ -250,13 +248,9 @@ func (s *Store) Servers(ctx context.Context) ([]Server, error) {
 		var srv Server
 		var host, realgame string
 		var port int
-		var changed int64
 		if err := rows.Scan(&srv.ID, &host, &port, &srv.Name, &srv.Game, &srv.Map, &srv.MaxPlayers, &srv.GameID, &srv.RconPassword,
-			&srv.LogSecret, &changed, &realgame); err != nil {
+			&srv.LogSecret, &realgame); err != nil {
 			return nil, err
-		}
-		if changed > 0 {
-			srv.LogSecretChanged = time.Unix(changed, 0).UTC()
 		}
 		srv.Base, srv.Engine, srv.Warning = games.Resolve(realgame, srv.Game)
 		srv.Address = net.JoinHostPort(host, strconv.Itoa(port))
@@ -274,14 +268,6 @@ func (s *Store) Servers(ctx context.Context) ([]Server, error) {
 		out = append(out, srv)
 	}
 	return out, rows.Err()
-}
-
-// SetLogSecret stores a server's log secret (sv_logsecret) and when it was
-// set (features.log_secret auto).
-func (s *Store) SetLogSecret(ctx context.Context, serverID int64, secret string, changed time.Time) error {
-	_, err := s.exec(ctx, `UPDATE hlstats_Servers SET log_secret = ?, log_secret_changed = ? WHERE serverId = ?`,
-		secret, changed.Unix(), serverID)
-	return err
 }
 
 // EnsureServer adds a row to hlstats_Servers if none exists for ap. Only

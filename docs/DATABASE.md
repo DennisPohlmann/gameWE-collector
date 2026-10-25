@@ -164,7 +164,7 @@ What it does:
 | 1 | `baseline` | a new database: all tables and the reference data; an existing one is recorded as it is |
 | 2 | `gamewe-0.2.1` | tables `hlstats_Events_Latency`, `hlstats_gamewe_jobs`; columns `hlstats_Servers.rcon_password`, `hlstats_Games.realgame`, `server_id` on the nine event tables, kill positions on `hlstats_Events_Frags`; indexes `server_id` on the event tables, `map`, `killer_time`, `victim_time` on Frags (they replace `killerId`, `victimId`), `date` and `award_id` on `hlstats_Awards_History`; missing reference data |
 | 3 | `awards-indexes` | indexes for the awards page: `time_player` on `hlstats_Events_Latency` (timestamp_id, playerId, ping), `time_action` on `hlstats_Events_PlayerActions` (timestamp_id, actionId, playerId) |
-| 4 | `log-secret` | columns `hlstats_Servers.log_secret` (varchar(64), `''` = none) and `log_secret_changed` (Unix time the secret was set) for `features.log_secret`; `gamewe_web` cannot read them |
+| 4 | `log-secret` | columns `hlstats_Servers.log_secret` (varchar(64), `''` = none) and `log_secret_changed` (Unix time the secret was last changed) for `features.log_secret`; `gamewe_web` cannot read them |
 
 The SQL files of older packages (`/opt/gamewe/collector/doc/schema/hlstatsx.sql`,
 `init/01_schema.sql`, `02_seed.sql`, `03_grants.sql` and the PostgreSQL
@@ -227,11 +227,9 @@ and `log_secret_changed` (column rights, `grants.sql`): `SELECT *` on
 The collector and `gamewe_web_admin` can read (and the web admin write) them.
 
 `log_secret` is the server's `sv_logsecret` (a number 1..2147483647, `''` =
-packets not checked), `log_secret_changed` the Unix time it was set (by the
-collector with `features.log_secret: auto`, by `gamewe server set
--logsecret`; 0 = unknown, then `auto` sets a new one right away). Whoever
-changes `log_secret` should set `log_secret_changed` to the current time,
-otherwise `auto` replaces the value at its next check.
+packets not checked), set by hand with `gamewe server set -logsecret` or in
+the web admin; the collector only reads it. `log_secret_changed` is the Unix
+time it was last changed there (0 = unknown); it is informational only.
 
 ## PostgreSQL
 
