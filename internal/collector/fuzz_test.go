@@ -3,7 +3,9 @@
 package collector
 
 import (
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"gamewe-collector/internal/logparse"
 )
@@ -48,6 +50,27 @@ func FuzzParseA2SInfo(f *testing.F) {
 			if c := info.Version[i]; c < 0x20 || c >= 0x7F {
 				t.Errorf("unprintable version %q", info.Version)
 			}
+		}
+	})
+}
+
+// Chat text comes from the log (any player, or a forged packet): the
+// argument of a command stays short valid UTF-8, and a site address that
+// siteBase accepts cannot leave the quoted browse argument.
+func FuzzParseCommand(f *testing.F) {
+	for _, s := range []string{"!rank", "/weapons ak47", "!actions x\";quit", "kill him", "!gamewe_reset 1", "\xff!top20"} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, s string) {
+		name, arg := parseCommand(s)
+		if name == "" && arg != "" {
+			t.Errorf("argument %q without a command", arg)
+		}
+		if len(arg) > 64 || !utf8.ValidString(arg) {
+			t.Errorf("argument %q: %d bytes or invalid UTF-8", arg, len(arg))
+		}
+		if base, ok := siteBase(s); ok && (strings.ContainsAny(base, "\";\\ \n") || Sanitize(base) != base) {
+			t.Errorf("siteBase accepted %q", base)
 		}
 	})
 }
