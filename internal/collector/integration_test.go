@@ -211,6 +211,9 @@ func TestIntegrationThreeServers(t *testing.T) {
 		{"team bonuses (css only)", count(t, db, `SELECT COUNT(*) FROM hlstats_Events_TeamBonuses WHERE bonus = 2 AND game_id = ?`, css), 4},
 		{"player actions", count(t, db, `SELECT COUNT(*) FROM hlstats_Events_PlayerActions WHERE bonus = 15`), 2},
 		{"weapon stats", count(t, db, `SELECT SUM(shots) FROM hlstats_Players_Weapons`), 30},
+		// The same shots per player, week and map, for the accuracy per map.
+		{"map shots", count(t, db, `SELECT SUM(shots) FROM hlstats_Players_Maps`), 30},
+		{"map stats have a map", count(t, db, `SELECT COUNT(*) FROM hlstats_Players_Maps WHERE map_id = 0`), 0},
 		{"history rows", count(t, db, `SELECT COUNT(*) FROM hlstats_Players_History WHERE kills > 0`), 3*2 - 1},
 		{"chat lines", count(t, db, `SELECT COUNT(*) FROM hlstats_Events_Chat`), 3},
 		{"connects", count(t, db, `SELECT COUNT(*) FROM hlstats_Events_Connects`), 9},

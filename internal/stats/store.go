@@ -1140,8 +1140,9 @@ type WeaponStats struct {
 
 // AddWeaponStats adds the counters to this week's row in
 // hlstats_Players_Weapons, and shots and hits also to the player, the
-// live view and the server's team totals. hlstats_Players_Weapons has no
-// teamkill column, so tks is not stored.
+// player's week on the current map (hlstats_Players_Maps, for the accuracy
+// per map), the live view and the server's team totals.
+// hlstats_Players_Weapons has no teamkill column, so tks is not stored.
 func (s *Store) AddWeaponStats(ctx context.Context, ev Ev, p Live, weaponCode string, x WeaponStats) error {
 	w, err := s.weapon(ctx, ev.Srv.Game, weaponCode)
 	if err != nil {
@@ -1166,6 +1167,15 @@ func (s *Store) AddWeaponStats(ctx context.Context, ev Ev, p Live, weaponCode st
 				[]any{x.Shots, x.Hits, p.ID, clip(p.Name, 128)}},
 			step{`UPDATE hlstats_Livestats SET shots = LEAST(shots + ?, 65535), hits = LEAST(hits + ?, 65535) WHERE player_id = ? AND server_id = ?`,
 				[]any{x.Shots, x.Hits, p.ID, ev.Srv.ID}})
+		// map_id is smallint unsigned in the MariaDB schema; without a
+		// known map (or beyond that range) there is no row to add to.
+		if ev.MapID > 0 && ev.MapID <= 65535 {
+			steps = append(steps, step{s.upsert(`INSERT INTO hlstats_Players_Maps (player_id, yearweek_id, game_id, map_id, shots, hits)
+				VALUES (?, ?, ?, ?, ?, LEAST(?, 65535))`,
+				"hlstats_Players_Maps", "player_id, yearweek_id, game_id, map_id",
+				set{"shots", "{old} + {new}"}, set{"hits", "LEAST({old} + {new}, 65535)"}),
+				[]any{p.ID, YearWeek(ev.Time), ev.Srv.GameID, ev.MapID, x.Shots, x.Hits}})
+		}
 		switch strings.ToUpper(p.Team) {
 		case "CT":
 			steps = append(steps, step{`UPDATE hlstats_Servers SET ct_shots = ct_shots + ?, ct_hits = ct_hits + ?,

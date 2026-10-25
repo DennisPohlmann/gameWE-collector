@@ -287,7 +287,7 @@ and points to `gamewe db convert`.)
 | `hlstats_ClanTags` | gameWE ships its own clan tag patterns |
 | `Players.lastAddress` | the last IP; gameWE keeps IPs only in `hlstats_Events_Connects` |
 | `Players.activity`, `mmrank`, `displayEvents`, `blockavatar`, `Awards.g_winner_*`, `Clans.hidden`, `mapregion` | no such columns in gameWE |
-| per-player weapon, map, team and role statistics | CE has no such tables; gameWE fills `hlstats_Players_Weapons` and `_Actions` from the switch on |
+| per-player weapon, map, team and role statistics | CE has no such tables; gameWE fills `hlstats_Players_Weapons` and `_Actions`, and shots and hits of `hlstats_Players_Maps`, from the switch on |
 
 ## Appendix: the SQL script
 
