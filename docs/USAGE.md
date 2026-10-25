@@ -21,7 +21,7 @@ Players type these in chat (`!` or `/` prefix):
 | `!next`    | the player ranked just above you and how many points you are behind    |
 | `!top10`   | menu with the 10 best players (`gamewe_msay`)                          |
 | `!hideranking [1\|0]` (also `/gamewe_hideranking`) | hide yourself from the ranking (`1`, `on`) or show yourself again (`0`, `off`); without an argument it switches. A private chat line says the new state. At most one change per 10 seconds. Players hidden by an admin or banned cannot change it. Stored as `hideranking` 3 (DB-SEMANTICS.md) |
-| `!settings` (also `/gamewe_settings`) | your settings in chat: whether you are shown in the ranking, and how to change it. The SourceMod plugin opens a menu for `!gamewe_settings` instead |
+| `!settings` (also `/gamewe_settings`) | your settings in chat: whether you are shown in the ranking, and how to change it. The plugins open their settings menu for `!gamewe_settings` instead; its one ranking entry hides or shows you, depending on your current state (`gamewe_hidestate`) |
 | `!help`    | the list of commands                                                   |
 
 The commands are read from the `say` lines in the log. The plugin logs them

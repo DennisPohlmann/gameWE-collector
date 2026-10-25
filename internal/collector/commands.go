@@ -66,17 +66,32 @@ func hideArg(text string) (hide *bool, ok bool) {
 	return nil, false
 }
 
+// chatTag starts every chat line the collector sends with <prefix>_psay.
+// The plugins replace it with their gamewe_message_prefix when one is set.
+const chatTag = "[gameWE]"
+
 // SelfHide answers !hideranking [1|0] and !settings: players hide
 // themselves from the rankings (hideranking 3) or show themselves again
 // (0). Hidden by an admin or as a bot (1) or banned (2) is never changed.
+// The plugin gets the resulting state with <prefix>_hidestate for its
+// settings menu.
 func (c Commands) SelfHide(ctx context.Context, srv *serverState, st *playerState, name, text string, now time.Time) error {
 	if !c.set.Get().Commands {
 		return nil
 	}
+	h, err := c.selfHide(ctx, srv, st, name, text, now)
+	if err != nil {
+		return err
+	}
+	c.hideState(srv, st.userID, h)
+	return nil
+}
+
+func (c Commands) selfHide(ctx context.Context, srv *serverState, st *playerState, name, text string, now time.Time) (int, error) {
 	uid := st.userID
 	cur, err := c.store.HideRanking(ctx, st.live.ID)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	state := func(h int) string {
 		switch h {
@@ -90,17 +105,17 @@ func (c Commands) SelfHide(ctx context.Context, srv *serverState, st *playerStat
 		return "hidden from the ranking (by an admin)"
 	}
 	if name == "settings" {
-		c.psay(srv, uid, "[gameWE] Settings: you are "+state(cur)+". !hideranking 1 hides you, !hideranking 0 shows you again.")
-		return nil
+		c.psay(srv, uid, chatTag+" Settings: you are "+state(cur)+". !hideranking 1 hides you, !hideranking 0 shows you again.")
+		return cur, nil
 	}
 	hide, ok := hideArg(text)
 	if !ok {
-		c.psay(srv, uid, "[gameWE] Use !hideranking 1 (hide me), !hideranking 0 (show me) or !hideranking (switch).")
-		return nil
+		c.psay(srv, uid, chatTag+" Use !hideranking 1 (hide me), !hideranking 0 (show me) or !hideranking (switch).")
+		return cur, nil
 	}
 	if cur == 1 || cur == 2 {
-		c.psay(srv, uid, "[gameWE] You are "+state(cur)+"; only an admin can change that.")
-		return nil
+		c.psay(srv, uid, chatTag+" You are "+state(cur)+"; only an admin can change that.")
+		return cur, nil
 	}
 	want := cur == 0 // toggle
 	if hide != nil {
@@ -108,20 +123,20 @@ func (c Commands) SelfHide(ctx context.Context, srv *serverState, st *playerStat
 	}
 	target := map[bool]int{true: 3, false: 0}[want]
 	if target == cur {
-		c.psay(srv, uid, "[gameWE] You are already "+state(cur)+".")
-		return nil
+		c.psay(srv, uid, chatTag+" You are already "+state(cur)+".")
+		return cur, nil
 	}
 	if !st.lastHide.IsZero() && now.Sub(st.lastHide) < HideCooldown {
-		c.psay(srv, uid, fmt.Sprintf("[gameWE] Please wait %d seconds before changing it again.", int((HideCooldown-now.Sub(st.lastHide)).Seconds())+1))
-		return nil
+		c.psay(srv, uid, fmt.Sprintf(chatTag+" Please wait %d seconds before changing it again.", int((HideCooldown-now.Sub(st.lastHide)).Seconds())+1))
+		return cur, nil
 	}
 	got, err := c.store.SetHideRanking(ctx, st.live.ID, cur, target)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	st.lastHide = now
-	c.psay(srv, uid, "[gameWE] You are now "+state(got)+".")
-	return nil
+	c.psay(srv, uid, chatTag+" You are now "+state(got)+".")
+	return got, nil
 }
 
 // Commands answers in-game commands through the gameWE SourceMod plugin's
@@ -140,7 +155,7 @@ func (c Commands) Run(ctx context.Context, srv *serverState, st *playerState, na
 	}
 	uid := st.userID
 	if name == "help" {
-		c.psay(srv, uid, "[gameWE] Commands: !rank, !next, !top10, !status, !session (or !statsme), !hideranking [1|0], !settings, !help")
+		c.psay(srv, uid, chatTag+" Commands: !rank, !next, !top10, !status, !session (or !statsme), !hideranking [1|0], !settings, !help")
 		return nil
 	}
 	if c.set.Get().RawMessages && srv.info.Engine != games.GoldSrc { // the AMX plugin has no raw messages
@@ -159,7 +174,7 @@ func (c Commands) Run(ctx context.Context, srv *serverState, st *playerState, na
 	game := srv.info.Game
 	pl, err := c.store.PlayerStats(ctx, st.live.ID)
 	if errors.Is(err, stats.ErrNotFound) {
-		c.psay(srv, uid, "[gameWE] No stats for you yet.")
+		c.psay(srv, uid, chatTag+" No stats for you yet.")
 		return nil
 	}
 	if err != nil {
@@ -174,9 +189,9 @@ func (c Commands) Run(ctx context.Context, srv *serverState, st *playerState, na
 		var chat []string
 		switch name {
 		case "rank":
-			chat = []string{fmt.Sprintf("[gameWE] You are ranked #%d of %d with %d points.", rank, total, pl.Skill)}
+			chat = []string{fmt.Sprintf(chatTag+" You are ranked #%d of %d with %d points.", rank, total, pl.Skill)}
 		case "session":
-			chat = []string{fmt.Sprintf("[gameWE] This session: %d kills, %d deaths (K:D %s), %d headshots, %+d skill, %d min.",
+			chat = []string{fmt.Sprintf(chatTag+" This session: %d kills, %d deaths (K:D %s), %d headshots, %+d skill, %d min.",
 				st.kills, st.deaths, kd(st.kills, st.deaths), st.headshots, st.skillDelta, int(now.Sub(st.since).Minutes()))}
 		default:
 			hs := 0
@@ -184,8 +199,8 @@ func (c Commands) Run(ctx context.Context, srv *serverState, st *playerState, na
 				hs = 100 * pl.Headshots / pl.Kills
 			}
 			chat = []string{
-				fmt.Sprintf("[gameWE] %s: %d points, rank #%d/%d, %d h played.", pl.Name, pl.Skill, rank, total, pl.ConnectionTime/3600),
-				fmt.Sprintf("[gameWE] Kills %d, deaths %d (K:D %s), headshots %d (%d%%), suicides %d, teamkills %d.",
+				fmt.Sprintf(chatTag+" %s: %d points, rank #%d/%d, %d h played.", pl.Name, pl.Skill, rank, total, pl.ConnectionTime/3600),
+				fmt.Sprintf(chatTag+" Kills %d, deaths %d (K:D %s), headshots %d (%d%%), suicides %d, teamkills %d.",
 					pl.Kills, pl.Deaths, kd(pl.Kills, pl.Deaths), pl.Headshots, hs, pl.Suicides, pl.TK),
 			}
 		}
@@ -193,7 +208,7 @@ func (c Commands) Run(ctx context.Context, srv *serverState, st *playerState, na
 	case "next":
 		nx, err := c.store.Next(ctx, game, pl.Skill)
 		if errors.Is(err, stats.ErrNotFound) {
-			c.psay(srv, uid, "[gameWE] You are number one!")
+			c.psay(srv, uid, chatTag+" You are number one!")
 			return nil
 		}
 		if err != nil {
@@ -205,7 +220,7 @@ func (c Commands) Run(ctx context.Context, srv *serverState, st *playerState, na
 		}
 		c.show(srv, uid, []string{"->Next player", fmt.Sprintf("   #%d %s", rank, nx.Name), fmt.Sprintf("   %d Points", nx.Skill),
 			fmt.Sprintf("   %d Points ahead of you", nx.Skill-pl.Skill)},
-			[]string{fmt.Sprintf("[gameWE] Next rank: #%d %s with %d points, %d points ahead of you.", rank, nx.Name, nx.Skill, nx.Skill-pl.Skill)})
+			[]string{fmt.Sprintf(chatTag+" Next rank: #%d %s with %d points, %d points ahead of you.", rank, nx.Name, nx.Skill, nx.Skill-pl.Skill)})
 	case "top10":
 		top, err := c.store.Top(ctx, game, 10)
 		if err != nil {
@@ -276,6 +291,13 @@ func kd(k, d int) string {
 
 func (c Commands) psay(srv *serverState, userID int, msg string) {
 	c.send(srv, fmt.Sprintf(`%s_psay %d 0 "%s"`, c.prefix(srv), userID, Sanitize(msg)))
+}
+
+// hideState tells the plugin the player's hideranking value (0 visible,
+// 1 hidden by an admin or as a bot, 2 banned, 3 hidden by the player), so
+// its settings menu offers the one ranking entry that fits.
+func (c Commands) hideState(srv *serverState, userID, h int) {
+	c.send(srv, fmt.Sprintf(`%s_hidestate %d %d`, c.prefix(srv), userID, h))
 }
 
 // prefix is the start of the plugin's reply commands: gamewe (or gameme)

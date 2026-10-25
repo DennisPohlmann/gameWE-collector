@@ -56,6 +56,15 @@ func (c Commands) Query(ctx context.Context, srv *serverState, st *playerState, 
 		if st != nil {
 			return c.rawSpectator(ctx, srv, st, queryID)
 		}
+	case "hideranking":
+		// the plugin's settings menu asks for the ranking state of a player
+		if st != nil {
+			h, err := c.store.HideRanking(ctx, st.live.ID)
+			if err != nil {
+				return err
+			}
+			c.hideState(srv, st.userID, h)
+		}
 	default:
 		c.log.Debug("unknown plugin query", "type", typ)
 	}

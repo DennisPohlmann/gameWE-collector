@@ -72,11 +72,16 @@ plugin accepts besides `gameme_`; for a server with the original gameME plugin s
 |---------|----------|
 | `gamewe_psay <userid[,userid...]> [colored] "<msg>"` | private chat line (`!rank`, `!next`, `!status`, `!session`, `!help`) |
 | `gamewe_msay <time> <userid> [handler] "<menu text, \n separated>"` | `!top10` menu |
+| `gamewe_hidestate <userid> <hideranking>` | after `!hideranking` / `!settings` and for the `hideranking` request (below): the player's ranking state (`0` visible, `1` hidden by an admin or as a bot, `2` banned, `3` hidden by the player), so the plugin's settings menu shows the one entry that fits. Plugins before this command print "Unknown command" for it in the server console |
 | `gamewe_csay "<msg>"` | center text to all (not used yet) |
 | `gamewe_tsay <time> <userid> "<msg>"` | top text (not used yet) |
 | `gamewe_hint <userid[,..]> "<msg>"`, `gamewe_khint <userid[,..]> "<msg>"` | hint boxes (not used yet) |
 | `gamewe_browse <userid> "<url>"` | open a URL (not used yet) |
 | `gamewe_raw_message <type> <query_id> <userid> ...` | answers to other plugins' queries, and with `gamewe_raw_messages` the chat command answers (below) |
+
+Every chat line of `gamewe_psay` starts with the tag `[gameWE] `. The plugins
+replace it with their `gamewe_message_prefix` (color tags included) when one is
+set, so the server's own prefix shows on the collector's answers as well.
 
 Players are addressed by the **userid**, the number in the first `<..>` of the
 player reference (`2` in `"Name<2><STEAM_1:0:123><CT>"`). Message text is
@@ -100,6 +105,7 @@ order the plugin (gameWE and gameME) reads:
 | `top10` | `gamewe_raw_message 102 <query_id> -1` and per player skill, "name", kpd, hpk (best first; nothing if nobody is ranked) |
 | `next` | `gamewe_raw_message 103 <query_id> <userid>` and per player rank, skill, "name", kpd, hpk: the 5 players ranked directly above, best first |
 | `spectatorinfo` | `gamewe_raw_message 1001 <query_id> <userids of all players> <userid> "<text>"`: the text shown to who spectates the player |
+| `hideranking` | `gamewe_hidestate <userid> <hideranking>` (no query id): asked by the plugin's settings menu |
 
 kpd is kills/deaths, hpk headshots/kills (a ratio), accuracy hits/shots in
 percent, all with two decimals. Names are shortened so that a command stays

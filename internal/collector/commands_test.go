@@ -4,6 +4,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -138,6 +139,11 @@ func TestHideRankingCommand(t *testing.T) {
 	rec := &recorder{}
 	p.cmds.reply = rec
 	ctx, now := context.Background(), time.Now()
+	hide := func() int {
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		return st.players[[2]string{"css", "0:1"}].hide
+	}
 	say := func(at time.Time, text string) string {
 		t.Helper()
 		n := len(rec.get("192.0.2.1:27015"))
@@ -145,15 +151,14 @@ func TestHideRankingCommand(t *testing.T) {
 			t.Fatal(err)
 		}
 		sent := rec.get("192.0.2.1:27015")
-		if len(sent) != n+1 || !strings.HasPrefix(sent[n], "gamewe_psay 2 0 ") {
+		if len(sent) != n+2 || !strings.HasPrefix(sent[n], "gamewe_psay 2 0 \"[gameWE] ") {
 			t.Fatalf("%s: replies %q", text, sent[n:])
 		}
+		// the plugin's settings menu gets the state after every answer
+		if want := fmt.Sprintf("gamewe_hidestate 2 %d", hide()); sent[n+1] != want {
+			t.Errorf("%s: state %q, want %q", text, sent[n+1], want)
+		}
 		return sent[n]
-	}
-	hide := func() int {
-		st.mu.Lock()
-		defer st.mu.Unlock()
-		return st.players[[2]string{"css", "0:1"}].hide
 	}
 	if r := say(now, "!hideranking"); hide() != 3 || !strings.Contains(r, "now hidden") {
 		t.Errorf("toggle: %d %q", hide(), r)
@@ -180,5 +185,13 @@ func TestHideRankingCommand(t *testing.T) {
 	}
 	if r := say(now.Add(2*time.Minute), "!settings"); !strings.Contains(r, "banned") || !strings.Contains(r, "!hideranking 1") {
 		t.Errorf("settings: %q", r)
+	}
+	// the settings menu of the plugin asks for the state
+	n := len(rec.get("192.0.2.1:27015"))
+	if err := p.Handle(ctx, `"Alice<2><STEAM_1:0:1><CT>" requested "hideranking" (value "0")`, now.Add(3*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if sent := rec.get("192.0.2.1:27015")[n:]; len(sent) != 1 || sent[0] != "gamewe_hidestate 2 2" {
+		t.Errorf("hideranking query: %q", sent)
 	}
 }
