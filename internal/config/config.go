@@ -12,11 +12,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/netip"
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -349,6 +351,15 @@ func (l *LogSecret) decodeEnabled(n *yaml.Node) error {
 	return nil
 }
 
+// ObsoleteWarning says that the settings in Obsolete are ignored ("" if
+// there are none).
+func (l LogSecret) ObsoleteWarning() string {
+	if len(l.Obsolete) == 0 {
+		return ""
+	}
+	return strings.Join(l.Obsolete, ", ") + " ignored, the automatic log secret was removed (set it per server with gamewe server set -logsecret)"
+}
+
 // UnmarshalYAML accepts "log_secret: true" (or false) and the mapping.
 func (l *LogSecret) UnmarshalYAML(n *yaml.Node) error {
 	if n.Kind == yaml.ScalarNode {
@@ -479,36 +490,66 @@ var legacy = map[string]string{
 	"log":      "the log level is the -log-level flag of 'gamewe run'",
 }
 
+// Problem is one invalid setting: its key (listen.http.port, ...) and what
+// is wrong with it.
+type Problem struct {
+	Key string
+	Msg string
+	// drop: the key is of an older format and is left out when the rest of
+	// the file is checked (Lint).
+	drop bool
+}
+
+func (p Problem) Error() string { return p.Key + ": " + p.Msg }
+
+func problem(key, format string, args ...any) Problem {
+	return Problem{Key: key, Msg: fmt.Sprintf(format, args...)}
+}
+
+// legacyProblems finds the keys of older config formats in data (nil if it
+// is no YAML mapping; the decoder reports that).
+func legacyProblems(data []byte) []Problem {
+	var top map[string]any
+	if yaml.Unmarshal(data, &top) != nil {
+		return nil
+	}
+	var out []Problem
+	for _, k := range slices.Sorted(maps.Keys(top)) {
+		if hint, ok := legacy[k]; ok {
+			out = append(out, Problem{k, "no longer used: the config file only holds listen:, database:, geoip: and features:; " + hint, true})
+		}
+	}
+	l, ok := top["listen"].(map[string]any)
+	if !ok {
+		return out
+	}
+	if _, ok := l["http_port"]; ok {
+		out = append(out, Problem{"listen.http_port", "no longer used: the HTTP input for CS2 is listen.http (enabled, address, port)", true})
+	}
+	if v, ok := l["udp"]; ok && v != nil {
+		if _, isMap := v.(map[string]any); !isMap {
+			out = append(out, Problem{"listen.udp", "an address is no longer used here: listen.udp is a mapping (enabled, address, port, public_address)", true})
+		} else {
+			for _, k := range []string{"address", "port", "public_address"} {
+				if _, ok := l[k]; ok {
+					out = append(out, problem("listen."+k, "listen.%s and listen.udp are both set: move it to listen.udp.%s", k, k))
+				}
+			}
+		}
+	}
+	for _, k := range []string{"log_secret", "allowed_sources", "queue_size"} {
+		if _, ok := l[k]; ok {
+			out = append(out, Problem{"listen." + k, "no longer used: listen has udp and http; game servers are allowed by hlstats_Servers, the log secret is features.log_secret", true})
+		}
+	}
+	return out
+}
+
 // Parse decodes and validates YAML configuration data. Unknown keys are
 // rejected so typos do not go unnoticed.
 func Parse(data []byte) (Config, error) {
-	var top map[string]any
-	if err := yaml.Unmarshal(data, &top); err == nil {
-		for k := range top {
-			if hint, ok := legacy[k]; ok {
-				return Config{}, fmt.Errorf("config key %q is no longer used: the config file only holds listen:, database: and features:; %s", k, hint)
-			}
-		}
-		if l, ok := top["listen"].(map[string]any); ok {
-			if _, ok := l["http_port"]; ok {
-				return Config{}, fmt.Errorf("listen.http_port is no longer used: the HTTP input for CS2 is listen.http (enabled, address, port)")
-			}
-			if v, ok := l["udp"]; ok && v != nil {
-				if _, isMap := v.(map[string]any); !isMap {
-					return Config{}, fmt.Errorf("listen.udp as an address is no longer used: listen.udp is a mapping (enabled, address, port, public_address)")
-				}
-				for _, k := range []string{"address", "port", "public_address"} {
-					if _, ok := l[k]; ok {
-						return Config{}, fmt.Errorf("listen.%s and listen.udp are both set: move it to listen.udp.%s", k, k)
-					}
-				}
-			}
-			for _, k := range []string{"log_secret", "allowed_sources", "queue_size"} {
-				if _, ok := l[k]; ok {
-					return Config{}, fmt.Errorf("listen.%s is no longer used: listen has udp and http; game servers are allowed by hlstats_Servers, the log secret is features.log_secret", k)
-				}
-			}
-		}
+	if p := legacyProblems(data); len(p) > 0 {
+		return Config{}, p[0]
 	}
 	cfg := Defaults()
 	dec := yaml.NewDecoder(bytes.NewReader(data))
@@ -519,6 +560,16 @@ func Parse(data []byte) (Config, error) {
 		}
 		return Config{}, fmt.Errorf("parse yaml: %w", err)
 	}
+	if p := cfg.finish(); len(p) > 0 {
+		return Config{}, p[0]
+	}
+	return cfg, cfg.Validate()
+}
+
+// finish fills in what follows from the decoded values: listen.udp over
+// the older listen keys, the database type and port, the password from
+// password_file.
+func (cfg *Config) finish() []Problem {
 	if u := cfg.Listen.UDPConf; u != nil {
 		if u.Enabled != nil {
 			cfg.Listen.UDPEnabled = *u.Enabled
@@ -547,114 +598,131 @@ func Parse(data []byte) (Config, error) {
 	d.TLS.Mode = strings.ToLower(strings.TrimSpace(d.TLS.Mode))
 	if d.PasswordFile != "" {
 		if d.Password != "" {
-			return Config{}, errors.New("database: set either password or password_file, not both")
+			return []Problem{problem("database.password_file", "set either password or password_file, not both")}
 		}
 		pw, err := os.ReadFile(d.PasswordFile)
 		if err != nil {
-			return Config{}, fmt.Errorf("database.password_file: %w", err)
+			return []Problem{problem("database.password_file", "%v", err)}
 		}
 		d.Password = strings.TrimRight(string(pw), "\r\n")
 	}
-	return cfg, cfg.Validate()
+	return nil
 }
 
-// validate checks listen.http (also while it is off, so a mistake shows
+// problems checks listen.http (also while it is off, so a mistake shows
 // before it is switched on).
-func (h ListenHTTP) validate() error {
+func (h ListenHTTP) problems() []Problem {
+	var out []Problem
 	if net.ParseIP(h.Address) == nil {
-		return fmt.Errorf("listen.http.address %q: must be an IP address (0.0.0.0 for all)", h.Address)
+		out = append(out, problem("listen.http.address", "%q must be an IP address (0.0.0.0 for all)", h.Address))
 	}
 	if h.Port < 1 || h.Port > 65535 {
-		return fmt.Errorf("listen.http.port %d out of range", h.Port)
+		out = append(out, problem("listen.http.port", "%d out of range (1 to 65535)", h.Port))
 	}
 	if h.PublicURL != "" {
 		u, err := url.Parse(h.PublicURL)
 		if err != nil || u.Scheme != "http" || u.Host == "" || u.User != nil || (u.Path != "" && u.Path != "/") ||
 			u.RawQuery != "" || u.Fragment != "" {
-			return fmt.Errorf("listen.http.public_url %q: must be http://host:port (CS2 sends plain HTTP; no path, the collector adds it)", h.PublicURL)
+			shown := strconv.Quote(h.PublicURL)
+			if err == nil && u.User != nil {
+				shown = "the URL" // user:password in it are not printed
+			}
+			out = append(out, problem("listen.http.public_url", "%s must be http://host:port (CS2 sends plain HTTP; no user, no path, the collector adds it)", shown))
 		}
 	}
 	if h.Token != "" && (!reToken.MatchString(h.Token) || strings.EqualFold(h.Token, "change-me")) {
-		return errors.New("listen.http.token: want 16 to 128 letters, digits, - or _ (it is part of the URL), not the example value")
+		out = append(out, problem("listen.http.token", "want 16 to 128 letters, digits, - or _ (it is part of the URL), not the example value"))
 	}
 	if n, err := h.BodyLimit(); err != nil || n < MinHTTPBody || n > MaxHTTPBody {
-		return fmt.Errorf("listen.http.max_body %q: want a size from 4KiB to 16MiB, e.g. \"128KiB\"", h.MaxBody)
+		out = append(out, problem("listen.http.max_body", "%q: want a size from 4KiB to 16MiB, e.g. \"128KiB\"", h.MaxBody))
 	}
 	if d, err := h.Timeout(); err != nil || d < MinHTTPReadTimeout || d > MaxHTTPReadTimeout {
-		return fmt.Errorf("listen.http.read_timeout %q: want a duration from %v to %v, e.g. \"10s\"", h.ReadTimeout, MinHTTPReadTimeout, MaxHTTPReadTimeout)
+		out = append(out, problem("listen.http.read_timeout", "%q: want a duration from %v to %v, e.g. \"10s\"", h.ReadTimeout, MinHTTPReadTimeout, MaxHTTPReadTimeout))
 	}
 	if h.MaxConnections < 1 || h.MaxConnections > MaxHTTPConnections {
-		return fmt.Errorf("listen.http.max_connections %d: want 1 to %d", h.MaxConnections, MaxHTTPConnections)
+		out = append(out, problem("listen.http.max_connections", "%d: want 1 to %d", h.MaxConnections, MaxHTTPConnections))
+	} else if h.MaxConnectionsPerIP < 1 || h.MaxConnectionsPerIP > h.MaxConnections {
+		out = append(out, problem("listen.http.max_connections_per_ip", "%d: want 1 to max_connections (%d)", h.MaxConnectionsPerIP, h.MaxConnections))
 	}
-	if h.MaxConnectionsPerIP < 1 || h.MaxConnectionsPerIP > h.MaxConnections {
-		return fmt.Errorf("listen.http.max_connections_per_ip %d: want 1 to max_connections (%d)", h.MaxConnectionsPerIP, h.MaxConnections)
+	if _, err := h.Proxies(); err != nil {
+		out = append(out, problem("listen.http.trusted_proxies", "%s", strings.TrimPrefix(err.Error(), "listen.http.trusted_proxies: ")))
 	}
-	_, err := h.Proxies()
-	return err
+	return out
 }
 
 // Validate checks all values and returns the first problem found.
 func (c Config) Validate() error {
+	if p := c.Problems(); len(p) > 0 {
+		return p[0]
+	}
+	return nil
+}
+
+// Problems checks all values and returns every problem found, in the
+// order of the file's sections.
+func (c Config) Problems() []Problem {
+	var out []Problem
+	add := func(key, format string, args ...any) { out = append(out, problem(key, format, args...)) }
 	if net.ParseIP(c.Listen.Address) == nil {
-		return fmt.Errorf("listen.address %q: must be an IP address (0.0.0.0 for all)", c.Listen.Address)
+		add("listen.address", "%q must be an IP address (0.0.0.0 for all)", c.Listen.Address)
 	}
 	if c.Listen.Port < 1 || c.Listen.Port > 65535 {
-		return fmt.Errorf("listen.port %d out of range", c.Listen.Port)
+		add("listen.port", "%d out of range (1 to 65535)", c.Listen.Port)
 	}
-	if err := c.Listen.HTTP.validate(); err != nil {
-		return err
-	}
+	out = append(out, c.Listen.HTTP.problems()...)
 	if !c.Listen.UDPEnabled && !c.Listen.HTTP.Enabled {
-		return errors.New("listen: udp and http are both off; enable at least one input for the game server logs")
-	}
-	if d, err := c.Features.RconStatus.Every(); err != nil || d < MinStatusInterval {
-		return fmt.Errorf("features.rcon_status.interval %q: want a duration of at least %v, e.g. \"10s\"", c.Features.RconStatus.Interval, MinStatusInterval)
-	}
-	if d, err := c.Features.LogAddress.Every(); err != nil || d < MinLogAddressInterval {
-		return fmt.Errorf("features.log_address.interval %q: want a duration of at least %v, e.g. \"1m\"", c.Features.LogAddress.Interval, MinLogAddressInterval)
-	}
-	if d, err := c.Features.ServerInfo.Every(); err != nil || d < MinServerInfoInterval {
-		return fmt.Errorf("features.server_info.interval %q: want a duration of at least %v, e.g. \"5m\"", c.Features.ServerInfo.Interval, MinServerInfoInterval)
-	}
-	if _, err := c.Features.DailyAwards.Location(); err != nil {
-		return fmt.Errorf("features.daily_awards.timezone %q: %v (an IANA name such as UTC or Europe/Berlin)", c.Features.DailyAwards.Timezone, err)
-	}
-	if _, _, err := c.Features.DailyAwards.At(); err != nil {
-		return fmt.Errorf("features.daily_awards.time %q: want HH:MM, e.g. \"00:00\"", c.Features.DailyAwards.Time)
+		add("listen", "udp and http are both off; enable at least one input for the game server logs")
 	}
 	if pa := c.Listen.PublicAddress; pa != "" {
 		if _, err := netip.ParseAddrPort(pa); err != nil {
-			return fmt.Errorf("listen.public_address %q: must be ip:port", pa)
+			add("listen.public_address", "%q must be ip:port", pa)
 		}
+	}
+	if d, err := c.Features.RconStatus.Every(); err != nil || d < MinStatusInterval {
+		add("features.rcon_status.interval", "%q: want a duration of at least %v, e.g. \"10s\"", c.Features.RconStatus.Interval, MinStatusInterval)
+	}
+	if d, err := c.Features.LogAddress.Every(); err != nil || d < MinLogAddressInterval {
+		add("features.log_address.interval", "%q: want a duration of at least %v, e.g. \"1m\"", c.Features.LogAddress.Interval, MinLogAddressInterval)
+	}
+	if d, err := c.Features.ServerInfo.Every(); err != nil || d < MinServerInfoInterval {
+		add("features.server_info.interval", "%q: want a duration of at least %v, e.g. \"5m\"", c.Features.ServerInfo.Interval, MinServerInfoInterval)
+	}
+	if _, err := c.Features.DailyAwards.Location(); err != nil {
+		add("features.daily_awards.timezone", "%q: %v (an IANA name such as UTC or Europe/Berlin)", c.Features.DailyAwards.Timezone, err)
+	}
+	if _, _, err := c.Features.DailyAwards.At(); err != nil {
+		add("features.daily_awards.time", "%q: want HH:MM, e.g. \"00:00\"", c.Features.DailyAwards.Time)
 	}
 	d := c.Database
 	if d.Type != MySQL && d.Type != Postgres {
-		return fmt.Errorf("database.type %q: must be mariadb (or mysql) or postgres", d.Type)
+		add("database.type", "%q must be mariadb (or mysql) or postgres", d.Type)
 	}
-	if d.Host == "" || d.User == "" || d.Name == "" {
-		return errors.New("database: host, user and name are required")
+	for _, f := range []struct{ key, v string }{{"host", d.Host}, {"user", d.User}, {"name", d.Name}} {
+		if f.v == "" {
+			add("database."+f.key, "required (database: host, user and name are required)")
+		}
 	}
 	if d.Port < 1 || d.Port > 65535 {
-		return fmt.Errorf("database.port %d out of range", d.Port)
+		add("database.port", "%d out of range (1 to 65535)", d.Port)
 	}
 	if d.MaxOpenConns < 1 {
-		return errors.New("database.max_open_conns must be at least 1")
+		add("database.max_open_conns", "must be at least 1")
 	}
 	if d.ConnectTimeout < 1 {
-		return errors.New("database.connect_timeout must be at least 1 (seconds)")
+		add("database.connect_timeout", "must be at least 1 (seconds)")
 	}
 	t := d.TLS
 	switch t.Mode {
 	case TLSDisable:
 		if t.CAFile != "" || t.CertFile != "" || t.KeyFile != "" || t.ServerName != "" {
-			return errors.New("database.tls: certificate options are set but mode is disable")
+			add("database.tls", "certificate options are set but mode is disable")
 		}
 	case TLSRequire, TLSVerifyCA, TLSVerifyFull:
 	default:
-		return fmt.Errorf("database.tls.mode %q: must be disable, require, verify-ca or verify-full", t.Mode)
+		add("database.tls.mode", "%q must be disable, require, verify-ca or verify-full", t.Mode)
 	}
 	if (t.CertFile == "") != (t.KeyFile == "") {
-		return errors.New("database.tls: cert_file and key_file must be set together")
+		add("database.tls", "cert_file and key_file must be set together")
 	}
-	return nil
+	return out
 }

@@ -160,6 +160,7 @@ command except `run` also takes `-o FORMAT` for scripts
 | Command | What it does |
 |---------|--------------|
 | `gamewe run` | the collector (systemd starts it); migrates an outdated database schema at start (`database.auto_migrate`), with `auto_migrate: false` it refuses to start (exit code 78) until `gamewe db migrate` ran; reports "ready" to systemd (`Type=notify`) once the config, database and UDP port are fine, exit code 78 for a config error (not restarted by the unit), 1 for other errors |
+| `gamewe config test` (also `gamewe --config-test`, `gamewe -t`, `gamewe run -t`) | check the config file without starting anything: no port, no database connection, no migration ([below](#checking-the-config-file)) |
 | `gamewe check` | config, database connection and TLS, schema version and pending migrations, game servers and settings |
 | `gamewe db migrate` | create the tables of a new database, bring an older one to this version (below); `gamewe run` does it at start with `database.auto_migrate` |
 | `gamewe db status`, `gamewe db grants`, `gamewe db seed` | schema version and migrations; the web users' rights again; missing reference data |
@@ -171,6 +172,93 @@ command except `run` also takes `-o FORMAT` for scripts
 | `gamewe awards -date YYYY-MM-DD` | decide the daily awards of a day again |
 | `gamewe geoip-update` | download the DB-IP database now |
 | `gamewe simulate` | replay a sample game into the database or to a running collector |
+
+### Checking the config file
+
+`gamewe config test` checks the config file the way `gamewe run` loads it, like
+`nginx -t`, and reports every problem at once instead of stopping at the first.
+It opens no port, does not connect to the database and changes nothing, so it
+is safe on a running system and before a restart. `gamewe --config-test`,
+`gamewe -t` and `gamewe run -t` (or `run --config-test`) are the same command;
+it takes `-config FILE` and the flags of `run` that change the configuration
+(`-listen IP:PORT`, and `-log-level` and `-reload`, which are only checked).
+Run it as the user of the collector (`sudo -u gamewe ...`): whether a file is
+readable is checked for the user running the test.
+
+What it checks:
+
+- **Syntax and keys:** YAML syntax, unknown or misspelled keys (with a
+  suggestion, e.g. `did you mean "password"?`), keys of older formats (with
+  where the setting went), values of the wrong type (`port: abc`). Each with
+  its line.
+- **Everything `gamewe run` checks at start**, but all problems instead of the
+  first (the same rules, see [CONFIG.md](CONFIG.md)).
+- **Inputs:** UDP and HTTP both off is an error (the collector would receive
+  nothing). Invalid ports (0, above 65535, not a number) and listen addresses
+  that are no IP are errors; `listen.udp.port: 0` (which means the default) is
+  a warning, as are ports below 1024 (the gamewe user cannot open them) and an
+  address that is not on this host.
+- **Port clashes** between the enabled inputs: the same protocol and port on
+  the same address, where `0.0.0.0` covers every IPv4 address and `::` every
+  address (UDP and TCP on the same port are fine). A TCP input on the port of
+  a database on this host (`localhost`, `127.0.0.1`) is an error too.
+- **Secrets:** `listen.http` on without `token` (CS2 sends no log secret),
+  a weak token, a database password that is missing, the example value or
+  shorter than 12 characters are warnings; a token in the wrong form or
+  `change-me` is an error (as at start). A config file, `password_file` or
+  `tls.key_file` that every user may read is a warning. Secret values are never
+  printed.
+- **Switches that contradict each other** (warnings): a changed setting under
+  an input or feature that is off (`listen.http.token` while `listen.http` is
+  off, `features.rcon_status.interval` while `rcon_status` is off, ...;
+  values written out with their default are fine), `features.log_address.http`
+  while `log_address` is off, `listen.http.public_url` /
+  `listen.udp.public_address` while nothing registers them, a public address of
+  `0.0.0.0`, `trusted_proxies` that trust (almost) everyone, the removed
+  `log_secret` auto mode.
+- **Database:** type, host, user, name, port, pool size, timeout and TLS mode;
+  a host with a port or a URL in it; the files of `tls.ca_file`, `cert_file`,
+  `key_file` and `password_file` must exist and be readable, and the
+  certificates are loaded as the connection would load them. `tls.mode:
+  disable` to a database on another host (a public IP or a name with a dot;
+  not `localhost`, private networks or a container name such as `db`) is a
+  warning.
+- **GeoIP:** a missing database that `auto_update` does not download, or a
+  directory where the download cannot be stored (warning: no locations).
+
+It does not connect to anything: the database login, the schema version and
+the game servers are what `gamewe check` tests. Errors are what stops `gamewe
+run` or makes its start fail; with warnings the collector runs.
+
+```text
+$ gamewe config test
+gamewe: the configuration file /etc/gamewe/collector/config.yaml syntax is ok
+gamewe: configuration file /etc/gamewe/collector/config.yaml test is successful
+
+$ gamewe config test -config broken.yaml
+gamewe: [error] listen.udp.enabled: udp and http are both off; enable at least one input for the game server logs in broken.yaml:3
+gamewe: [warning] listen.http.port: has no effect while listen.http.enabled is false in broken.yaml:6
+gamewe: [warning] listen.http.token: has no effect while listen.http.enabled is false in broken.yaml:7
+gamewe: [warning] database.password: not set: the collector connects without a password; set password or password_file in broken.yaml:8
+gamewe: [error] database.pasword: unknown key; did you mean "password"? in broken.yaml:12
+gamewe: [warning] features.log_address.http: has no effect while features.log_address.enabled is false in broken.yaml:19
+gamewe: configuration file broken.yaml test failed (2 errors, 4 warnings)
+
+$ gamewe config test -config clash.yaml
+gamewe: [error] listen.http.port: tcp port 3306 is the port of the local database (database.host 127.0.0.1): the collector cannot open it while the database runs in clash.yaml:6
+gamewe: the configuration file clash.yaml syntax is ok
+gamewe: configuration file clash.yaml test failed (1 error, 0 warnings)
+```
+
+Exit code 0: no errors (warnings are allowed); 1: at least one error (also
+when the file cannot be read); 2: wrong usage (unknown flag or subcommand,
+`-o csv`). `-o json` / `-o yaml` print `config`, `ok`, `syntax_ok`, `errors`,
+`warnings` and `findings` (`severity`, `key`, `line`, `message`) with the same
+exit codes:
+
+```bash
+gamewe config test -o json | jq -r '.findings[] | select(.severity == "error") | .key'
+```
 
 ### Database schema
 
@@ -347,6 +435,7 @@ it must come before the RCON command.
 ```bash
 gamewe server list -o json                     # [{"id": 3, "address": "198.51.100.7:27015", "rcon_password_set": true, ...}]
 gamewe check -o yaml                           # config, database, schema, settings and servers as one document
+gamewe config test -o json                     # the findings of the config file test; exit code 1 on errors
 gamewe -o json db status                       # schema version, applied and pending migrations, steps
 gamewe db migrate -n -o json                   # the plan; exit code 0 up to date, 2 pending, 1 error
 gamewe status -o csv > players.csv             # the players of all servers, one line each

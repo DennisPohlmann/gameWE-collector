@@ -4,7 +4,8 @@
 # Installed as /etc/gamewe/collector/config.yaml. It contains a password,
 # so keep it readable for root and the gamewe group only:
 #   chown root:gamewe config.yaml && chmod 640 config.yaml
-# Validate with:  gamewe check
+# Validate with:  gamewe config test   (this file only, nothing started)
+#                 gamewe check         (also the database connection)
 #
 # Everything else is read from the database and can be changed in the web
 # admin without restarting the collector (reloaded every 60 seconds):

@@ -55,7 +55,8 @@ Details per game: [docs/GAMES.md](docs/GAMES.md).
    or `schema/postgres/init/init-db.sh` (PostgreSQL).
 3. Put the database connection into `/etc/gamewe/collector/config.yaml`,
    create the tables with `gamewe db init` (or let the first start do it)
-   and check with `gamewe check`. The schema is built into the binary: after
+   and check with `gamewe config test` (the file, nothing started) and
+   `gamewe check` (the database). The schema is built into the binary: after
    an update the collector migrates the database at start
    (`database.auto_migrate`, the default; make a backup before updating), or
    with `auto_migrate: false` refuses to start until `gamewe db migrate` ran

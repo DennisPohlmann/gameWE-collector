@@ -44,6 +44,10 @@ const usage = `gameWE - collector %s
 Usage:
   gamewe run      [-config FILE] [-listen IP:PORT] [-log-level LEVEL] [-reload DURATION]
                                    start the collector (used by systemd)
+  gamewe config test [-config FILE] [-listen IP:PORT]
+                                   check the config file without starting anything (no port,
+                                   no database connection): every error and warning, exit
+                                   code 1 on errors; also gamewe --config-test, -t, run -t
   gamewe check    [-config FILE]   test the database (shows TLS state and pending
                                    migrations), list the game servers and settings found in it
   gamewe db migrate [-config FILE] [-f|--force] [-n|--dry-run]
@@ -125,6 +129,10 @@ func main() {
 		err = runCmd(args)
 	case "check":
 		err = checkCmd(args)
+	case "config":
+		err = configCmd(args)
+	case "--config-test", "-config-test", "-t":
+		err = configTestCmd(args)
 	case "simulate":
 		err = simulateCmd(args)
 	case "awards":
@@ -239,6 +247,9 @@ func checkTLS(info database.Info, mode string) string {
 }
 
 func runCmd(args []string) error {
+	if rest, ok := testFlag(args); ok {
+		return configTestCmd(rest) // gamewe run -t: check, do not start
+	}
 	var listen, level string
 	var reload time.Duration
 	cfg, err := loadConfig("run", args, func(fs *flag.FlagSet) {
@@ -647,8 +658,8 @@ func check(cfg config.Config, out io.Writer, rep *checkReport) error {
 	rep.Features = checkFeatures{cfg.Features.RconStatus.Enabled, every.String(), cfg.Features.LogAddress.Enabled, laEvery.String(),
 		cfg.Features.LogAddress.HTTP, cfg.Features.LogSecret.Enabled, si.Enabled, siEvery.String(), da.Enabled, da.Time, da.Timezone,
 		cfg.Features.CS2Hitgroups.Enabled}
-	if o := cfg.Features.LogSecret.Obsolete; len(o) > 0 {
-		warn(fmt.Sprintf("features.log_secret: %s ignored, the automatic log secret was removed (set it per server with gamewe server set -logsecret)", strings.Join(o, ", ")))
+	if o := cfg.Features.LogSecret.ObsoleteWarning(); o != "" {
+		warn("features.log_secret: " + o)
 	}
 	fmt.Fprintf(out, "database:  %s %s@%s:%d/%s\n", d.Type, d.User, d.Host, d.Port, d.Name)
 	rep.Database = checkDatabase{Type: d.Type, User: d.User, Host: d.Host, Port: d.Port, Name: d.Name, TLSMode: d.TLS.Mode}

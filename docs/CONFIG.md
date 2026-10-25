@@ -22,6 +22,9 @@ YAML, default path `/etc/gamewe/collector/config.yaml` (`-config` overrides it).
 Unknown keys are an error. Keys of an older format (`servers`, `stats`,
 `commands`, `log`, `listen.http_port`, `listen.udp` as an address, ...) are rejected with a hint where the setting
 went. The file contains the database password, so keep it at `640 root:gamewe`.
+`gamewe config test` (also `gamewe -t`) checks the file without starting
+anything and lists every error and warning with its line
+([USAGE.md](USAGE.md#checking-the-config-file)).
 
 ### listen
 
