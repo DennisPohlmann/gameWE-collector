@@ -21,7 +21,7 @@ PKG       := gamewe-collector-$(VERSION)-linux-amd64
 OPT       := opt/gamewe/collector
 DIST      := dist
 
-.PHONY: all build test vet package clean schema docker version geoip
+.PHONY: all build test vet package clean schema docker version geoip licenses
 
 all: vet test build
 
@@ -81,6 +81,12 @@ docker: geoip
 # package ships only the init scripts (schema/init/: database and users).
 schema:
 	$(GO) run ./tools/schemagen
+
+# License texts of the Go modules (licenses/, with modules.json) from the
+# module cache; run after a dependency change, then update
+# THIRD-PARTY-LICENSES.md (the license test in cmd/gamewe checks both).
+licenses:
+	$(GO) run ./tools/licensegen
 
 clean:
 	rm -rf build $(DIST)

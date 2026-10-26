@@ -5,8 +5,12 @@ contains, or ships with, the components below. Their full license texts are
 in `licenses/` (installed as `/opt/gamewe/collector/doc/licenses/`). All are
 used unchanged; their sources are at the URLs given.
 
-`go test ./cmd/gamewe -run ThirdParty` checks that every Go module compiled into
-the `gamewe` binary is listed here with its version and license text.
+`make licenses` (`tools/licensegen`) copies the license texts of every Go
+module from the module cache to `licenses/` and writes
+`licenses/modules.json` (module, version, binary or tests only, SPDX license
+recognised from the text). `go test ./cmd/gamewe -run ThirdParty` fails when
+`licenses/` is stale or a module compiled into the `gamewe` binary or used by
+the tests has no row here with its version and that SPDX license.
 
 ## Compiled into the `gamewe` binary
 

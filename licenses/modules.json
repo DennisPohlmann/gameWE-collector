@@ -1,0 +1,130 @@
+[
+  {
+    "path": "filippo.io/edwards25519",
+    "version": "v1.2.0",
+    "scope": "binary",
+    "license": "BSD-3-Clause",
+    "files": [
+      "LICENSE"
+    ]
+  },
+  {
+    "path": "github.com/go-sql-driver/mysql",
+    "version": "v1.10.1",
+    "scope": "binary",
+    "license": "MPL-2.0",
+    "files": [
+      "LICENSE"
+    ]
+  },
+  {
+    "path": "github.com/jackc/pgpassfile",
+    "version": "v1.0.0",
+    "scope": "binary",
+    "license": "MIT",
+    "files": [
+      "LICENSE"
+    ]
+  },
+  {
+    "path": "github.com/jackc/pgservicefile",
+    "version": "v0.0.0-20240606120523-5a60cdf6a761",
+    "scope": "binary",
+    "license": "MIT",
+    "files": [
+      "LICENSE"
+    ]
+  },
+  {
+    "path": "github.com/jackc/pgx/v5",
+    "version": "v5.11.0",
+    "scope": "binary",
+    "license": "MIT",
+    "files": [
+      "LICENSE"
+    ]
+  },
+  {
+    "path": "github.com/jackc/puddle/v2",
+    "version": "v2.2.3",
+    "scope": "binary",
+    "license": "MIT",
+    "files": [
+      "LICENSE"
+    ]
+  },
+  {
+    "path": "github.com/maxmind/mmdbwriter",
+    "version": "v1.2.0",
+    "scope": "test",
+    "license": "Apache-2.0 OR MIT",
+    "files": [
+      "LICENSE-APACHE",
+      "LICENSE-MIT"
+    ]
+  },
+  {
+    "path": "github.com/oschwald/maxminddb-golang",
+    "version": "v1.13.1",
+    "scope": "binary",
+    "license": "ISC",
+    "files": [
+      "LICENSE"
+    ]
+  },
+  {
+    "path": "github.com/oschwald/maxminddb-golang/v2",
+    "version": "v2.8.0",
+    "scope": "test",
+    "license": "ISC",
+    "files": [
+      "LICENSE"
+    ]
+  },
+  {
+    "path": "go.yaml.in/yaml/v3",
+    "version": "v3.0.5",
+    "scope": "binary",
+    "license": "MIT AND Apache-2.0",
+    "files": [
+      "LICENSE",
+      "NOTICE"
+    ]
+  },
+  {
+    "path": "go4.org/netipx",
+    "version": "v0.0.0-20260823151212-3075585bcbeb",
+    "scope": "test",
+    "license": "BSD-3-Clause",
+    "files": [
+      "LICENSE"
+    ]
+  },
+  {
+    "path": "golang.org/x/sync",
+    "version": "v0.24.0",
+    "scope": "binary",
+    "license": "BSD-3-Clause",
+    "files": [
+      "LICENSE"
+    ]
+  },
+  {
+    "path": "golang.org/x/sys",
+    "version": "v0.49.0",
+    "scope": "binary",
+    "license": "BSD-3-Clause",
+    "files": [
+      "LICENSE"
+    ]
+  },
+  {
+    "path": "golang.org/x/text",
+    "version": "v0.43.0",
+    "scope": "binary",
+    "license": "BSD-3-Clause",
+    "files": [
+      "LICENSE"
+    ]
+  }
+]

@@ -12,6 +12,7 @@ make test vet                 # tests and static checks
 make build                    # build/linux-amd64/gamewe
 make package                  # dist/gamewe-collector-<version>-linux-amd64.tar.gz (+ .sha256)
 make schema                   # after editing internal/schema/mysql/*.sql: regenerate internal/schema/postgres/
+make licenses                 # after a dependency change: license texts and licenses/modules.json, then THIRD-PARTY-LICENSES.md
 make docker                   # container image gamewe-collector:<version>
 ```
 
