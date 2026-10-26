@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
 )
 
 // Migration is one version of the database schema. The tables, columns and
@@ -28,6 +29,11 @@ type Migration struct {
 	Drop []DropIndex
 	// Seed adds the missing reference data (internal/schema seed.sql).
 	Seed bool
+	// RankingAwards are award codes that rankings (games whose realgame is
+	// another game, e.g. css1 of css) get from their template after Seed:
+	// the template's award and its ribbons, where the ranking has no award
+	// or ribbon of that code yet. Seed itself only reaches the templates.
+	RankingAwards []string
 }
 
 // DropIndex is an index that ReplacedBy makes superfluous.
@@ -100,6 +106,13 @@ var Migrations = []Migration{
 		Desc: "Left 4 Dead (l4d) and Left 4 Dead 2 (l4d2): the roles, actions, weapons, awards and ribbons of HLstatsX:CE",
 		Seed: true,
 	},
+	{
+		Version: 11, Name: "hlstatsx-awards",
+		Desc: "the HLstatsX:CE awards mvp (css, CE's round_mvp) and teamkills (every team game) " +
+			"with their ribbons, also for the rankings of these games",
+		Seed:          true,
+		RankingAwards: []string{"mvp", "teamkills"},
+	},
 }
 
 // Latest is the newest schema version this collector knows.
@@ -108,6 +121,39 @@ func Latest() int { return Migrations[len(Migrations)-1].Version }
 // Checksum identifies what a migration does; gamewe db status warns when
 // a recorded migration differs from the one in this binary.
 func (m Migration) Checksum() string {
-	h := sha256.Sum256(fmt.Appendf(nil, "%d|%s|%t|%v|%t", m.Version, m.Name, m.Sync, m.Drop, m.Seed))
+	b := fmt.Appendf(nil, "%d|%s|%t|%v|%t", m.Version, m.Name, m.Sync, m.Drop, m.Seed)
+	if len(m.RankingAwards) > 0 { // only then: the checksums of older migrations stay as recorded
+		b = fmt.Appendf(b, "|%v", m.RankingAwards)
+	}
+	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
+}
+
+// rankingAwardsSQL copies the awards of codes, and their ribbons, from each
+// ranking's template (the game whose code is the ranking's realgame) to the
+// ranking, where the ranking has no award or ribbon of that code yet. It only
+// adds rows. codes are constants of Migrations, never user input.
+func rankingAwardsSQL(postgres bool, codes []string) []string {
+	quoted := make([]string, len(codes))
+	for i, c := range codes {
+		quoted[i] = "'" + strings.ReplaceAll(c, "'", "''") + "'"
+	}
+	in := strings.Join(quoted, ", ")
+	ins, conflict := "INSERT IGNORE INTO ", ""
+	if postgres {
+		ins, conflict = "INSERT INTO ", " ON CONFLICT DO NOTHING"
+	}
+	return []string{
+		ins + `hlstats_Awards (awardType, game, code, name, verb)
+			SELECT a.awardType, g.code, a.code, a.name, a.verb
+			FROM hlstats_Games g JOIN hlstats_Awards a ON a.game = g.realgame
+			WHERE g.realgame <> '' AND g.code <> g.realgame AND a.code IN (` + in + `)
+			  AND NOT EXISTS (SELECT 1 FROM hlstats_Awards x WHERE x.game = g.code AND x.code = a.code)` + conflict,
+		ins + `hlstats_Definition_Ranks_Ribbons (definition_type, game_code, code, name, img_file, thumb_file, minimum, restriction_type)
+			SELECT r.definition_type, g.code, r.code, r.name, r.img_file, r.thumb_file, r.minimum, r.restriction_type
+			FROM hlstats_Games g JOIN hlstats_Definition_Ranks_Ribbons r ON r.game_code = g.realgame
+			WHERE g.realgame <> '' AND g.code <> g.realgame AND r.definition_type = 'ribbons2' AND r.code IN (` + in + `)
+			  AND NOT EXISTS (SELECT 1 FROM hlstats_Definition_Ranks_Ribbons x
+			                  WHERE x.game_code = g.code AND x.definition_type = r.definition_type AND x.code = r.code)` + conflict,
+	}
 }

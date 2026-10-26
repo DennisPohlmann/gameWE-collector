@@ -308,6 +308,11 @@ func plan(ctx context.Context, q querier, dialect string) (*Plan, error) {
 			p.Steps = append(p.Steps, Step{Version: m.Version, Name: m.Name, What: "add missing reference data (only rows that do not exist; existing rows stay as they are)",
 				kind: stepScript, stmts: []string{schema.Seed(dialect)}})
 		}
+		if len(m.RankingAwards) > 0 {
+			p.Steps = append(p.Steps, Step{Version: m.Version, Name: m.Name,
+				What: "copy the awards " + strings.Join(m.RankingAwards, ", ") + " and their ribbons from the template to every ranking that lacks them",
+				kind: stepExec, stmts: rankingAwardsSQL(pg, m.RankingAwards)})
+		}
 		p.Steps = append(p.Steps, Step{Version: m.Version, Name: m.Name, What: "record version " + fmt.Sprint(m.Version), kind: stepRecord, rec: &m, note: "applied"})
 	}
 	if !synced && len(p.Missing) > 0 {

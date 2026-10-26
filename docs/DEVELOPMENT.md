@@ -140,7 +140,9 @@ Example, a new column `hlstats_Servers.log_secret`:
    `Sync` adds every table, column and index of the schema the database
    lacks. `Seed: true` additionally loads `seed.sql` (only `INSERT IGNORE`:
    missing rows; use it when you added reference data). `Drop` lists indexes
-   a new one replaces (dropped only once the replacement exists). Anything
+   a new one replaces (dropped only once the replacement exists).
+   `RankingAwards` lists award codes that rankings (css1 of css, ...) copy
+   with their ribbons from their template, which `Seed` does not reach. Anything
    else (data fixes, type changes) needs new code in `migrate.go` and must
    stay idempotent and never delete user data.
 4. Never change a migration that was released: its checksum is recorded,

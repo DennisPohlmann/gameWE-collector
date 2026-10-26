@@ -295,8 +295,9 @@ INSERT INTO hlstats_Definition_Ribbons_Classes (game_code, name, maximum, steps,
 -- round_mvp); the player-history awards (most_kills, ...)
 -- and latency for every game; css ranks and ribbon classes for every game, one
 -- ribbon per daily award. Left out: CE's player-vs-player award types P/V,
--- and its meta awards mostkills, suicide, teamkills, bonuspoints,
--- allsentrykills (covered by most_kills, most_suicides, ...). Rows above win: INSERT IGNORE keeps the first.
+-- and its meta awards mostkills, suicide, bonuspoints, allsentrykills
+-- (covered by most_kills, most_suicides, ...; teamkills comes at the end of
+-- this file). Rows above win: INSERT IGNORE keeps the first.
 -- ---------------------------------------------------------------------------
 
 -- Teams
@@ -4172,3 +4173,51 @@ INSERT INTO hlstats_Definition_Ranks_Ribbons (definition_type, game_code, code, 
   ('ribbons2', 'l4d2', 'gnome', 'GET OFF MY LAWN', '', '', '1', 'daily_awards'),
   ('ribbons2', 'l4d2', 'golfclub', 'Golf Club', '', '', '1', 'daily_awards'),
   ('ribbons2', 'l4d2', 'rifle_m60', 'M60', '', '', '1', 'daily_awards') ON CONFLICT DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- The HLstatsX:CE awards teamkills and round_mvp (as gameWE's mvp) with their
+-- ribbons (migration 11): mvp (O, the plugin's round MVP; CE's round_mvp) for
+-- css like csgo and cs2; teamkills (the day's team kills) for every team game
+-- (not valve, hl2mp, fof). CE's mostkills, suicide and headshot are not added:
+-- most_kills, most_suicides and most_headshots (or the game's headshot award)
+-- cover them. Names and verbs of HLstatsX:CE. Rankings get them from their
+-- template in migration 11 (see internal/database/migrations.go).
+-- ---------------------------------------------------------------------------
+INSERT INTO hlstats_Awards (awardType, game, code, name, verb) VALUES
+  ('O', 'css', 'mvp', 'Most Valuable Player', 'times earning Round MVP'),
+  ('W', 'css', 'teamkills', 'Team Killer', 'team kills'),
+  ('W', 'csgo', 'teamkills', 'Team Killer', 'team kills'),
+  ('W', 'tf', 'teamkills', 'Team Killer', 'team kills'),
+  ('W', 'dods', 'teamkills', 'Team Killer', 'team kills'),
+  ('W', 'l4d', 'teamkills', 'Team Killer', 'team kills'),
+  ('W', 'l4d2', 'teamkills', 'Team Killer', 'team kills'),
+  ('W', 'insurgency', 'teamkills', 'Team Killer', 'team kills'),
+  ('W', 'cstrike', 'teamkills', 'Team Killer', 'team kills'),
+  ('W', 'dod', 'teamkills', 'Team Killer', 'team kills'),
+  ('W', 'tfc', 'teamkills', 'Team Killer', 'team kills'),
+  ('W', 'ns', 'teamkills', 'Team Killer', 'team kills'),
+  ('W', 'cs2', 'teamkills', 'Team Killer', 'team kills'),
+  ('W', 'czero', 'teamkills', 'Team Killer', 'team kills'),
+  ('W', 'zps', 'teamkills', 'Team Killer', 'team kills'),
+  ('W', 'ff', 'teamkills', 'Team Killer', 'team kills'),
+  ('W', 'csp', 'teamkills', 'Team Killer', 'team kills'),
+  ('W', 'nmrih', 'teamkills', 'Team Killer', 'team kills') ON CONFLICT DO NOTHING;
+INSERT INTO hlstats_Definition_Ranks_Ribbons (definition_type, game_code, code, name, img_file, thumb_file, minimum, restriction_type) VALUES
+  ('ribbons2', 'css', 'mvp', 'Most Valuable Player', '', '', '1', 'daily_awards'),
+  ('ribbons2', 'css', 'teamkills', 'Team Killer', '', '', '1', 'daily_awards'),
+  ('ribbons2', 'csgo', 'teamkills', 'Team Killer', '', '', '1', 'daily_awards'),
+  ('ribbons2', 'tf', 'teamkills', 'Team Killer', '', '', '1', 'daily_awards'),
+  ('ribbons2', 'dods', 'teamkills', 'Team Killer', '', '', '1', 'daily_awards'),
+  ('ribbons2', 'l4d', 'teamkills', 'Team Killer', '', '', '1', 'daily_awards'),
+  ('ribbons2', 'l4d2', 'teamkills', 'Team Killer', '', '', '1', 'daily_awards'),
+  ('ribbons2', 'insurgency', 'teamkills', 'Team Killer', '', '', '1', 'daily_awards'),
+  ('ribbons2', 'cstrike', 'teamkills', 'Team Killer', '', '', '1', 'daily_awards'),
+  ('ribbons2', 'dod', 'teamkills', 'Team Killer', '', '', '1', 'daily_awards'),
+  ('ribbons2', 'tfc', 'teamkills', 'Team Killer', '', '', '1', 'daily_awards'),
+  ('ribbons2', 'ns', 'teamkills', 'Team Killer', '', '', '1', 'daily_awards'),
+  ('ribbons2', 'cs2', 'teamkills', 'Team Killer', '', '', '1', 'daily_awards'),
+  ('ribbons2', 'czero', 'teamkills', 'Team Killer', '', '', '1', 'daily_awards'),
+  ('ribbons2', 'zps', 'teamkills', 'Team Killer', '', '', '1', 'daily_awards'),
+  ('ribbons2', 'ff', 'teamkills', 'Team Killer', '', '', '1', 'daily_awards'),
+  ('ribbons2', 'csp', 'teamkills', 'Team Killer', '', '', '1', 'daily_awards'),
+  ('ribbons2', 'nmrih', 'teamkills', 'Team Killer', '', '', '1', 'daily_awards') ON CONFLICT DO NOTHING;

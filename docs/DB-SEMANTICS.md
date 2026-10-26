@@ -257,7 +257,7 @@ ends). For each award of the game:
 |-----------|------|-------------------------------------------------------------|
 | `W` | a weapon code (`ak47`, `knife`, ...) | kills with that weapon (`hlstats_Events_Frags` joined to `hlstats_Weapons` by id, same game) |
 | `W` | `latency` | the **lowest** average ping of the day in `hlstats_Events_Latency` (samples of 0 left out), among players with at least 30 samples of the day (about 30 minutes online); `winner_count` = the average in ms, rounded (at least 1). Needs RCON status (`features.rcon_status`). |
-| `O` | `most_kills`, `most_deaths`, `most_suicides`, `most_headshots`, `most_damage`, `most_improved`, `longest_playtime`, `longest_killstreak` | the `hlstats_Players_History` row of that date (history days are **UTC days**, so with another time zone these awards are shifted by the UTC offset, e.g. 01:00 to 01:00 in Berlin in winter): `kills`, `deaths`, `suicides`, `headshots`, `damage`, `skill_change`, `connection_time` (seconds), `kill_streak` |
+| `O` or `W` | `most_kills`, `most_deaths`, `most_suicides`, `most_headshots`, `most_damage`, `most_improved`, `longest_playtime`, `longest_killstreak`, and HLstatsX:CE's `teamkills` (type `W` there) | the `hlstats_Players_History` row of that date (history days are **UTC days**, so with another time zone these awards are shifted by the UTC offset, e.g. 01:00 to 01:00 in Berlin in winter): `kills`, `deaths`, `suicides`, `headshots`, `damage`, `skill_change`, `connection_time` (seconds), `kill_streak`; `teamkills` `team_kills` |
 | `O` | any other code | actions with that code (`hlstats_Events_PlayerActions` joined to `hlstats_Actions`, same game) |
 
 Only ranked players (`hideranking = 0`) win; ties go to the lowest

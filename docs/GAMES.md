@@ -51,8 +51,9 @@ gameWE changes:
   `longest_playtime`, `longest_killstreak`) and `latency`;
 - CE awards the collector cannot decide are left out: the player-vs-player
   award types `P`/`V` (tf: 10) and CE's meta awards `mostkills`, `suicide`,
-  `teamkills`, `bonuspoints`, `allsentrykills` (the history awards cover
-  them);
+  `bonuspoints`, `allsentrykills` (the history awards cover them); CE's
+  `teamkills` (every team game) is decided like the history awards
+  (migration 11, with `mvp` for css);
 - CE's `hlstats_Ribbons` (several levels per award, 80-612 rows per game)
   are one `ribbons2` row per award plus the bronze/silver/gold classes of
   `hlstats_Definition_Ribbons_Classes` in this schema; CE's

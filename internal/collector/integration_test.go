@@ -628,7 +628,8 @@ func TestIntegrationDailyAwards(t *testing.T) {
 		('W', 'css', 'ak47', 'AK47', 'kills'), ('W', 'css', 'latency', 'Best Latency', 'ms'),
 		('O', 'css', 'Planted_The_Bomb', 'Demolitionist', 'plantings'), ('O', 'css', 'most_kills', 'Most Kills', 'kills'),
 		('O', 'css', 'longest_playtime', 'Longest Play Time', 'hours'), ('O', 'css', 'most_damage', 'Most Damage', 'damage'),
-		('O', 'css', 'Rescued_A_Hostage', 'Rescuer', 'hostages')`)
+		('O', 'css', 'Rescued_A_Hostage', 'Rescuer', 'hostages'),
+		('W', 'css', 'teamkills', 'Team Killer', 'team kills')`)
 	exec(`INSERT INTO hlstats_Players (playerId, game, game_id, skill, hideranking) VALUES
 		(11, 'css', 1, 1000, 0), (12, 'css', 1, 1000, 0), (13, 'css', 1, 1000, 2), (14, 'css', 1, 1000, 0)`)
 	exec(`INSERT INTO hlstats_Players_Data (playerId, lastName) VALUES (11, 'A'), (12, 'B'), (13, 'C'), (14, 'D')`)
@@ -640,9 +641,9 @@ func TestIntegrationDailyAwards(t *testing.T) {
 		exec(frag, k.ts, k.killer, ak) // 11 and 12 tie at 2 (12 has 2 more the day before), 13 is banned
 	}
 	exec(`INSERT INTO hlstats_Events_PlayerActions (timestamp_id, game_id, map, playerId, actionId, bonus) VALUES (?, 1, 0, 14, ?, 10)`, in, bomb)
-	exec(`INSERT INTO hlstats_Players_History (playerId, eventTime, game, kills, connection_time, damage) VALUES
-		(11, '2026-10-21', 'css', 2, 3600, 100), (12, '2026-10-21', 'css', 2, 7200, 0), (13, '2026-10-21', 'css', 9, 9000, 900),
-		(14, '2026-10-20', 'css', 50, 99999, 999)`)
+	exec(`INSERT INTO hlstats_Players_History (playerId, eventTime, game, kills, connection_time, damage, team_kills) VALUES
+		(11, '2026-10-21', 'css', 2, 3600, 100, 0), (12, '2026-10-21', 'css', 2, 7200, 0, 3), (13, '2026-10-21', 'css', 9, 9000, 900, 5),
+		(14, '2026-10-20', 'css', 50, 99999, 999, 7)`)
 	// Ping samples: 11 averages 40; 12 averages 35.5 (its samples of 0 do not
 	// count); 14 has only 29 samples of the day; 13 is banned.
 	lat := `INSERT INTO hlstats_Events_Latency (timestamp_id, game_id, server_id, map, playerId, ping) VALUES (?, 1, 1, 0, ?, ?)`
@@ -685,13 +686,15 @@ func TestIntegrationDailyAwards(t *testing.T) {
 	for code, want := range map[string]string{
 		"ak47": "11:2", "latency": "12:36", "Planted_The_Bomb": "14:1", "most_kills": "11:2",
 		"longest_playtime": "12:7200", "most_damage": "11:100", "Rescued_A_Hostage": "-",
+		// HLstatsX:CE's W award of the day's history, not a weapon
+		"teamkills": "12:3",
 	} {
 		if got := winner(code); got != want {
 			t.Errorf("%s: winner %s, want %s", code, got, want)
 		}
 	}
-	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Awards_History`); n != 6 {
-		t.Errorf("%d history rows, want 6", n)
+	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Awards_History`); n != 7 {
+		t.Errorf("%d history rows, want 7", n)
 	}
 	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Events_Latency WHERE timestamp_id < ?`, out-3600); n != 1 {
 		t.Errorf("old ping samples: %d before the run for all games, want 1 (a run for one game keeps them)", n)

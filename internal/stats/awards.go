@@ -11,9 +11,10 @@ import (
 	"time"
 )
 
-// historyAwards are the player awards (awardType O) whose value is a column
-// of the day's hlstats_Players_History row. Every other O code is an action
-// code counted in hlstats_Events_PlayerActions.
+// historyAwards are the player awards whose value is a column of the day's
+// hlstats_Players_History row, whatever their awardType (HLstatsX:CE defines
+// teamkills as W). Every other O code is an action
+// code counted in hlstats_Events_PlayerActions, every other W code a weapon.
 var historyAwards = map[string]string{
 	"most_kills":         "kills",
 	"most_deaths":        "deaths",
@@ -23,6 +24,7 @@ var historyAwards = map[string]string{
 	"most_improved":      "skill_change",
 	"longest_playtime":   "connection_time", // seconds
 	"longest_killstreak": "kill_streak",
+	"teamkills":          "team_kills", // HLstatsX:CE
 }
 
 // LatencyMinSamples is how many ping samples (one per minute online) a player
@@ -66,8 +68,8 @@ func dayBounds(day time.Time) (from, to int64) {
 //
 // W awards go to the player with the most kills with the weapon of that
 // code (hlstats_Events_Frags); O awards to the player with the most
-// actions of that code (hlstats_Events_PlayerActions), or for the player
-// awards (most_kills, ...) with the highest value in the
+// actions of that code (hlstats_Events_PlayerActions); the player awards
+// (historyAwards: most_kills, teamkills, ...) to the highest value in the
 // hlstats_Players_History row of that date (history days are UTC days, so
 // in another time zone these awards are off by the UTC offset). The W award
 // "latency" goes to the player with the lowest average ping of the day
@@ -116,7 +118,7 @@ func (s *Store) dailyAwards(ctx context.Context, day time.Time, game string, sto
 		var q string
 		var args []any
 		switch col, player := historyAwards[a.Code]; {
-		case a.Type == "O" && player:
+		case player:
 			q = `SELECT h.playerId, h.` + col + ` FROM hlstats_Players_History h JOIN hlstats_Players p ON p.playerId = h.playerId
 				WHERE h.game = ? AND h.eventTime = ? AND p.hideranking = 0 AND h.` + col + ` > 0
 				ORDER BY h.` + col + ` DESC, h.playerId LIMIT 1`
