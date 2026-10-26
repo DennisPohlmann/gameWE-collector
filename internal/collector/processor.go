@@ -1330,8 +1330,17 @@ func (p *Processor) kill(ctx context.Context, ev stats.Ev, e logparse.Kill) erro
 	if err != nil || k == nil || v == nil {
 		return err // kills involving untracked players (console, pending ids) are skipped
 	}
+	l4d := isL4D(p.srv.info.Base)
 	teamkill := !neutralTeam(e.Killer.Team) && strings.EqualFold(e.Killer.Team, e.Victim.Team)
-	v.dead = true
+	if l4d && teamkill && strings.EqualFold(e.Killer.Team, "Infected") {
+		return nil // the Tank or a Boomer killing infected, ignored as HLstatsX:CE does
+	}
+	if l4d {
+		if err := p.l4dRoles(ctx, ev, k, e.KillerRole, v, e.VictimRole); err != nil {
+			return err
+		}
+	}
+	v.dead = !e.Incap
 	if err := p.lineLocations(ctx, ev, k, v, e.KillerPos, e.VictimPos); err != nil {
 		return err
 	}
@@ -1344,6 +1353,12 @@ func (p *Processor) kill(ctx context.Context, ev stats.Ev, e logparse.Kill) erro
 	// Bots that are not ranked never change anybody's skill: no points, no
 	// headshot action and no kill streak for kills with them.
 	noSkill := p.unrankedBot(k, v)
+	// Left 4 Dead (as HLstatsX:CE): a player's kill of the AI (a bot) is
+	// worth points for the player alone; the AI is not ranked.
+	oneSided := l4d && !teamkill && stats.IsBot(v.live.UniqueID) && !stats.IsBot(k.live.UniqueID)
+	if oneSided {
+		noSkill = false
+	}
 	if !teamkill {
 		// The victim's life, and with it the kill streak, ends.
 		if err := p.endStreak(ctx, ev, v); err != nil {
@@ -1358,7 +1373,7 @@ func (p *Processor) kill(ctx context.Context, ev stats.Ev, e logparse.Kill) erro
 	headshot := e.Headshot || k.headshotLines > 0
 	r, err := p.store.RecordKill(ctx, ev, stats.Kill{
 		Killer: k.live, Victim: v.live, Weapon: e.Weapon, Headshot: headshot, Teamkill: teamkill,
-		KillStreak: k.killStreak, DeathStreak: v.deathStreak, NoSkill: noSkill,
+		KillStreak: k.killStreak, DeathStreak: v.deathStreak, NoSkill: noSkill, OneSided: oneSided,
 		KillerPos: kpos, VictimPos: vpos,
 	})
 	if err != nil {
@@ -1377,6 +1392,11 @@ func (p *Processor) kill(ctx context.Context, ev stats.Ev, e logparse.Kill) erro
 	v.deaths++
 	k.weaponKills[e.Weapon]++
 	k.bestKill, v.bestDeath = max(k.bestKill, k.killStreak), max(v.bestDeath, v.deathStreak)
+	if l4d {
+		if err := p.l4dKillAction(ctx, ev, k, v, e, noSkill); err != nil {
+			return err
+		}
+	}
 	if !noSkill {
 		// CS:GO: "(headshot penetrated ...)"; the flags other than headshot are
 		// actions of the killer, if the game defines them (kill_penetrated, ...).
@@ -1402,6 +1422,54 @@ func (p *Processor) kill(ctx context.Context, ev stats.Ev, e logparse.Kill) erro
 			return nil
 		}
 		return p.scoreAction(ctx, ev, k, "headshot", false)
+	}
+	return nil
+}
+
+// isL4D reports whether the base game is Left 4 Dead 1 or 2.
+func isL4D(base string) bool { return base == "l4d" || base == "l4d2" }
+
+// l4dRoles takes the roles of Left 4 Dead's kill line (survivor, infected
+// class) as role changes, so time and kills per role are counted.
+func (p *Processor) l4dRoles(ctx context.Context, ev stats.Ev, k *playerState, kr string, v *playerState, vr string) error {
+	for _, x := range []struct {
+		st   *playerState
+		role string
+	}{{k, kr}, {v, vr}} {
+		if x.role == "" || x.role == x.st.live.Role {
+			continue
+		}
+		if err := p.playTime(ctx, ev, x.st); err != nil {
+			return err
+		}
+		x.st.live.Role = x.role
+		if err := p.store.ChangeRole(ctx, ev, x.st.live, x.role); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// l4dKillAction scores the action HLstatsX:CE derives from a Left 4 Dead
+// kill: killed_<class> for a special infected or the Witch
+// (killed_smoker, killed_tank, killed_witch ...; not for kills without
+// skill change), killed_survivor (against the victim, without points when
+// noSkill) for a survivor. Codes the game does not define are ignored.
+func (p *Processor) l4dKillAction(ctx context.Context, ev stats.Ev, k, v *playerState, e logparse.Kill, noSkill bool) error {
+	role := strings.ToLower(e.VictimRole)
+	switch {
+	case strings.EqualFold(e.Victim.Team, "Infected") && role != "" && role != "infected":
+		if noSkill {
+			return nil
+		}
+		return p.scoreAction(ctx, ev, k, "killed_"+role, false)
+	case strings.EqualFold(e.Victim.Team, "Survivor"):
+		d, vd, err := p.store.RecordPlayerPlayerAction(ctx, ev, k.live, v.live, "killed_survivor", noSkill)
+		if err != nil {
+			return err
+		}
+		k.live.Skill, k.skillDelta = k.live.Skill+d, k.skillDelta+d
+		v.live.Skill, v.skillDelta = v.live.Skill+vd, v.skillDelta+vd
 	}
 	return nil
 }

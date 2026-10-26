@@ -95,6 +95,11 @@ var Migrations = []Migration{
 			"with their teams, roles, actions, weapons, awards, ranks and ribbons",
 		Seed: true,
 	},
+	{
+		Version: 10, Name: "l4d",
+		Desc: "Left 4 Dead (l4d) and Left 4 Dead 2 (l4d2): the roles, actions, weapons, awards and ribbons of HLstatsX:CE",
+		Seed: true,
+	},
 }
 
 // Latest is the newest schema version this collector knows.

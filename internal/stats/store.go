@@ -687,6 +687,9 @@ type Kill struct {
 	KillStreak           int  // killer's kills in a row
 	DeathStreak          int  // victim's deaths in a row
 	NoSkill              bool // no skill change (a kill with a bot that is not ranked)
+	// OneSided: only the killer gains (Left 4 Dead kills of the AI, which
+	// is not ranked), see ScoreOneSidedKill.
+	OneSided bool
 }
 
 // fragPositions reports whether hlstats_Events_Frags has the position
@@ -773,6 +776,9 @@ func (s *Store) RecordKill(ctx context.Context, ev Ev, k Kill) (KillResult, erro
 		return KillResult{}, err
 	}
 	r := ScoreKill(ksk, vsk, k.Headshot, k.Teamkill, w.modifier, s.set.Get())
+	if k.OneSided {
+		r = ScoreOneSidedKill(ksk, k.Headshot, w.modifier, s.set.Get())
+	}
 	if k.NoSkill {
 		r = KillResult{}
 	}

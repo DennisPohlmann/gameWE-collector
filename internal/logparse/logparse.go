@@ -148,6 +148,13 @@ type (
 		// Flags are the other words of CS:GO's "(headshot penetrated noscope
 		// throughsmoke attackerblind)", e.g. "penetrated".
 		Flags []string
+		// KillerRole and VictimRole are the roles in Left 4 Dead's player
+		// tags (survivor or infected class, e.g. "Gambler", "SMOKER"), ""
+		// for other games. Incap is a Left 4 Dead incapacitation
+		// (`(INCAP)"V" was incapped by "A"`), counted as a kill as
+		// HLstatsX:CE does.
+		KillerRole, VictimRole string
+		Incap                  bool
 	}
 	// WorldDeath is a death without a killer: CS:GO's
 	// `"P" [x y z] was killed by the bomb.` (Weapon "planted_c4").
@@ -342,6 +349,13 @@ func player(m []string) Player {
 func ParseLine(line string) (Event, bool) {
 	line = strings.TrimRight(line, "\x00\r\n ")
 	line = reTimestamp.ReplaceAllString(line, "")
+	var tags []l4dTag
+	if isL4DLine(line) {
+		if e, ok := parseL4DOnly(line); ok {
+			return e, true
+		}
+		line, tags = l4dLine(line)
+	}
 
 	switch {
 	case strings.HasPrefix(line, "Team "):
@@ -411,6 +425,10 @@ func ParseLine(line string) (Event, bool) {
 			} else if p[1] == "victim" && k.VictimPos == nil {
 				k.VictimPos = position(p[2:5])
 			}
+		}
+		if len(tags) == 2 {
+			k.KillerRole, k.VictimRole = tags[0].role, tags[1].role
+			k.KillerPos, k.VictimPos = cmpOr(k.KillerPos, tags[0].pos), cmpOr(k.VictimPos, tags[1].pos)
 		}
 		return k, true
 	}

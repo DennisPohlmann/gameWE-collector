@@ -36,7 +36,7 @@ not affected by the MPL (file-level copyleft).
 | Name | Version | License (SPDX) | URL | Use in gameWE |
 |---|---|---|---|---|
 | DB-IP IP to City Lite (`dbip-city-lite.mmdb`) | the month of the release (the file's build date), updated monthly by the collector | CC-BY-4.0 | https://db-ip.com/db/download/ip-to-city-lite | player and server locations; shipped as `/var/lib/gamewe/collector/dbip-city-lite.mmdb` |
-| HLstatsX:CE game definitions (`sql/install.sql`) | – | GPL-2.0-or-later | https://github.com/A1mDev/hlstatsx-community-edition | teams, roles, actions, weapons, awards and ribbons of cstrike, dod, dods, tfc, valve, ns, tf, hl2mp and csgo in `internal/schema/*/seed.sql`, adapted (docs/GAMES.md, "Default data") |
+| HLstatsX:CE game definitions (`sql/install.sql`) | – | GPL-2.0-or-later | https://github.com/A1mDev/hlstatsx-community-edition | teams, roles, actions, weapons, awards and ribbons of cstrike, dod, dods, tfc, valve, ns, tf, hl2mp, csgo, zps, ff, csp, fof, l4d and l4d2 in `internal/schema/*/seed.sql`, adapted (docs/GAMES.md, "Default data"); its daemon (`scripts/hlstats.pl`, `HLstats_EventHandlers.plib`) was the reference for reading the Left 4 Dead log lines and points, no code was copied |
 | HLstatsX:CE with Counter-Strike 2 support, by lovasatt | as of October 2026 | GPL-2.0-or-later | https://github.com/lovasatt/hlstatsx-community-edition | the cs2 rows of `seed.sql` were cross-checked against its cs2 definitions, and its CS2 support (HTTP logs, Source 2 log and status format) was the reference for gameWE's own Source 2 code; no code was copied |
 
 The HLstatsX:CE data is used under the "or any later version" clause of

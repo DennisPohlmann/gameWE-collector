@@ -24,6 +24,9 @@ func FuzzParseLine(f *testing.F) {
 		`"C<13><[U:1:44]><CT>" flash-assisted killing "B<20><BOT><TERRORIST>"`,
 		`"B<20><BOT><CT>" [10 20 30] was killed by the bomb.`,
 		"ACCOLADE, FINAL: {mvp},\tPlayer Name<12>,\tVALUE: 3.000000,\tPOS: 1,\tSCORE: 40.000000",
+		`(DEATH)"N<3><STEAM_1:0:1><Survivor><Gambler><ALIVE><100+0><setpos_exact 1.00 2.00 3.00; setang 0 0 0><Area 1>" killed "infected<9><><Infected><infected><DEAD><0+0><setpos_exact 4.00 5.00 6.00; setang 0 0 0><Area 2>" with "smg" (headshot)`,
+		`(INCAP)"N<3><STEAM_1:0:1><Survivor><Gambler><DYING><0+0><setpos_exact 1.00 2.00 3.00; setang 0 0 0><Area 1>" was incapped by "H<6><BOT><Infected><HUNTER><ALIVE><250+0><setpos_exact 4.00 5.00 6.00; setang 0 0 0><Area 2>" with "hunter_claw"`,
+		`(TONGUE) Tongue grab starting.  Smoker:"S<5><BOT><Infected><SMOKER><ALIVE><250+0><setpos_exact 4.00 5.00 6.00; setang 0 0 0><Area 2>". Victim:"N<3><STEAM_1:0:1><Survivor><Gambler><ALIVE><100+0><setpos_exact 1.00 2.00 3.00; setang 0 0 0><Area 1>".`,
 	} {
 		f.Add(s)
 	}
@@ -33,6 +36,9 @@ func FuzzParseLine(f *testing.F) {
 			return
 		}
 		if k, isKill := e.(Kill); isKill {
+			if strings.Contains(k.KillerRole+k.VictimRole, `"`) {
+				t.Errorf("role with a quote: %q %q", k.KillerRole, k.VictimRole)
+			}
 			for _, p := range []Player{k.Killer, k.Victim} {
 				if strings.Contains(p.Name, `"`) {
 					t.Errorf("player name with a quote: %q", p.Name)

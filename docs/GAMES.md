@@ -19,7 +19,7 @@ registers itself as log address, and the commands of in-game replies.
 | `tf` | Team Fortress 2 | Source |
 | `dods` | Day of Defeat: Source | Source |
 | `hl2mp`, `hl2ctf` | Half-Life 2: Deathmatch | Source |
-| `l4d`, `l4d2`, `insurgency` | Left 4 Dead 1/2, Insurgency | Source |
+| `l4d`, `l4d2`, `insurgency` | Left 4 Dead 1/2 (see [Left 4 Dead](#left-4-dead)), Insurgency | Source |
 | `zps`, `ff`, `csp`, `fof`, `nmrih` | Zombie Panic! Source, Fortress Forever, CSPromod, Fistful of Frags, No More Room in Hell | Source |
 | `cstrike` | Counter-Strike 1.6 | GoldSrc |
 | `czero` | Counter-Strike: Condition Zero | GoldSrc |
@@ -72,16 +72,21 @@ gameWE changes:
   the ff pseudo weapon award `BOOM_HEADSHOT` is left out (`most_headshots`
   covers it). The SourceMod plugin detects all four (`ZPS`, `FF`, `CSP`,
   `FOF`). Not checked against live logs of these games yet;
-- nmrih: like l4d below (HLstatsX:CE has no data for it), no teams (it is
-  a co-op game);
-- insurgency, l4d, l4d2: no weapons and actions (HLstatsX:CE has none; weapons
+- l4d, l4d2: teams, roles (survivors and infected classes), actions,
+  weapons and awards of HLstatsX:CE; CE's player-vs-player awards are left
+  out, two l4d2 copy errors are fixed (`killed_jockey` was named "Hunter
+  Punter", `protect_teammate` counted "hunter punts"). See
+  [Left 4 Dead](#left-4-dead) below;
+- nmrih: like insurgency below (HLstatsX:CE has no data for it), no teams
+  (it is a co-op game);
+- insurgency: no weapons and actions (HLstatsX:CE has none; weapons
   are created with modifier 1.00 when first used), but the game-independent
   awards, the ranks and the ribbon classes like every game;
 - ranks and ribbon classes as css, one ribbon per daily award.
 
 **Limit:** `hlstats_Teams.teamId` and `hlstats_Roles.roleId` are tinyint in
 the HLstatsX schema: at most 255 teams and 255 roles over all games and
-rankings. The seed uses about 60 teams and 108 roles; a ranking cloned from
+rankings. The seed uses about 60 teams and 135 roles; a ranking cloned from
 css adds 3 and 8, one cloned from dod 2 and 35.
 
 ## Log transport
@@ -211,6 +216,32 @@ RCON `status` of CS2 shows no SteamIDs: its players are matched to the
 tracked players by userid (a player not seen in the log yet is skipped), the
 map comes from the `loaded spawngroup` line, and `BOT` rows count as bots.
 In-game commands (`!rank`, ...) are recorded as chat, but not answered.
+
+## Left 4 Dead
+
+Left 4 Dead 1 and 2 (realgame `l4d`, `l4d2`) log their players with more
+fields than other Source games, mark kills with `(DEATH)` and have lines of
+their own. The collector reads them as HLstatsX:CE's daemon does (not
+checked against live L4D logs yet):
+
+| Line | Stored |
+|------|--------|
+| `(DEATH)"Nick<3><STEAM_1:0:1><Survivor><Gambler><ALIVE><100+0><setpos_exact 1.00 2.00 3.00; ...><Area 12>" killed "Smoker<5><BOT><Infected><SMOKER><DEAD>...>" with "autoshotgun" (headshot)` | the kill with both positions (rounded `setpos_exact`); the fifth field is the role (survivor or infected class), counted as a role change |
+| `(INCAP)"V<...>" was incapped by "A<...>" with "w"` | a kill of V by A (an incapacitated survivor is not dead yet); incapacitated infected are ignored |
+| `(TONGUE) Tongue grab starting.  Smoker:"A<...>". Victim:"V<...>".` | the player-vs-player action `tongue_grab` |
+| `"infected<...><><Infected>..."`, `"witch<...><><Infected>..."` (no SteamID) | the bots `Infected Horde` and `Witch` |
+| the SourceMod plugin's `triggered` lines (`healed_teammate`, `revived_teammate`, `pounce`, `jockey_ride`, ...) and team wins (`versus_win`, `scavenge_win`) | player, player-vs-player and team actions |
+
+Points: a player's kill of the AI (a bot) gives the player
+round(`gamewe_kill_points` x weapon modifier), clamped to 1..4x, plus the
+headshot bonus, and takes nothing from the AI, which is not ranked; this
+holds whatever `gamewe_rank_bots` says, so a co-op server ranks its
+survivors. Kills between players (versus) are scored as usual, kills by the
+AI only with `gamewe_rank_bots = 1`. Infected killing infected are ignored.
+Each kill of a special infected or the Witch is also the killer's action
+`killed_<class>` (`killed_smoker`, `killed_tank`, `killed_witch`, on L4D 1
+`killed_gas`, `killed_exploding`), each kill or incapacitation of a survivor
+the player-vs-player action `killed_survivor`.
 
 ## RCON
 

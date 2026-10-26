@@ -48,3 +48,15 @@ func ScoreKill(killerSkill, victimSkill int, headshot, teamkill bool, modifier f
 		VictimDelta: max(victimSkill+vd, 0) - victimSkill,
 	}
 }
+
+// ScoreOneSidedKill scores a kill only the killer gains from: a Left 4
+// Dead player's kill of the AI, as HLstatsX:CE does. The AI is not ranked,
+// so its skill does not count: round(kill_points * modifier), clamped to
+// 1..4*kill_points, plus the headshot bonus; the victim keeps its skill.
+func ScoreOneSidedKill(killerSkill int, headshot bool, modifier float64, cfg settings.Settings) KillResult {
+	kd := KillDelta(1, 1, modifier, cfg)
+	if headshot {
+		kd += cfg.HeadshotBonus
+	}
+	return KillResult{KillerDelta: max(killerSkill+kd, 0) - killerSkill}
+}
