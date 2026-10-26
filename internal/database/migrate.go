@@ -335,6 +335,11 @@ func plan(ctx context.Context, q querier, dialect string, pfx Prefix) (*Plan, er
 				What: "delete the retired options " + strings.Join(keys, ", ") + " (where unused)",
 				kind: stepExec, stmts: retireOptionsSQL(m.RetireOptions)})
 		}
+		if m.BotsPerRanking {
+			p.Steps = append(p.Steps, Step{Version: m.Version, Name: m.Name, Table: "hlstats_Options",
+				What: "copy the global bot setting (gamewe_rank_bots) to every ranking (gamewe_rank_bots_<game>, gamewe_bot_points_<game>) and delete it",
+				kind: stepExec, stmts: botsPerRankingSQL(pg)})
+		}
 		p.Steps = append(p.Steps, Step{Version: m.Version, Name: m.Name, What: "record version " + fmt.Sprint(m.Version), kind: stepRecord, rec: &m, note: "applied"})
 	}
 	if !synced && len(p.Missing) > 0 {

@@ -767,6 +767,10 @@ func TestIntegrationBotsGeoLoad(t *testing.T) {
 	db := testDB(t)
 	addr := "203.0.113.136:27015"
 	insertServer(t, db, addr, "css")
+	// Bots of css neither ranked nor worth points (read by Reload).
+	if _, err := db.Exec(db.Q(`INSERT INTO hlstats_Options (keyname, value) VALUES ('gamewe_rank_bots_css', '0'), ('gamewe_bot_points_css', '0'), ('gamewe_bot_kills_css', '0')`)); err != nil {
+		t.Fatal(err)
+	}
 	set := settings.NewLive(settings.Defaults())
 	store := stats.NewStore(db, set)
 	hub := NewHub(store, set, &recorder{}, strictLog(t))
@@ -799,7 +803,10 @@ func TestIntegrationBotsGeoLoad(t *testing.T) {
 			WHERE l.unique_id = 'BOT:Bot Bob' AND l.player_hidden = 0`), 1},
 		{"act_players with bot", count(t, db, `SELECT act_players FROM hlstats_Servers`), 2},
 		{"human skill unchanged", count(t, db, `SELECT p.skill FROM hlstats_Players p JOIN hlstats_PlayerUniqueIds u ON u.playerId = p.playerId WHERE u.uniqueId = '0:91'`), 1000},
-		{"human kill counted", count(t, db, `SELECT p.kills FROM hlstats_Players p JOIN hlstats_PlayerUniqueIds u ON u.playerId = p.playerId WHERE u.uniqueId = '0:91'`), 1},
+		// gamewe_bot_kills_css = 0: the frag is stored, the kill not counted.
+		{"human kill of the bot not counted", count(t, db, `SELECT p.kills FROM hlstats_Players p JOIN hlstats_PlayerUniqueIds u ON u.playerId = p.playerId WHERE u.uniqueId = '0:91'`), 0},
+		{"no kill in the name's counts", count(t, db, `SELECT COALESCE(SUM(n.kills), 0) FROM hlstats_PlayerNames n JOIN hlstats_PlayerUniqueIds u ON u.playerId = n.playerId WHERE u.uniqueId = '0:91'`), 0},
+		{"frag stored", count(t, db, `SELECT COUNT(*) FROM hlstats_Events_Frags`), 1},
 		{"location row", count(t, db, `SELECT COUNT(*) FROM hlstats_Players_Locations WHERE flag = 'de' AND country = 'Germany'`), 1},
 		{"player location", count(t, db, `SELECT COUNT(*) FROM hlstats_Players_Data d JOIN hlstats_Players_Locations l ON l.id = d.location_id
 			JOIN hlstats_PlayerUniqueIds u ON u.playerId = d.playerId WHERE u.uniqueId = '0:91'`), 1},

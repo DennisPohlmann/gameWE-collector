@@ -21,6 +21,7 @@ const adminUsage = `usage:
   gamewe game list
   gamewe game add CODE NAME [-template CODE] [-realgame GAME] [-hidden]
   gamewe game set CODE [-name NAME] [-realgame GAME] [-order N] [-hidden=true|false]
+                  [-rank-bots=true|false] [-bot-points=true|false] [-bot-kills=true|false]
   gamewe game hide|show CODE
   gamewe game delete CODE                 (only a game without servers and players, not a default game)
   gamewe server list
@@ -79,6 +80,9 @@ func adminCmd(kind string, args []string) error {
 	realgame := fs.String("realgame", "", "base game (css, cstrike, czero, tf, ...); default: the template's")
 	hidden := fs.Bool("hidden", false, "add the game hidden; game set: -hidden=true|false")
 	order := fs.Int("order", 0, "game set: position in the web's game list (hlstats_Games.display_id)")
+	rankBots := fs.Bool("rank-bots", true, "game set: bots of the ranking are ranked like players (false: hidden; also changes its existing bots)")
+	botPoints := fs.Bool("bot-points", true, "game set: kills with bots change skill in the ranking")
+	botKills := fs.Bool("bot-kills", true, "game set: kills of bots count in the killer's kills (kill ranking, K/D, ranks)")
 	var game, name, rcon, rconFile, public, logSecret optional
 	fs.Var(&game, "game", "hlstats_Games code")
 	fs.Var(&name, "name", "server or game name")
@@ -140,7 +144,7 @@ func adminCmd(kind string, args []string) error {
 		return adminDoc(ctx, a, kind, rest)
 	}
 	aa := adminArgs{fields: admin.ServerFields{Game: game.ptr(), Name: name.ptr(), RconPassword: rcon.ptr(), PublicAddress: public.ptr(), LogSecret: logSecret.ptr()},
-		game: admin.GameFields{Name: name.ptr()}, given: given, template: *template, realgame: *realgame, hidden: *hidden, order: *order, logSecret: logSecret, dry: *dry}
+		game: admin.GameFields{Name: name.ptr()}, given: given, template: *template, realgame: *realgame, hidden: *hidden, rankBots: *rankBots, botPoints: *botPoints, botKills: *botKills, order: *order, logSecret: logSecret, dry: *dry}
 	return captured(os.Stdout, func(w io.Writer, _ *result) error {
 		a.Out = w
 		if write && !cf.dryRun && !cf.force {
@@ -165,14 +169,15 @@ func adminCmd(kind string, args []string) error {
 
 // adminArgs are the flags of adminCmd that adminRun needs.
 type adminArgs struct {
-	fields             admin.ServerFields
-	game               admin.GameFields
-	given              map[string]bool
-	template, realgame string
-	hidden             bool
-	order              int
-	logSecret          optional
-	dry                bool
+	fields                        admin.ServerFields
+	game                          admin.GameFields
+	given                         map[string]bool
+	template, realgame            string
+	hidden                        bool
+	rankBots, botPoints, botKills bool
+	order                         int
+	logSecret                     optional
+	dry                           bool
 }
 
 // adminDoc writes the document of a list or of option get.
@@ -232,6 +237,15 @@ func adminRun(ctx context.Context, a *admin.Admin, kind, sub string, rest []stri
 		}
 		if given["hidden"] {
 			gf.Hidden = &f.hidden
+		}
+		if given["rank-bots"] {
+			gf.RankBots = &f.rankBots
+		}
+		if given["bot-points"] {
+			gf.BotPoints = &f.botPoints
+		}
+		if given["bot-kills"] {
+			gf.BotKills = &f.botKills
 		}
 		return a.SetGame(ctx, rest[0], gf)
 	case "game hide", "game show":

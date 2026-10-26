@@ -461,7 +461,6 @@ func runCmd(args []string) error {
 	default:
 		auto.DB.Check(gpath)
 	}
-	log.Info("bots recorded", "ranked", set.Get().RankBots)
 	if hub.Count() == 0 {
 		log.Warn("no usable game servers in hlstats_Servers yet; add them in the web admin (checked every " + reload.String() + ")")
 	}

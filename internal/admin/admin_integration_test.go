@@ -252,3 +252,106 @@ func TestAdmin(t *testing.T) {
 		t.Error("option not stored")
 	}
 }
+
+// game set -rank-bots / -bot-points store the bot settings of one ranking;
+// turning the ranking of bots off hides the ranking's bots (hideranking
+// 0 -> 1), on shows them again; banned bots (2), humans and the bots of
+// other rankings keep their value. Unchanged values write nothing.
+func TestAdminGameBots(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	clean := func() {
+		for _, q := range []string{
+			`DELETE FROM hlstats_Players WHERE playerId IN (SELECT playerId FROM hlstats_PlayerUniqueIds WHERE game IN ('zz_bot', 'zz_oth'))`,
+			`DELETE FROM hlstats_PlayerUniqueIds WHERE game IN ('zz_bot', 'zz_oth')`,
+			`DELETE FROM hlstats_Games WHERE code IN ('zz_bot', 'zz_oth')`,
+			`DELETE FROM hlstats_Options WHERE keyname LIKE 'gamewe_%bot%zz_%'`,
+		} {
+			if _, err := db.Exec(db.Q(q)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	clean()
+	t.Cleanup(clean)
+	for _, q := range []string{
+		`INSERT INTO hlstats_Games (code, name, realgame, hidden) VALUES ('zz_bot', 'Bots', 'css', '0'), ('zz_oth', 'Other', 'css', '0')`,
+	} {
+		if _, err := db.Exec(db.Q(q)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// playerId, game, uniqueId, hideranking
+	players := []struct {
+		id         int
+		game, uid  string
+		hide, want int
+	}{
+		{990001, "zz_bot", "BOT:Bob", 0, 1},
+		{990002, "zz_bot", "BOT:Ann", 2, 2}, // banned
+		{990003, "zz_bot", "1:4242", 0, 0},  // a human
+		{990004, "zz_oth", "BOT:Bob", 0, 0}, // another ranking
+	}
+	for _, p := range players {
+		if _, err := db.Exec(db.Q(`INSERT INTO hlstats_Players (playerId, game, hideranking) VALUES (?, ?, ?)`), p.id, p.game, p.hide); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(db.Q(`INSERT INTO hlstats_PlayerUniqueIds (playerId, uniqueId, game) VALUES (?, ?, ?)`), p.id, p.uid, p.game); err != nil {
+			t.Fatal(err)
+		}
+	}
+	hide := func(id int) int {
+		return count(t, db, `SELECT hideranking FROM hlstats_Players WHERE playerId = ?`, id)
+	}
+	find := func() Game {
+		t.Helper()
+		list, err := (&Admin{DB: db, Out: &bytes.Buffer{}}).Games(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, g := range list {
+			if g.Code == "zz_bot" {
+				return g
+			}
+		}
+		t.Fatal("zz_bot not listed")
+		return Game{}
+	}
+	if g := find(); !g.RankBots || !g.BotPoints || !g.BotKills {
+		t.Errorf("defaults: %+v, want bots ranked with points", g)
+	}
+
+	var out bytes.Buffer
+	a := &Admin{DB: db, Out: &out}
+	no, yes := false, true
+	if err := a.SetGame(ctx, "zz_bot", GameFields{RankBots: &no, BotPoints: &no, BotKills: &no}); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range players {
+		if got := hide(p.id); got != p.want {
+			t.Errorf("rank-bots off: %s %s hideranking %d, want %d", p.game, p.uid, got, p.want)
+		}
+	}
+	if g := find(); g.RankBots || g.BotPoints || g.BotKills {
+		t.Errorf("after set: %+v", g)
+	}
+	if !strings.Contains(out.String(), "1 bots of zz_bot hidden") {
+		t.Errorf("output: %q", out.String())
+	}
+	out.Reset()
+	if err := a.SetGame(ctx, "zz_bot", GameFields{RankBots: &no}); err != nil || !strings.Contains(out.String(), "unchanged") {
+		t.Errorf("unchanged: %v %q", err, out.String())
+	}
+	if err := a.SetGame(ctx, "zz_bot", GameFields{RankBots: &yes}); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range players {
+		want := p.hide
+		if got := hide(p.id); got != want {
+			t.Errorf("rank-bots on: %s %s hideranking %d, want %d", p.game, p.uid, got, want)
+		}
+	}
+	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Options WHERE keyname IN ('gamewe_rank_bots_zz_bot', 'gamewe_bot_points_zz_bot', 'gamewe_bot_kills_zz_bot')`); n != 3 {
+		t.Errorf("%d option rows, want 3", n)
+	}
+}

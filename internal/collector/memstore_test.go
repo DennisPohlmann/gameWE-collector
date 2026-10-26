@@ -394,7 +394,9 @@ func (m *memStore) RecordKill(_ context.Context, ev stats.Ev, k stats.Kill) (sta
 	vp.skill += r.VictimDelta
 	r.KillerSkill, r.VictimSkill = kp.skill, vp.skill
 	if !k.Teamkill {
-		kp.kills++
+		if !k.NoKillCount {
+			kp.kills++
+		}
 		vp.deaths++
 	}
 	m.kills = append(m.kills, memKill{ev.Srv.ID, ev.Srv.Game, kp.uid, vp.uid, k.Weapon, k.Teamkill, k.Headshot})

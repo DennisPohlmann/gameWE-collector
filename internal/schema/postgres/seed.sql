@@ -2606,7 +2606,6 @@ INSERT INTO hlstats_Options (keyname, value) VALUES
   ('gamewe_headshot_bonus', '0'),
   ('gamewe_suicide_penalty', '5'),
   ('gamewe_teamkill_penalty', '10'),
-  ('gamewe_rank_bots', '0'),
   ('gamewe_store_player_ip', '1'),
   ('gamewe_store_chat', '1'),
   ('gamewe_win_triggers', 'CTs_Win,Terrorists_Win,Target_Bombed,Target_Saved,Bomb_Defused,All_Hostages_Rescued,Hostages_Not_Rescued,VIP_Escaped,VIP_Assassinated,VIP_Not_Escaped,Round_Win'),

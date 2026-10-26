@@ -1355,15 +1355,12 @@ func (p *Processor) kill(ctx context.Context, ev stats.Ev, e logparse.Kill) erro
 		// came first: its positions go into the frag only.
 		kpos, vpos = p.takeLocation(ev, e.Killer.Key(), e.Victim.Key())
 	}
-	// Bots that are not ranked never change anybody's skill: no points, no
-	// headshot action and no kill streak for kills with them.
+	// Without points for bots in the ranking, kills with a bot change
+	// nobody's skill: no points, no headshot action and no kill streak.
 	noSkill := p.unrankedBot(k, v)
 	// Left 4 Dead (as HLstatsX:CE): a player's kill of the AI (a bot) is
-	// worth points for the player alone; the AI is not ranked.
+	// worth points for the player alone.
 	oneSided := l4d && !teamkill && stats.IsBot(v.live.UniqueID) && !stats.IsBot(k.live.UniqueID)
-	if oneSided {
-		noSkill = false
-	}
 	if !teamkill {
 		// The victim's life, and with it the kill streak, ends.
 		if err := p.endStreak(ctx, ev, v); err != nil {
@@ -1379,7 +1376,8 @@ func (p *Processor) kill(ctx context.Context, ev stats.Ev, e logparse.Kill) erro
 	r, err := p.store.RecordKill(ctx, ev, stats.Kill{
 		Killer: k.live, Victim: v.live, Weapon: e.Weapon, Headshot: headshot, Teamkill: teamkill,
 		KillStreak: k.killStreak, DeathStreak: v.deathStreak, NoSkill: noSkill, OneSided: oneSided,
-		KillerPos: kpos, VictimPos: vpos,
+		NoKillCount: !teamkill && stats.IsBot(v.live.UniqueID) && !p.set.Get().BotKills(p.srv.info.Game),
+		KillerPos:   kpos, VictimPos: vpos,
 	})
 	if err != nil {
 		return err
@@ -1479,10 +1477,19 @@ func (p *Processor) l4dKillAction(ctx context.Context, ev stats.Ev, k, v *player
 	return nil
 }
 
-// unrankedBot reports whether a kill or action between a and b involves a
-// bot while bots are not ranked (gamewe_rank_bots = 0).
-func (p *Processor) unrankedBot(a, b *playerState) bool {
-	return !p.set.Get().RankBots && (stats.IsBot(a.live.UniqueID) || stats.IsBot(b.live.UniqueID))
+// unrankedBot reports whether a kill or player-vs-player action of actor
+// against victim changes nobody's skill: it involves a bot while kills with
+// bots give no points in the server's ranking (gamewe_bot_points_<game> = 0),
+// or, in Left 4 Dead, the actor is the AI while bots are not ranked
+// (gamewe_rank_bots_<game> = 0; as HLstatsX:CE, the unranked AI takes no
+// points from the survivors).
+func (p *Processor) unrankedBot(actor, victim *playerState) bool {
+	set, game := p.set.Get(), p.srv.info.Game
+	bot := stats.IsBot(actor.live.UniqueID)
+	if !set.BotPoints(game) && (bot || stats.IsBot(victim.live.UniqueID)) {
+		return true
+	}
+	return bot && !set.RankBots(game) && isL4D(p.srv.info.Base)
 }
 
 // headshotLine handles the plugin's `triggered "headshot"`, which belongs

@@ -44,14 +44,18 @@ type Settings struct {
 	CommandDisplay  string   // gamewe_command_display (panel, chat or both)
 	RawMessages     bool     // gamewe_raw_messages
 	StoreLocations  bool     // gamewe_store_locations
-	RankBots        bool     // gamewe_rank_bots
-	GeoIPDB         string   // gamewe_geoip_db (path of a MaxMind-format city database)
-	SourceBansURL   string   // gamewe_sourcebans_url (public ban list, shared with the web)
-	ServerLoad      bool     // gamewe_server_load
-	PlayerReset     bool     // gamewe_player_reset
-	ResetCooldown   int      // gamewe_player_reset_cooldown (hours)
-	ConsoleEvents   bool     // gamewe_console_events
-	GlobalChat      bool     // gamewe_global_chat
+	// Bot settings of each ranking (hlstats_Games.code), see RankBots and
+	// BotPoints; a ranking without a key uses true.
+	BotsRanked    map[string]bool // gamewe_rank_bots_<game>
+	BotsPoints    map[string]bool // gamewe_bot_points_<game>
+	BotsKills     map[string]bool // gamewe_bot_kills_<game>
+	GeoIPDB       string          // gamewe_geoip_db (path of a MaxMind-format city database)
+	SourceBansURL string          // gamewe_sourcebans_url (public ban list, shared with the web)
+	ServerLoad    bool            // gamewe_server_load
+	PlayerReset   bool            // gamewe_player_reset
+	ResetCooldown int             // gamewe_player_reset_cooldown (hours)
+	ConsoleEvents bool            // gamewe_console_events
+	GlobalChat    bool            // gamewe_global_chat
 	// SiteURL is the web frontend's gamewe_site_url (a web key): the base of
 	// the pages the browser commands (!statsme, !status, ...) open.
 	SiteURL string
@@ -75,6 +79,30 @@ func Defaults() Settings {
 	}
 }
 
+// Option keys of a ranking's bot settings. game is a code from hlstats_Games.
+func RankBotsKey(game string) string  { return "gamewe_rank_bots_" + game }
+func BotPointsKey(game string) string { return "gamewe_bot_points_" + game }
+func BotKillsKey(game string) string  { return "gamewe_bot_kills_" + game }
+
+// RankBots reports whether the bots of a ranking are ranked like players
+// (hideranking 0, in rankings and awards); otherwise new bots get
+// hideranking 1. Default true.
+func (s Settings) RankBots(game string) bool { return on(s.BotsRanked, game) }
+
+// BotPoints reports whether kills and player-vs-player actions with a bot
+// (either side) change skill in a ranking. Default true.
+func (s Settings) BotPoints(game string) bool { return on(s.BotsPoints, game) }
+
+// BotKills reports whether a kill of a bot counts in the killer's kills and
+// headshots (kill ranking, K/D, the kill-based ranks) in a ranking; the
+// kill itself is always stored. Default true.
+func (s Settings) BotKills(game string) bool { return on(s.BotsKills, game) }
+
+func on(m map[string]bool, game string) bool {
+	v, ok := m[game]
+	return v || !ok
+}
+
 // Key describes one hlstats_Options key.
 type Key struct {
 	Name, Default, Meaning string
@@ -96,7 +124,6 @@ func Keys() []Key {
 		{"gamewe_headshot_bonus", strconv.Itoa(d.HeadshotBonus), "extra skill per headshot on top of the hlstats_Actions headshot action (default 0: the action rewards it)"},
 		{"gamewe_suicide_penalty", strconv.Itoa(d.SuicidePenalty), "skill lost per suicide"},
 		{"gamewe_teamkill_penalty", strconv.Itoa(d.TeamkillPenalty), "skill lost per teamkill"},
-		{"gamewe_rank_bots", b(d.RankBots), "bots are always recorded (live view, stats); 1 = bots are also ranked and kills with bots change skill; 0 = bots are hidden from the rankings and awards (hideranking 1) and never change anybody's skill"},
 		{"gamewe_store_player_ip", b(d.StorePlayerIP), "1 = store IPv4 addresses in hlstats_Events_Connects.ipAddress (personal data; only the web admin user can read it)"},
 		{"gamewe_store_chat", b(d.StoreChat), "1 = store chat in hlstats_Events_Chat (personal data; only the web admin user can read it)"},
 		{"gamewe_win_triggers", strings.Join(d.WinTriggers, ","), "log triggers that end a round with a winner (comma separated)"},
@@ -145,20 +172,26 @@ var webKeys = func() map[string]bool {
 	return m
 }()
 
+// gameCode reports whether g can be the hlstats_Games.code in a per-ranking key.
+func gameCode(g string) bool {
+	return g != "" && strings.Trim(g, "abcdefghijklmnopqrstuvwxyz0123456789_") == ""
+}
+
 // otherKey reports gamewe_* keys that are not collector settings but are
 // expected in hlstats_Options: web settings, header link slots
 // (gamewe_link_<n>), web admin TOTP secrets (gamewe_totp_<hash>, pending
 // gamewe_totpp_<hash>), the scheduled ranking resets and hall of fame per
 // game (gamewe_reset_schedule_<game>, gamewe_reset_mode_<game>,
-// gamewe_reset_last_<game>, gamewe_hof_<game>), the collector's heartbeat and
+// gamewe_reset_last_<game>, gamewe_hof_<game>), the bot settings per game
+// (gamewe_rank_bots_<game>, gamewe_bot_points_<game>, gamewe_bot_kills_<game>), the collector's heartbeat and
 // version and retired keys that the migrations delete.
 func otherKey(k string) bool {
 	switch k {
 	case "gamewe_heartbeat", "gamewe_collector_version", // written by the collector
-		"gamewe_daily_awards", // 1.4.x; now features.daily_awards in the config file
-		"gamewe_default_game", // old web setting nothing reads; migration 13 deletes both
-		"gamewe_geoip_db",     // legacy, read below; config.yaml geoip.path replaces it
-		"gamewe_ignore_bots":  // reported above
+		"gamewe_daily_awards",                    // 1.4.x; now features.daily_awards in the config file
+		"gamewe_default_game",                    // old web setting nothing reads; migration 13 deletes both
+		"gamewe_geoip_db",                        // legacy, read below; config.yaml geoip.path replaces it
+		"gamewe_rank_bots", "gamewe_ignore_bots": // reported above
 		return true
 	}
 	if webKeys[k] {
@@ -167,9 +200,9 @@ func otherKey(k string) bool {
 	if n, ok := strings.CutPrefix(k, "gamewe_link_"); ok {
 		return n != "" && strings.Trim(n, "0123456789") == ""
 	}
-	for _, p := range []string{"gamewe_reset_schedule_", "gamewe_reset_mode_", "gamewe_reset_last_", "gamewe_hof_"} {
+	for _, p := range []string{"gamewe_reset_schedule_", "gamewe_reset_mode_", "gamewe_reset_last_", "gamewe_hof_", "gamewe_rank_bots_", "gamewe_bot_points_", "gamewe_bot_kills_"} {
 		if g, ok := strings.CutPrefix(k, p); ok {
-			return g != "" && strings.Trim(g, "abcdefghijklmnopqrstuvwxyz0123456789_") == ""
+			return gameCode(g)
 		}
 	}
 	for _, p := range []string{"gamewe_totp_", "gamewe_totpp_"} {
@@ -225,16 +258,35 @@ func FromOptions(opts map[string]string) (Settings, []string) {
 	num("gamewe_idle_timeout", &s.IdleTimeout, 0)
 	flag("gamewe_raw_messages", &s.RawMessages)
 	flag("gamewe_store_locations", &s.StoreLocations)
-	flag("gamewe_rank_bots", &s.RankBots)
-	// The legacy gamewe_ignore_bots dropped bots completely. Bots are now
-	// always recorded; a stored 1 still keeps them out of the rankings.
-	if _, ok := opts["gamewe_ignore_bots"]; ok {
-		var ignore bool
-		flag("gamewe_ignore_bots", &ignore)
-		if ignore {
-			s.RankBots = false
+	// The bot settings of each ranking (keys sorted: stable warnings).
+	var keys []string
+	for k := range opts {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		for _, f := range []struct {
+			prefix string
+			dst    *map[string]bool
+		}{{"gamewe_rank_bots_", &s.BotsRanked}, {"gamewe_bot_points_", &s.BotsPoints}, {"gamewe_bot_kills_", &s.BotsKills}} {
+			g, ok := strings.CutPrefix(k, f.prefix)
+			if !ok || !gameCode(g) {
+				continue
+			}
+			v := true
+			flag(k, &v)
+			if *f.dst == nil {
+				*f.dst = map[string]bool{}
+			}
+			(*f.dst)[g] = v
 		}
-		warn = append(warn, "hlstats_Options gamewe_ignore_bots is obsolete: bots are always recorded, only gamewe_rank_bots decides the rankings (1 is read as gamewe_rank_bots = 0); delete the row")
+	}
+	// The global keys of collector 0.20 and older; migration 15 copies
+	// them to every ranking and deletes them.
+	for _, k := range []string{"gamewe_rank_bots", "gamewe_ignore_bots"} {
+		if _, ok := opts[k]; ok {
+			warn = append(warn, "hlstats_Options "+k+" is obsolete and not read: the bot settings are per ranking now (gamewe_rank_bots_<game>, gamewe_bot_points_<game>; gamewe db migrate moves it); delete the row")
+		}
 	}
 	flag("gamewe_server_load", &s.ServerLoad)
 	flag("gamewe_player_reset", &s.PlayerReset)

@@ -18,6 +18,11 @@ func TestIntegrationL4D(t *testing.T) {
 	db := testDB(t)
 	loadSeed(t, db)
 	addr := "198.51.100.4:27016"
+	// The AI not ranked, kills with it worth points (what migration 15 makes
+	// of gamewe_rank_bots = 0 for Left 4 Dead).
+	if _, err := db.Exec(db.Q(`INSERT INTO hlstats_Options (keyname, value) VALUES ('gamewe_rank_bots_l4d2', '0')`)); err != nil {
+		t.Fatal(err)
+	}
 	hub := dbHub(t, db, &recorder{}, [][2]string{{addr, "l4d2"}})
 	const (
 		nick   = `"Nick<3><STEAM_1:0:71><Survivor><Gambler><ALIVE><100+0><setpos_exact 10.00 20.00 30.00; setang 0.00 0.00 0.00><Area 1>"`

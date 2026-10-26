@@ -485,7 +485,7 @@ func (s *Store) Player(ctx context.Context, ev Ev, uniqueID, name string) (id in
 	}
 	if err := s.run(ctx,
 		step{s.ignore(`INSERT INTO hlstats_Players (playerId, game, game_id, skill, last_event, hideranking) VALUES (?, ?, ?, ?, ?, ?)`),
-			[]any{id, game, ev.Srv.GameID, s.set.Get().StartSkill, ev.ts(), boolInt(IsBot(uniqueID) && !s.set.Get().RankBots)}},
+			[]any{id, game, ev.Srv.GameID, s.set.Get().StartSkill, ev.ts(), boolInt(IsBot(uniqueID) && !s.set.Get().RankBots(game))}},
 	); err != nil {
 		return 0, 0, err
 	}
@@ -498,8 +498,8 @@ func IsBot(uniqueID string) bool { return strings.HasPrefix(uniqueID, "BOT:") }
 
 func (s *Store) newPlayer(ctx context.Context, ev Ev, uniqueID, name string) (int64, int, error) {
 	hide := 0
-	if IsBot(uniqueID) && !s.set.Get().RankBots {
-		hide = 1 // bots are recorded but not ranked (gamewe_rank_bots)
+	if IsBot(uniqueID) && !s.set.Get().RankBots(ev.Srv.Game) {
+		hide = 1 // bots are recorded but not ranked (gamewe_rank_bots_<game>)
 	}
 	id, err := s.insertID(ctx, `INSERT INTO hlstats_Players (game, game_id, skill, last_event, hideranking) VALUES (?, ?, ?, ?, ?)`, "playerId",
 		ev.Srv.Game, ev.Srv.GameID, s.set.Get().StartSkill, ev.ts(), hide)
@@ -725,6 +725,11 @@ type Kill struct {
 	// OneSided: only the killer gains (Left 4 Dead kills of the AI, which
 	// is not ranked), see ScoreOneSidedKill.
 	OneSided bool
+	// NoKillCount: the kill (of a bot, gamewe_bot_kills_<game> = 0) is
+	// stored, but not counted in the killer's kills and headshots
+	// (hlstats_Players, hlstats_PlayerNames, history): not for the kill
+	// ranking, K/D and the kill-based ranks.
+	NoKillCount bool
 }
 
 // fragPositions reports whether hlstats_Events_Frags has the position
@@ -820,6 +825,7 @@ func (s *Store) RecordKill(ctx context.Context, ev Ev, k Kill) (KillResult, erro
 	r.KillerSkill, r.VictimSkill = ksk+r.KillerDelta, vsk+r.VictimDelta
 	hs := boolInt(k.Headshot)
 	ks, ds := min(k.KillStreak, 65535), min(k.DeathStreak, 255)
+	counted := boolInt(!k.NoKillCount)
 	var steps []step
 	if k.Teamkill {
 		steps = []step{
@@ -833,15 +839,24 @@ func (s *Store) RecordKill(ctx context.Context, ev Ev, k Kill) (KillResult, erro
 			{`UPDATE hlstats_Livestats SET team_killed = team_killed + 1, is_dead = 1 WHERE player_id = ? AND server_id = ?`, []any{k.Victim.ID, ev.Srv.ID}},
 		}
 	} else {
-		steps = []step{
-			// The ratios come first and use the old counts plus this kill:
-			// MariaDB evaluates SET from left to right with the new values,
-			// PostgreSQL always with the old ones, so this is right in both.
-			{`UPDATE hlstats_Players SET hpk = (headshots + ?) * 1.0 / (kills + 1),
+		// The ratios come first and use the old counts plus this kill:
+		// MariaDB evaluates SET from left to right with the new values,
+		// PostgreSQL always with the old ones, so this is right in both.
+		killerStep := step{`UPDATE hlstats_Players SET hpk = (headshots + ?) * 1.0 / (kills + 1),
 				kpd = (kills + 1) * 1.0 / CASE WHEN deaths > 0 THEN deaths ELSE 1 END,
 				kills = kills + 1, headshots = headshots + ?, ` + s.skillSet() + `, last_skill_change = ?,
 				kill_streak = GREATEST(kill_streak, ?), last_event = ? WHERE playerId = ?`,
-				[]any{hs, hs, r.KillerDelta, r.KillerDelta, ks, ev.ts(), k.Killer.ID}},
+			[]any{hs, hs, r.KillerDelta, r.KillerDelta, ks, ev.ts(), k.Killer.ID}}
+		if k.NoKillCount {
+			killerStep = step{`UPDATE hlstats_Players SET ` + s.skillSet() + `, last_skill_change = ?,
+				kill_streak = GREATEST(kill_streak, ?), last_event = ? WHERE playerId = ?`,
+				[]any{r.KillerDelta, r.KillerDelta, ks, ev.ts(), k.Killer.ID}}
+		}
+		steps = []step{
+			// (the ratios of the killer: killerStep) and use the old counts plus this kill:
+			// MariaDB evaluates SET from left to right with the new values,
+			// PostgreSQL always with the old ones, so this is right in both.
+			killerStep,
 			{`UPDATE hlstats_Players SET kpd = kills * 1.0 / (deaths + 1), death_hpk = (death_headshots + ?) * 1.0 / (deaths + 1),
 				deaths = deaths + 1, death_headshots = death_headshots + ?, ` + s.skillSet() + `, last_skill_change = ?,
 				death_streak = GREATEST(death_streak, ?), last_event = ? WHERE playerId = ?`,
@@ -849,8 +864,8 @@ func (s *Store) RecordKill(ctx context.Context, ev Ev, k Kill) (KillResult, erro
 			s.fragInsert(ctx, ev, k, w.id, hs),
 			{`UPDATE hlstats_Servers SET kills = kills + 1, headshots = headshots + ? WHERE serverId = ?`, []any{hs, ev.Srv.ID}},
 			{`UPDATE hlstats_Weapons SET kills = kills + 1, headshots = headshots + ? WHERE weaponId = ?`, []any{hs, w.id}},
-			{`UPDATE hlstats_PlayerNames SET kills = kills + 1, headshots = headshots + ? WHERE playerId = ? AND name = ?`,
-				[]any{hs, k.Killer.ID, clip(k.Killer.Name, 128)}},
+			{`UPDATE hlstats_PlayerNames SET kills = kills + ?, headshots = headshots + ? WHERE playerId = ? AND name = ?`,
+				[]any{counted, hs * counted, k.Killer.ID, clip(k.Killer.Name, 128)}},
 			{`UPDATE hlstats_PlayerNames SET deaths = deaths + 1 WHERE playerId = ? AND name = ?`, []any{k.Victim.ID, clip(k.Victim.Name, 128)}},
 			{`UPDATE hlstats_Livestats SET kills = kills + 1, headshots = headshots + ?, ` + s.skillSet() + `, skill_change = skill_change + ?,
 				kill_streak = GREATEST(kill_streak, ?) WHERE player_id = ? AND server_id = ?`,
@@ -891,7 +906,7 @@ func (s *Store) RecordKill(ctx context.Context, ev Ev, k Kill) (KillResult, erro
 	if k.Teamkill {
 		return r, s.history(ctx, ev, killer, hist{teamkills: 1, skillChange: r.KillerDelta})
 	}
-	if err := s.history(ctx, ev, killer, hist{kills: 1, headshots: hs, skillChange: r.KillerDelta, killStreak: ks}); err != nil {
+	if err := s.history(ctx, ev, killer, hist{kills: counted, headshots: hs * counted, skillChange: r.KillerDelta, killStreak: ks}); err != nil {
 		return r, err
 	}
 	return r, s.history(ctx, ev, victim, hist{deaths: 1, skillChange: r.VictimDelta, deathStreak: ds})

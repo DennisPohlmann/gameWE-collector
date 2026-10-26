@@ -85,9 +85,13 @@ type Game struct {
 	Guessed bool   `json:"realgame_guessed"`
 	Engine  string `json:"engine"`
 	Hidden  bool   `json:"hidden"`
-	Servers int    `json:"servers"`
-	Players int    `json:"players"`
-	Name    string `json:"name"`
+	// The ranking's bot settings (settings.RankBots, settings.BotPoints).
+	RankBots  bool   `json:"rank_bots"`
+	BotPoints bool   `json:"bot_points"`
+	BotKills  bool   `json:"bot_kills"`
+	Servers   int    `json:"servers"`
+	Players   int    `json:"players"`
+	Name      string `json:"name"`
 }
 
 // realgameCol is the column expression of hlstats_Games.realgame: the
@@ -132,15 +136,23 @@ func (a *Admin) ListGames(ctx context.Context) error {
 		return err
 	}
 	w := tabwriter.NewWriter(a.Out, 0, 2, 2, ' ', 0)
-	fmt.Fprintln(w, "CODE\tREALGAME\tENGINE\tHIDDEN\tSERVERS\tPLAYERS\tNAME")
+	fmt.Fprintln(w, "CODE\tREALGAME\tENGINE\tHIDDEN\tBOTS\tSERVERS\tPLAYERS\tNAME")
 	for _, g := range list {
 		rg := g.Realgame
 		if g.Guessed {
 			rg += "?"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%d\t%s\n", g.Code, rg, g.Engine, map[bool]string{true: "yes"}[g.Hidden], g.Servers, g.Players, g.Name)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%d\t%d\t%s\n", g.Code, rg, g.Engine, map[bool]string{true: "yes"}[g.Hidden], botsText(g), g.Servers, g.Players, g.Name)
 	}
 	return w.Flush()
+}
+
+// botsText is the BOTS column of game list: ranked or hidden, with or
+// without points.
+func botsText(g Game) string {
+	r := map[bool]string{true: "ranked", false: "hidden"}[g.RankBots]
+	r += map[bool]string{true: ", points", false: ", no points"}[g.BotPoints]
+	return r + map[bool]string{true: ", kills", false: ", no kills"}[g.BotKills]
 }
 
 // Games returns all games with their number of servers and players.
@@ -149,6 +161,11 @@ func (a *Admin) Games(ctx context.Context) ([]Game, error) {
 	if err != nil {
 		return nil, err
 	}
+	opts, err := a.options(ctx)
+	if err != nil {
+		return nil, err
+	}
+	set, _ := settings.FromOptions(opts)
 	if col == "realgame" {
 		col = "g.realgame"
 	}
@@ -169,6 +186,7 @@ func (a *Admin) Games(ctx context.Context) ([]Game, error) {
 		}
 		_, engine, warn := games.Resolve(g.Realgame, g.Code)
 		g.Engine, g.Guessed, g.Hidden = engine.String(), warn != "", hidden == "1"
+		g.RankBots, g.BotPoints, g.BotKills = set.RankBots(g.Code), set.BotPoints(g.Code), set.BotKills(g.Code)
 		list = append(list, g)
 	}
 	return list, rows.Err()
@@ -289,11 +307,14 @@ type GameFields struct {
 	Name, Realgame *string
 	Order          *int // hlstats_Games.display_id
 	Hidden         *bool
+	// Bot settings of the ranking (hlstats_Options gamewe_rank_bots_<game>,
+	// gamewe_bot_points_<game>, gamewe_bot_kills_<game>).
+	RankBots, BotPoints, BotKills *bool
 }
 
 // SetGame changes the given fields of a game.
 func (a *Admin) SetGame(ctx context.Context, code string, f GameFields) error {
-	if f.Name == nil && f.Realgame == nil && f.Order == nil && f.Hidden == nil {
+	if f.Name == nil && f.Realgame == nil && f.Order == nil && f.Hidden == nil && f.RankBots == nil && f.BotPoints == nil && f.BotKills == nil {
 		return errors.New("nothing to change")
 	}
 	g, err := a.game(ctx, code)
@@ -346,16 +367,98 @@ func (a *Admin) SetGame(ctx context.Context, code string, f GameFields) error {
 	if f.Hidden != nil && *f.Hidden != g.Hidden {
 		add("hidden", map[bool]string{true: "1", false: "0"}[*f.Hidden], map[bool]string{true: "hidden", false: "shown"}[*f.Hidden])
 	}
-	if len(sets) == 0 {
+	bots, err := a.botChanges(ctx, g.Code, f)
+	if err != nil {
+		return err
+	}
+	for _, b := range bots {
+		changed = append(changed, b.desc)
+	}
+	if len(changed) == 0 {
 		a.say("game %s unchanged", g.Code)
 		return nil
 	}
 	if !a.DryRun {
-		if _, err := a.exec(ctx, `UPDATE hlstats_Games SET `+strings.Join(sets, ", ")+` WHERE code = ?`, append(args, g.Code)...); err != nil {
-			return err
+		if len(sets) > 0 {
+			if _, err := a.exec(ctx, `UPDATE hlstats_Games SET `+strings.Join(sets, ", ")+` WHERE code = ?`, append(args, g.Code)...); err != nil {
+				return err
+			}
+		}
+		for _, b := range bots {
+			if err := a.setBotOption(ctx, g.Code, b); err != nil {
+				return err
+			}
 		}
 	}
 	a.say("game %s: %s", g.Code, strings.Join(changed, ", "))
+	return nil
+}
+
+// botChange is a changed bot setting of a ranking.
+type botChange struct {
+	key  string
+	on   bool
+	desc string
+}
+
+// botChanges returns the bot settings of f that differ from the stored ones.
+func (a *Admin) botChanges(ctx context.Context, game string, f GameFields) ([]botChange, error) {
+	if f.RankBots == nil && f.BotPoints == nil && f.BotKills == nil {
+		return nil, nil
+	}
+	opts, err := a.options(ctx)
+	if err != nil {
+		return nil, err
+	}
+	set, _ := settings.FromOptions(opts)
+	var out []botChange
+	if f.RankBots != nil && *f.RankBots != set.RankBots(game) {
+		out = append(out, botChange{settings.RankBotsKey(game), *f.RankBots, map[bool]string{true: "bots ranked", false: "bots hidden from the ranking"}[*f.RankBots]})
+	}
+	if f.BotPoints != nil && *f.BotPoints != set.BotPoints(game) {
+		out = append(out, botChange{settings.BotPointsKey(game), *f.BotPoints, map[bool]string{true: "kills with bots give points", false: "kills with bots give no points"}[*f.BotPoints]})
+	}
+	if f.BotKills != nil && *f.BotKills != set.BotKills(game) {
+		out = append(out, botChange{settings.BotKillsKey(game), *f.BotKills, map[bool]string{true: "kills of bots count as kills", false: "kills of bots do not count as kills"}[*f.BotKills]})
+	}
+	return out, nil
+}
+
+// setBotOption stores a bot setting of a ranking. Turning the ranking of
+// bots on or off also shows or hides the ranking's existing bots
+// (hideranking 0 <-> 1; banned or self-hidden bots keep their value).
+func (a *Admin) setBotOption(ctx context.Context, game string, b botChange) error {
+	v := map[bool]string{true: "1", false: "0"}[b.on]
+	n, err := a.exec(ctx, `UPDATE hlstats_Options SET value = ? WHERE keyname = ?`, v, b.key)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		var x string
+		switch err := a.row(ctx, `SELECT value FROM hlstats_Options WHERE keyname = ?`, b.key).Scan(&x); {
+		case errors.Is(err, sql.ErrNoRows):
+			if _, err := a.exec(ctx, `INSERT INTO hlstats_Options (keyname, value) VALUES (?, ?)`, b.key, v); err != nil {
+				return err
+			}
+		case err != nil:
+			return err
+		}
+	}
+	if b.key != settings.RankBotsKey(game) {
+		return nil
+	}
+	from, to := 1, 0
+	if !b.on {
+		from, to = 0, 1
+	}
+	n, err = a.exec(ctx, `UPDATE hlstats_Players SET hideranking = ? WHERE game = ? AND hideranking = ?
+		AND playerId IN (SELECT playerId FROM hlstats_PlayerUniqueIds WHERE game = ? AND uniqueId LIKE 'BOT:%')`, to, game, from, game)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		a.say("  %d bots of %s %s", n, game, map[bool]string{true: "ranked", false: "hidden"}[b.on])
+	}
 	return nil
 }
 

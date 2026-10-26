@@ -37,7 +37,8 @@ variant are listed in [PostgreSQL](#postgresql) at the end.
   ids get the same form (`[U:1:24691]` = `STEAM_0:1:12345` → `1:12345`). It is at
   most 64 characters. Bots are `BOT:<name>` and are ignored by default.
 - **hideranking:** 0 = ranked; 1 = hidden by an admin, or set by the
-  collector for new bots (unless `gamewe_rank_bots` = 1); 2 = banned, set by
+  collector for new bots of a ranking with `gamewe_rank_bots_<game>` = 0, and
+  by the ranking's bot switch for its existing bots; 2 = banned, set by
   the collector for VAC-ban disconnects and permanent bans
   (`Banid: ... banned "permanently"`), and with `features.sourcebans` while a
   SourceBans ban runs (`hlstats_Players_Bans`; set to 2 only from 0, and back
@@ -48,14 +49,22 @@ variant are listed in [PostgreSQL](#postgresql) at the end.
   changed by the command, and a ban turns 3 into 2. Every value but 0 leaves
   the player out of the rankings, rank numbers and awards; the value stays
   when the player comes back.
-- **Bots** (always recorded; `gamewe_rank_bots` decides only the rankings): uniqueId `BOT:<name>`, so one
+- **Bots** (always recorded; per ranking, `hlstats_Options`
+  `gamewe_rank_bots_<game>`, `gamewe_bot_points_<game>` and
+  `gamewe_bot_kills_<game>`, all 1 when
+  missing): uniqueId `BOT:<name>`, so one
   row per bot name and game. They are in the live view, `act_players` (and
-  `act_bots`) and their own statistics, and get `hideranking` = 1 when created. With `gamewe_rank_bots`
-  = 0 kills with a bot (either side) and player-vs-player actions with a bot
-  change nobody's skill (stored with 0 points, no headshot action, no kill
-  streak); kills and deaths are still counted. Awards skip them (hideranking).
-  Changing `gamewe_rank_bots` later does not change existing bot rows: set their
-  `hideranking` in the web admin. Servers of one game with the same bot names
+  `act_bots`) and their own statistics. With `gamewe_rank_bots_<game>` = 0 they
+  get `hideranking` = 1 when created, and awards skip them; turning the
+  setting on or off in the web admin or with `gamewe game set` also sets
+  `hideranking` 0 ↔ 1 of the ranking's existing bots (2, banned, stays). With
+  `gamewe_bot_points_<game>` = 0 kills with a bot (either side) and
+  player-vs-player actions with a bot change nobody's skill (stored with 0
+  points, no headshot action, no kill streak); kills and deaths are still
+  counted, also for the kill-based ranks, unless `gamewe_bot_kills_<game>` = 0:
+  then a kill of a bot is stored (frag, weapon, map, server, team, the bot's
+  death) but not added to the killer's `kills` and `headshots` (also not in
+  `hlstats_PlayerNames` and `hlstats_Players_History`). Servers of one game with the same bot names
   share these rows, also the live row (one per player): the bot is live on the
   server that saw it last; `act_bots` counts per server. `hlstats_Servers.players` counts the game's players without
   `hideranking = 2`.
@@ -331,7 +340,7 @@ These are left to the web frontend or the web admin, or not filled at all
   `points_healed`, `flags_captured`.
 
 `hlstats_Players.hideranking` is set by the collector to 1 for new bots
-(with `gamewe_rank_bots` = 0), to 2 for banned players and to 3 / 0 when a
+(with `gamewe_rank_bots_<game>` = 0), to 2 for banned players and to 3 / 0 when a
 player hides or shows themselves (`!hideranking`); 1 for humans is the web
 admin's.
 

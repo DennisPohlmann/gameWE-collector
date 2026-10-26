@@ -132,8 +132,11 @@ The values in `code style` are `hlstats_Options` keys (defaults in
   the player gets `reward_player`, the victim loses it.
 - **Round won:** every player of the winning team gets `reward_team` of the
   win trigger's team action in `hlstats_Actions`, and a win; the other team a loss.
-- Skill never drops below 0. Bots are recorded but not ranked, and kills with
-  bots change nobody's skill (`gamewe_rank_bots`).
+- Skill never drops below 0. Bots are recorded, and per ranking ranked or
+  hidden (`gamewe_rank_bots_<game>`, default ranked); kills with bots give
+  points unless the ranking turns that off (`gamewe_bot_points_<game>`),
+  and count as kills for the kill-based ranks unless it turns that off
+  (`gamewe_bot_kills_<game>`).
 - VAC-banned players (disconnect reason) and permanent bans (`Banid: ... "permanently"`)
   are hidden from the rankings (`hideranking` = 2).
 
@@ -509,6 +512,9 @@ gamewe game add css3 "CS:S GunGame" -template css  # again: adds only what is mi
 gamewe game set css3 -name "CS:S GunGame 24/7"    # only the given fields change
 gamewe game set css3 -realgame css -order 2        # base game, position in the web's game list
 gamewe game set css3 -hidden=true                  # the same as game hide css3
+gamewe game set css3 -rank-bots=false              # bots of css3 out of the ranking (hides its bots now)
+gamewe game set css3 -bot-points=false             # kills with bots give no points in css3
+gamewe game set css3 -bot-kills=false              # kills of bots do not count as kills (career rank, K/D)
 gamewe game hide css                               # hide / show in the web's game list
 gamewe game delete css3                            # only a game without servers and players;
                                                    #   default games (css, cstrike, tf, ...) are refused: hide them

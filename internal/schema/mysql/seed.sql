@@ -2621,7 +2621,6 @@ INSERT IGNORE INTO hlstats_Options (keyname, value) VALUES
   ('gamewe_headshot_bonus', '0'),     -- extra skill per headshot on top of the 'headshot' action
   ('gamewe_suicide_penalty', '5'),    -- skill lost per suicide
   ('gamewe_teamkill_penalty', '10'),  -- skill lost per teamkill
-  ('gamewe_rank_bots', '0'),          -- bots are always recorded; 0 = not ranked, no awards, no effect on skill
   ('gamewe_store_player_ip', '1'),    -- 1 = store IPv4 addresses (personal data, web admin only)
   ('gamewe_store_chat', '1'),         -- 1 = store chat (personal data, web admin only)
   ('gamewe_win_triggers', 'CTs_Win,Terrorists_Win,Target_Bombed,Target_Saved,Bomb_Defused,All_Hostages_Rescued,Hostages_Not_Rescued,VIP_Escaped,VIP_Assassinated,VIP_Not_Escaped,Round_Win'),

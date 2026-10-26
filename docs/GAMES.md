@@ -235,10 +235,12 @@ checked against live L4D logs yet):
 
 Points: a player's kill of the AI (a bot) gives the player
 round(`gamewe_kill_points` x weapon modifier), clamped to 1..4x, plus the
-headshot bonus, and takes nothing from the AI, which is not ranked; this
-holds whatever `gamewe_rank_bots` says, so a co-op server ranks its
-survivors. Kills between players (versus) are scored as usual, kills by the
-AI only with `gamewe_rank_bots = 1`. Infected killing infected are ignored.
+headshot bonus, and takes nothing from the AI, as long as the ranking gives
+points for bots (`gamewe_bot_points_<game>`, default 1), so a co-op server
+ranks its survivors. Kills between players (versus) are scored as usual;
+kills and actions by the AI change skill only while the ranking ranks bots
+(`gamewe_rank_bots_<game>`, default 1; migration 15 sets 0 where the old
+global `gamewe_rank_bots` was 0). Infected killing infected are ignored.
 Each kill of a special infected or the Witch is also the killer's action
 `killed_<class>` (`killed_smoker`, `killed_tank`, `killed_witch`, on L4D 1
 `killed_gas`, `killed_exploding`), each kill or incapacitation of a survivor

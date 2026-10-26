@@ -37,6 +37,10 @@ type Migration struct {
 	// RetireOptions are hlstats_Options rows that neither the collector nor
 	// the website reads any more; each is deleted as given there.
 	RetireOptions []RetiredOption
+	// BotsPerRanking moves the global bot setting of collector 0.20 and older
+	// (gamewe_rank_bots, gamewe_ignore_bots) to every ranking
+	// (gamewe_rank_bots_<game>, gamewe_bot_points_<game>) and deletes it.
+	BotsPerRanking bool
 }
 
 // RetiredOption is an hlstats_Options key to delete: always when IfValue is
@@ -147,6 +151,12 @@ var Migrations = []Migration{
 			"with type, reason, length, start, end and whether the ban is still running; readable by gamewe_web",
 		Sync: true,
 	},
+	{
+		Version: 15, Name: "bots-per-ranking",
+		Desc: "the bot setting per ranking: the global gamewe_rank_bots (and the old gamewe_ignore_bots) becomes gamewe_rank_bots_<game> " +
+			"and gamewe_bot_points_<game> of every ranking with the same effect, then the global rows are deleted",
+		BotsPerRanking: true,
+	},
 }
 
 // Latest is the newest schema version this collector knows.
@@ -161,6 +171,9 @@ func (m Migration) Checksum() string {
 	}
 	if len(m.RetireOptions) > 0 {
 		b = fmt.Appendf(b, "|%v", m.RetireOptions)
+	}
+	if m.BotsPerRanking {
+		b = fmt.Appendf(b, "|bots-per-ranking")
 	}
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
@@ -212,4 +225,41 @@ func retireOptionsSQL(opts []RetiredOption) []string {
 		out = append(out, q)
 	}
 	return out
+}
+
+// botsPerRankingSQL writes the bot settings of every ranking from the global
+// gamewe_rank_bots of collector 0.20 and older, with the effect it had, and
+// deletes the global rows:
+//
+//   - gamewe_rank_bots_<game> = the global value (0 when gamewe_ignore_bots
+//     was 1, 0 when the key was missing: the old default);
+//   - gamewe_bot_points_<game> = the same, except Left 4 Dead, where a
+//     player's kill of the AI always gave points.
+//
+// A database without either global row (an HLstatsX database converted by
+// this collector) gets no per-ranking rows: the new default, bots ranked
+// with points. Rows that exist are kept, so a second run changes nothing.
+// Only constants, no user input.
+func botsPerRankingSQL(postgres bool) []string {
+	ins, conflict := "INSERT IGNORE INTO ", ""
+	if postgres {
+		ins, conflict = "INSERT INTO ", " ON CONFLICT DO NOTHING"
+	}
+	truthy := func(key string) string {
+		return `EXISTS (SELECT 1 FROM hlstats_Options o WHERE o.keyname = '` + key + `' AND LOWER(TRIM(o.value)) IN ('1', 'true', 'yes', 'on'))`
+	}
+	ranked := `CASE WHEN ` + truthy("gamewe_ignore_bots") + ` THEN '0' WHEN ` + truthy("gamewe_rank_bots") + ` THEN '1' ELSE '0' END`
+	l4d := `(g.realgame IN ('l4d', 'l4d2') OR g.code IN ('l4d', 'l4d2'))`
+	write := func(prefix, value string) string {
+		return ins + `hlstats_Options (keyname, value)
+			SELECT CONCAT('` + prefix + `', g.code), ` + value + `
+			FROM hlstats_Games g
+			WHERE EXISTS (SELECT 1 FROM hlstats_Options o WHERE o.keyname IN ('gamewe_rank_bots', 'gamewe_ignore_bots'))
+			  AND NOT EXISTS (SELECT 1 FROM hlstats_Options x WHERE x.keyname = CONCAT('` + prefix + `', g.code))` + conflict
+	}
+	return []string{
+		write("gamewe_rank_bots_", ranked),
+		write("gamewe_bot_points_", `CASE WHEN `+l4d+` THEN '1' ELSE `+ranked+` END`),
+		`DELETE FROM hlstats_Options WHERE keyname IN ('gamewe_rank_bots', 'gamewe_ignore_bots')`,
+	}
 }

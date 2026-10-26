@@ -216,10 +216,13 @@ func TestParseStats(t *testing.T) {
 	}
 }
 
-// Bots are tracked, but with gamewe_rank_bots = 0 kills with them change
-// nobody's skill and give no headshot action and no kill streak.
+// Bots are tracked, but with gamewe_bot_points_<game> = 0 kills with them
+// change nobody's skill and give no headshot action and no kill streak.
 func TestBotsDoNotChangeSkill(t *testing.T) {
 	p, st := newTestProcessor(t)
+	s := settings.Defaults()
+	s.BotsPoints = map[string]bool{"css": false, "tf": true}
+	p.set.Set(s)
 	ctx, now := context.Background(), time.Now()
 	for _, l := range []string{
 		`"Bot Bob<9><BOT><TERRORIST>" joined team "TERRORIST"`,
@@ -247,39 +250,74 @@ func TestBotsDoNotChangeSkill(t *testing.T) {
 		t.Errorf("actions for kills with a bot: %v", actions)
 	}
 
-	// With gamewe_rank_bots = 1 the same kill counts.
-	s := settings.Defaults()
-	s.RankBots = true
-	p.set.Set(s)
+	// With gamewe_bot_points_css = 1 (or without the key) the same kill counts.
+	p.set.Set(settings.Defaults())
 	if err := p.Handle(ctx, `"K<2><STEAM_1:0:1><CT>" killed "Bot Bob<9><BOT><TERRORIST>" with "ak47" (headshot)`, now); err != nil {
 		t.Fatal(err)
 	}
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	if k.skill == 1000 || len(st.actions) != 1 {
-		t.Errorf("ranked bots: skill %d, actions %v", k.skill, st.actions)
+		t.Errorf("bot points: skill %d, actions %v", k.skill, st.actions)
 	}
 }
 
-// A stored gamewe_ignore_bots = 1 (legacy) no longer drops bots: they
-// are recorded, but not ranked.
-func TestIgnoreBotsObsolete(t *testing.T) {
+// With gamewe_bot_kills_<game> = 0 a kill of a bot is stored but not counted
+// in the killer's kills; deaths by bots and kills of players still count.
+func TestBotKillsNotCounted(t *testing.T) {
 	p, st := newTestProcessor(t)
-	s, warn := settings.FromOptions(map[string]string{"gamewe_ignore_bots": "1", "gamewe_rank_bots": "1"})
-	if s.RankBots || len(warn) != 1 {
-		t.Fatalf("ignore_bots 1: rank_bots %v, warnings %v", s.RankBots, warn)
-	}
+	s := settings.Defaults()
+	s.BotsKills = map[string]bool{"css": false}
 	p.set.Set(s)
-	if err := p.Handle(context.Background(), `"K<2><STEAM_1:0:1><CT>" killed "Bot Bob<9><BOT><TERRORIST>" with "ak47"`, time.Now()); err != nil {
-		t.Fatal(err)
+	ctx, now := context.Background(), time.Now()
+	for _, l := range []string{
+		`"K<2><STEAM_1:0:1><CT>" killed "Bot Bob<9><BOT><TERRORIST>" with "ak47" (headshot)`,
+		`"K<2><STEAM_1:0:1><CT>" killed "V<3><STEAM_1:0:2><TERRORIST>" with "ak47"`,
+		`"Bot Bob<9><BOT><TERRORIST>" killed "K<2><STEAM_1:0:1><CT>" with "glock"`,
+	} {
+		if err := p.Handle(ctx, l, now); err != nil {
+			t.Fatal(err)
+		}
 	}
 	st.mu.Lock()
 	defer st.mu.Unlock()
-	if st.players[[2]string{"css", "BOT:Bot Bob"}] == nil || len(st.kills) != 1 {
-		t.Error("bot not recorded with gamewe_ignore_bots = 1")
+	k, b := st.players[[2]string{"css", "0:1"}], st.players[[2]string{"css", "BOT:Bot Bob"}]
+	if k.kills != 1 || k.deaths != 1 || b.kills != 1 || b.deaths != 1 || len(st.kills) != 3 {
+		t.Errorf("K kills %d deaths %d, bot kills %d deaths %d, %d kills stored; want 1 1 1 1 3", k.kills, k.deaths, b.kills, b.deaths, len(st.kills))
 	}
-	if s, _ := settings.FromOptions(map[string]string{"gamewe_ignore_bots": "0", "gamewe_rank_bots": "1"}); !s.RankBots {
-		t.Error("ignore_bots 0 overrides rank_bots 1")
+	if k.skill == 1000 {
+		t.Error("bot points are on: the kill of the bot must still give points")
+	}
+}
+
+// The bot settings are per ranking; the global keys of collector 0.19 are
+// no longer read (migration 15 moves them) and are reported.
+func TestBotSettingsPerRanking(t *testing.T) {
+	s, warn := settings.FromOptions(map[string]string{
+		"gamewe_rank_bots": "0", "gamewe_ignore_bots": "1",
+		"gamewe_rank_bots_css": "0", "gamewe_bot_points_css": "1",
+		"gamewe_rank_bots_tf": "1", "gamewe_bot_points_tf": "0",
+		"gamewe_bot_kills_css": "0",
+	})
+	if len(warn) != 2 {
+		t.Errorf("warnings %q, want two (the global keys)", warn)
+	}
+	for _, c := range []struct {
+		game          string
+		ranked, point bool
+	}{{"css", false, true}, {"tf", true, false}, {"cstrike", true, true}} {
+		if !s.BotKills("tf") || !s.BotKills("cstrike") {
+			t.Error("bot kills default")
+		}
+		if s.RankBots(c.game) != c.ranked || s.BotPoints(c.game) != c.point {
+			t.Errorf("%s: ranked %v points %v, want %v %v", c.game, s.RankBots(c.game), s.BotPoints(c.game), c.ranked, c.point)
+		}
+	}
+	if s.BotKills("css") {
+		t.Error("gamewe_bot_kills_css = 0 not read")
+	}
+	if _, warn := settings.FromOptions(map[string]string{"gamewe_rank_bots_css": "maybe"}); len(warn) != 1 {
+		t.Errorf("invalid value: warnings %q", warn)
 	}
 }
 
