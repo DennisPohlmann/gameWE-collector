@@ -76,6 +76,16 @@ func dayBounds(day time.Time) (from, to int64) {
 // Only ranked players (hideranking = 0) win; ties go to the lowest
 // playerId; a value of 0 wins nothing.
 func (s *Store) DailyAwards(ctx context.Context, day time.Time, game string) ([]AwardResult, error) {
+	return s.dailyAwards(ctx, day, game, true)
+}
+
+// AwardWinners decides the awards as DailyAwards does but stores nothing
+// (gamewe awards --dry-run).
+func (s *Store) AwardWinners(ctx context.Context, day time.Time, game string) ([]AwardResult, error) {
+	return s.dailyAwards(ctx, day, game, false)
+}
+
+func (s *Store) dailyAwards(ctx context.Context, day time.Time, game string, store bool) ([]AwardResult, error) {
 	from, to := dayBounds(day)
 	date := AwardDate(day)
 	q := `SELECT awardId, game, awardType, code FROM hlstats_Awards`
@@ -143,6 +153,9 @@ func (s *Store) DailyAwards(ctx context.Context, day time.Time, game string) ([]
 				return nil, fmt.Errorf("award %s %q: %w", a.Game, a.Code, err)
 			}
 		}
+		if !store {
+			continue
+		}
 		steps := []step{{`DELETE FROM hlstats_Awards_History WHERE award_id = ? AND date = ?`, []any{a.AwardID, date}}}
 		if a.WinnerID > 0 {
 			steps = append(steps, step{`INSERT INTO hlstats_Awards_History (award_id, winner_id, date, winner_count) VALUES (?, ?, ?, ?)`,
@@ -155,7 +168,7 @@ func (s *Store) DailyAwards(ctx context.Context, day time.Time, game string) ([]
 			return nil, err
 		}
 	}
-	if game == "" {
+	if game == "" && store {
 		// The daily run also drops old ping samples.
 		if err := s.PruneLatency(ctx, time.Unix(from, 0).Add(-LatencyKeep)); err != nil {
 			return nil, err

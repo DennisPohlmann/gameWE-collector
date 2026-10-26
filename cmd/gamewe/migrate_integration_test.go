@@ -492,6 +492,10 @@ func TestMigrateDBCommands(t *testing.T) {
 	cfg := writeConfig(t, d)
 
 	out, code := gw(t, bin, "db", "init", "-config", cfg)
+	expect(t, out, code, 1, "create all", "no interactive confirmation possible", "--force") // no terminal
+	out, code = gw(t, bin, "db", "init", "-n", "-config", cfg)
+	expect(t, out, code, 0, "create all", "Dry run: nothing changed")
+	out, code = gw(t, bin, "db", "init", "-f", "-config", cfg)
 	expect(t, out, code, 0, "create all", "done: the database has schema version")
 	if strings.Contains(out, "Make a backup") {
 		t.Error("backup advice for a new database")
@@ -512,11 +516,25 @@ func TestMigrateDBCommands(t *testing.T) {
 	expect(t, out, code, 0, "dry run: nothing changed")
 	oneFrag(t, out)
 	out, code = gw(t, bin, "db", "purge", "-older-than", "30d", "-config", cfg)
-	expect(t, out, code, 1, "no interactive confirmation possible", "-yes")
-	out, code = gw(t, bin, "db", "purge", "-older-than", "30d", "-yes", "-config", cfg)
+	expect(t, out, code, 1, "no interactive confirmation possible", "--force")
+	out, code = gw(t, bin, "db", "purge", "-older-than", "30d", "-yes", "-config", cfg) // the older name of --force
 	expect(t, out, code, 0, "done: 1 rows deleted", "db optimize")
 	out, code = gw(t, bin, "db", "optimize", "-config", cfg)
+	expect(t, out, code, 1, "no interactive confirmation possible")
+	out, code = gw(t, bin, "db", "optimize", "--dry-run", "-config", cfg)
+	expect(t, out, code, 0, "hlstats_Events_Frags", "dry run: nothing changed")
+	out, code = gw(t, bin, "db", "optimize", "--force", "-config", cfg)
 	expect(t, out, code, 0, "optimize hlstats_Events_Frags", "tables optimized")
+	out, code = gw(t, bin, "db", "grants", "-config", cfg)
+	expect(t, out, code, 1, "no interactive confirmation possible")
+	out, code = gw(t, bin, "db", "grants", "-n", "-config", cfg)
+	expect(t, out, code, 0, "dry run: nothing changed")
+	out, code = gw(t, bin, "db", "grants", "-f", "-config", cfg)
+	expect(t, out, code, 0, "rights of the web users granted")
+	out, code = gw(t, bin, "db", "seed", "-config", cfg)
+	expect(t, out, code, 1, "no interactive confirmation possible")
+	out, code = gw(t, bin, "db", "seed", "-y", "-config", cfg)
+	expect(t, out, code, 0, "missing reference data added")
 
 	out, code = gw(t, bin, "db", "reset", "-dry-run", "-config", cfg)
 	expect(t, out, code, 0, "dry run: nothing changed")
@@ -567,7 +585,7 @@ func TestMigrateDBCommands(t *testing.T) {
 	expect(t, out, code, 0, "nothing to drop")
 	out, code = gw(t, bin, "db", "reset", "-yes", "-config", cfg)
 	expect(t, out, code, 1, "no gameWE tables yet", "db init")
-	out, code = gw(t, bin, "db", "init", "-config", cfg)
+	out, code = gw(t, bin, "db", "init", "--force", "-config", cfg)
 	expect(t, out, code, 0, "done: the database has schema version")
 	runStarts(t, bin, cfg)
 }

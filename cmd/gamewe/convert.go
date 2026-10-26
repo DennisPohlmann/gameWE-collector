@@ -92,9 +92,8 @@ func parseConvertFlags(args []string) (convertFlags, error) {
 	fs.StringVar(&f.from, "from", "", "the HLstatsX:CE database: NAME on the gameWE database server, or mysql://[user@]host[:port]/NAME (password in "+fromPasswordEnv+")")
 	fs.StringVar(&f.zone, "source-timezone", convert.ZoneServer, "time zone in which CE wrote eventTime: server (the CE server's), an IANA name such as Europe/Berlin, UTC or +01:00")
 	fs.StringVar(&f.mojibake, "mojibake", convert.MojibakeAuto, "double-encoded UTF-8 (MÃ¼ller): auto (repair in latin1 tables), repair (in all tables) or keep")
-	fs.BoolVar(&f.yes, "yes", false, "convert without asking (the plan is printed anyway)")
-	fs.BoolVar(&f.dryRun, "dry-run", false, "only print the plan")
-	fs.BoolVar(&f.dryRun, "n", false, "short for -dry-run")
+	var c changeFlags
+	c.add(fs, "only print the plan")
 	addOutputFlag(fs)
 	if err := fs.Parse(args); err != nil {
 		return f, exitError{2, ""}
@@ -102,10 +101,8 @@ func parseConvertFlags(args []string) (convertFlags, error) {
 	if fs.NArg() > 0 {
 		return f, exitError{2, fmt.Sprintf("unexpected argument %q\n\n%s", fs.Arg(0), dbUsage)}
 	}
-	if f.yes && f.dryRun {
-		return f, exitError{2, "-yes and -dry-run cannot be used together"}
-	}
-	return f, nil
+	f.yes, f.dryRun = c.force, c.dryRun
+	return f, c.check()
 }
 
 // gamewe db convert: an HLstatsX:CE database into a new gameWE database.
@@ -189,7 +186,7 @@ func dbConvert(ctx context.Context, src, dst *database.DB, s, d config.Database,
 	opt.Out = c.out
 	res, err := convert.Run(ctx, src, dst, p, opt)
 	if err != nil {
-		return fmt.Errorf("%w\nThe gameWE database is filled partly; the CE database is unchanged. Fix the cause, empty the gameWE database (%s -yes) and convert again", err, dbCommand("reset"))
+		return fmt.Errorf("%w\nThe gameWE database is filled partly; the CE database is unchanged. Fix the cause, empty the gameWE database (%s --force) and convert again", err, dbCommand("reset"))
 	}
 	printConvertResult(c, res)
 	return nil

@@ -69,7 +69,7 @@ func TestMigrateJobCommands(t *testing.T) {
 	bin := buildGamewe(t)
 	d := database.TestConfig(name, "gamewe", database.TestPassword("gamewe"))
 	cfg := writeConfig(t, d)
-	out, code := gw(t, bin, "db", "init", "-config", cfg)
+	out, code := gw(t, bin, "db", "init", "-f", "-config", cfg)
 	expect(t, out, code, 0)
 	db, err := database.Open(d)
 	if err != nil {
@@ -99,22 +99,31 @@ func TestMigrateJobCommands(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, code = gw(t, bin, "inactive", "-wait", "2s", "-config", cfg)
+	out, code = gw(t, bin, "inactive", "-f", "-wait", "2s", "-config", cfg)
 	expect(t, out, code, 1, "waiting for another job", "another job")
-	out, code = gw(t, bin, "awards", "-wait", "2s", "-config", cfg)
+	out, code = gw(t, bin, "awards", "-f", "-wait", "2s", "-config", cfg)
 	expect(t, out, code, 1, "another job")
 	if _, err := database.JobLock(ctx, db, time.Second, nil); err == nil {
 		t.Error("a second job lock was granted")
 	}
 	release()
 
-	// No collector: moved here.
+	// Without a terminal and without --force nothing happens.
 	out, code = gw(t, bin, "inactive", "-config", cfg)
+	expect(t, out, code, 1, "2 players without an event", "no interactive confirmation possible", "--force")
+	out, code = gw(t, bin, "awards", "-config", cfg)
+	expect(t, out, code, 1, "decide the daily awards of", "--force")
+	out, code = gw(t, bin, "awards", "-n", "-config", cfg)
+	expect(t, out, code, 0, "daily awards of", "dry run: nothing changed")
+	out, code = gw(t, bin, "inactive", "-f", "-n", "-config", cfg)
+	expect(t, out, code, 2, "cannot be used together")
+	// No collector: moved here.
+	out, code = gw(t, bin, "inactive", "--force", "-config", cfg)
 	expect(t, out, code, 0, "no running collector", "done: 2 players moved to hlstats_PlayersInactive")
 	if p, i := num(`SELECT COUNT(*) FROM hlstats_Players`), num(`SELECT COUNT(*) FROM hlstats_PlayersInactive`); p != 1 || i != 2 {
 		t.Errorf("hlstats_Players %d, hlstats_PlayersInactive %d; want 1, 2", p, i)
 	}
-	out, code = gw(t, bin, "awards", "-config", cfg) // features.daily_awards is off
+	out, code = gw(t, bin, "awards", "-yes", "-config", cfg) // features.daily_awards is off; -yes: older name of --force
 	expect(t, out, code, 0, "daily awards of")
 
 	// A running collector (heartbeat, jobs loop): queued and done there.
@@ -135,7 +144,7 @@ func TestMigrateJobCommands(t *testing.T) {
 			}
 		}
 	}()
-	out, code = gw(t, bin, "inactive", "-wait", "30s", "-config", cfg)
+	out, code = gw(t, bin, "inactive", "-f", "-wait", "30s", "-config", cfg)
 	cancel()
 	<-loop
 	stop()
@@ -155,6 +164,32 @@ func TestMigrateJobCommands(t *testing.T) {
 	if n := num(`SELECT COUNT(*) FROM hlstats_gamewe_jobs`); n != 0 {
 		t.Errorf("%d jobs left", n)
 	}
+
+	// The admin commands show the change and ask; --dry-run and --force.
+	out, code = gw(t, bin, "option", "set", "gamewe_kill_points", "7", "-config", cfg)
+	expect(t, out, code, 1, "dry run:", "gamewe_kill_points", "--force")
+	out, code = gw(t, bin, "option", "set", "gamewe_kill_points", "7", "-n", "-config", cfg)
+	expect(t, out, code, 0, "dry run:")
+	if n := num(`SELECT COUNT(*) FROM hlstats_Options WHERE keyname = 'gamewe_kill_points' AND value = '7'`); n != 0 {
+		t.Fatal("option set changed it without --force")
+	}
+	out, code = gw(t, bin, "option", "set", "gamewe_kill_points", "7", "-f", "-config", cfg)
+	expect(t, out, code, 0)
+	if n := num(`SELECT COUNT(*) FROM hlstats_Options WHERE keyname = 'gamewe_kill_points' AND value = '7'`); n != 1 {
+		t.Error("option set --force did not set it")
+	}
+	out, code = gw(t, bin, "server", "add", "198.51.100.90:27015", "-game", "css", "-rcon-password-file", "-", "-config", cfg)
+	expect(t, out, code, 2, "cannot ask", "--force")
+	out, code = gw(t, bin, "option", "list", "-config", cfg) // reading never asks
+	expect(t, out, code, 0, "gamewe_kill_points")
+	out, code = gw(t, bin, "simulate", "-n", "-config", cfg)
+	expect(t, out, code, 0, "replay ", "dry run: nothing changed")
+	out, code = gw(t, bin, "simulate", "-config", cfg)
+	expect(t, out, code, 1, "--force")
+	out, code = gw(t, bin, "geoip-update", "-n", "-file", t.TempDir()+"/x.mmdb")
+	expect(t, out, code, 0, "download DB-IP City Lite", "dry run: nothing changed")
+	out, code = gw(t, bin, "geoip-update", "-file", t.TempDir()+"/x.mmdb")
+	expect(t, out, code, 1, "--force")
 
 	// gamewe serverinfo with features.server_info off (the config's
 	// default is on; the command does not look at it).
@@ -176,9 +211,11 @@ func TestMigrateJobCommands(t *testing.T) {
 	port := pc.LocalAddr().(*net.UDPAddr).Port
 	sql(`INSERT INTO hlstats_Servers (address, port, name, game) VALUES ('127.0.0.1', ?, 'test', 'css')`, port)
 	out, code = gw(t, bin, "serverinfo", "-dry-run", "-config", cfg)
-	expect(t, out, code, 0, `version "9540945"`, "dry run: not stored")
+	expect(t, out, code, 0, `version "9540945"`, "dry run: nothing changed (1 servers would be updated")
 	out, code = gw(t, bin, "serverinfo", "-config", cfg)
-	expect(t, out, code, 0, "(stored)")
+	expect(t, out, code, 1, `version "9540945"`, "--force")
+	out, code = gw(t, bin, "serverinfo", "-f", "-config", cfg)
+	expect(t, out, code, 0, "done: 1 servers updated")
 	var version, os, vac string
 	if err := admin.QueryRow(`SELECT server_version, server_os, server_vac FROM hlstats_Servers WHERE port = `+strconv.Itoa(port)).Scan(&version, &os, &vac); err != nil {
 		t.Fatal(err)

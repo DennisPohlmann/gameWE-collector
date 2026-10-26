@@ -375,7 +375,7 @@ func TestConvertHLstatsXCE(t *testing.T) {
 	}
 	// no terminal, no -yes: refused
 	out, code = gw(t, bin, "db", "convert", "-config", cfg, "-from", "conv_ce")
-	expect(t, out, code, 1, "use -yes")
+	expect(t, out, code, 1, "use --force")
 
 	start := time.Now()
 	out, code = gw(t, bin, "db", "convert", "-config", cfg, "-from", "conv_ce", "-source-timezone", "Europe/Berlin", "-yes")

@@ -21,7 +21,7 @@ import (
 )
 
 const resetUsage = `Usage:
-  gamewe reset GAME -mode player-stats|all-stats|all [-dry-run] [-yes] [-config FILE]
+  gamewe reset GAME -mode player-stats|all-stats|all [--dry-run|-n] [--force|-f] [-config FILE]
   gamewe reset -list [-config FILE]
 
 Resets the ranking GAME (an hlstats_Games code):
@@ -32,7 +32,7 @@ Resets the ranking GAME (an hlstats_Games code):
                       history, trend); the players stay
   -mode all           all statistics and the players of the game
 Games, servers, definitions and settings stay.
--dry-run shows the rows per table and changes nothing. Without -yes it asks
+-dry-run shows the rows per table and changes nothing. Without --force it asks
 for the game code to confirm.
 
 With a running collector (heartbeat less than 2 minutes old, table
@@ -52,9 +52,10 @@ func resetWith(args []string, in io.Reader, out io.Writer) error {
 	fs.Usage = func() { fmt.Fprintln(os.Stderr, resetUsage) }
 	path := fs.String("config", config.DefaultPath, "path to the YAML config file")
 	mode := fs.String("mode", "", "player-stats (keep players and server statistics), all-stats (keep players) or all (delete the players too)")
-	dry := fs.Bool("dry-run", false, "only show the rows per table")
-	yes := fs.Bool("yes", false, "do not ask for confirmation")
-	list := fs.Bool("list", false, "show the latest queued resets")
+	var cf changeFlags
+	cf.add(fs, "only show the rows per table")
+	dry, yes := &cf.dryRun, &cf.force
+	list := fs.Bool("list", false, "show the latest queued jobs")
 	addOutputFlag(fs)
 	wait := fs.Duration("wait", 10*time.Minute, "how long to wait for a running collector to do the reset")
 	pos, err := parseInterspersed(fs, args)
@@ -62,6 +63,9 @@ func resetWith(args []string, in io.Reader, out io.Writer) error {
 		return err
 	}
 	if err := needList(*list); err != nil {
+		return err
+	}
+	if err := cf.check(); err != nil {
 		return err
 	}
 	if *list {
@@ -126,9 +130,12 @@ func resetRun(pos []string, path, mode string, dry, yes, list bool, wait time.Du
 		return nil
 	}
 	if !yes {
+		if !interactive(in) {
+			return errNoTTYYes
+		}
 		line, _ := ask(ctx, in, promptOut(out), fmt.Sprintf("This cannot be undone. Type the game code (%s) to reset it: ", game))
 		if strings.TrimSpace(line) != game {
-			return errors.New("not confirmed, nothing changed")
+			return errNotConfirmed
 		}
 	}
 	here := func() (string, error) {

@@ -36,9 +36,6 @@ type dbIO struct {
 
 func stdIO() dbIO { return dbIO{in: os.Stdin, out: os.Stdout, interactive: stdinIsTerminal()} }
 
-// errNoTTYYes is returned when a destructive command cannot ask.
-var errNoTTYYes = errors.New("no interactive confirmation possible (stdin is not a terminal): use -yes to run it without asking, or -dry-run to see what it would do")
-
 // typed asks to type want to confirm; only exactly want (spaces around
 // ignored) says yes.
 func typed(ctx context.Context, c dbIO, prompt, want string) (bool, error) {
@@ -84,8 +81,12 @@ func (c dbIO) printRows(rows []database.TableRows) int64 {
 
 // gamewe db init: the tables of a new, empty database.
 func dbInitCmd(args []string, c dbIO) error {
-	cfg, err := loadConfig("db init", args, nil)
+	var cf changeFlags
+	cfg, err := loadConfig("db init", args, func(fs *flag.FlagSet) { cf.add(fs, "only print the plan") })
 	if err != nil {
+		return err
+	}
+	if err := cf.check(); err != nil {
 		return err
 	}
 	ctx, done, db, err := connect(cfg.Database, 10*time.Minute)
@@ -93,10 +94,10 @@ func dbInitCmd(args []string, c dbIO) error {
 		return err
 	}
 	defer done()
-	return dbInit(ctx, db, cfg.Database, c)
+	return dbInit(ctx, db, cfg.Database, cf, c)
 }
 
-func dbInit(ctx context.Context, db *database.DB, d config.Database, c dbIO) error {
+func dbInit(ctx context.Context, db *database.DB, d config.Database, cf changeFlags, c dbIO) error {
 	own, other, err := database.OwnTables(ctx, db)
 	if err != nil {
 		return err
@@ -105,20 +106,29 @@ func dbInit(ctx context.Context, db *database.DB, d config.Database, c dbIO) err
 		return fmt.Errorf("the database %s is not empty (%d gameWE / HLstatsX tables): db init only creates a new database. "+
 			"To bring it to this version: %s; to empty it: %s", d.Name, n, migrateCommand(), dbCommand("reset"))
 	}
-	return migrate(ctx, db, d, migrateFlags{force: true}, c.in, c.out, c.interactive, c.res)
+	err = migrate(ctx, db, d, migrateFlags{force: cf.force, dryRun: cf.dryRun, question: "Create the tables now?"}, c.in, c.out, c.interactive, c.res)
+	var ee exitError
+	if cf.dryRun && errors.As(err, &ee) && ee.code == 2 {
+		return nil // pending is what a dry run of a new database shows
+	}
+	return err
 }
 
 // gamewe db drop: all tables of the schema away.
 func dbDropCmd(args []string, c dbIO) error {
-	var yes, dry, print bool
+	var print bool
+	var cf changeFlags
 	cfg, err := loadConfig("db drop", args, func(fs *flag.FlagSet) {
-		fs.BoolVar(&yes, "yes", false, "do not ask for confirmation")
-		fs.BoolVar(&dry, "dry-run", false, "only list the tables and their rows")
+		cf.add(fs, "only list the tables and their rows")
 		fs.BoolVar(&print, "print", false, "only print the SQL (to run it as a database admin)")
 	})
 	if err != nil {
 		return err
 	}
+	if err := cf.check(); err != nil {
+		return err
+	}
+	yes, dry := cf.force, cf.dryRun
 	if print {
 		q, err := database.DropSQL(cfg.Database.Type)
 		if err != nil {
@@ -189,14 +199,15 @@ func dropHint(d config.Database) string {
 
 // gamewe db reset: every table empty, the reference data again.
 func dbResetCmd(args []string, c dbIO) error {
-	var yes, dry bool
-	cfg, err := loadConfig("db reset", args, func(fs *flag.FlagSet) {
-		fs.BoolVar(&yes, "yes", false, "do not ask for confirmation")
-		fs.BoolVar(&dry, "dry-run", false, "only list the tables and their rows")
-	})
+	var cf changeFlags
+	cfg, err := loadConfig("db reset", args, func(fs *flag.FlagSet) { cf.add(fs, "only list the tables and their rows") })
 	if err != nil {
 		return err
 	}
+	if err := cf.check(); err != nil {
+		return err
+	}
+	yes, dry := cf.force, cf.dryRun
 	ctx, done, db, err := connect(cfg.Database, 30*time.Minute)
 	if err != nil {
 		return err
@@ -270,16 +281,19 @@ func parseDays(s string) (int, error) {
 
 // gamewe db purge: the events older than some days.
 func dbPurgeCmd(args []string, c dbIO) error {
-	var yes, dry bool
 	var older string
+	var cf changeFlags
 	cfg, err := loadConfig("db purge", args, func(fs *flag.FlagSet) {
 		fs.StringVar(&older, "older-than", "", fmt.Sprintf("delete the events older than this many days (at least %d), e.g. 90 or 90d", MinPurgeDays))
-		fs.BoolVar(&yes, "yes", false, "do not ask for confirmation")
-		fs.BoolVar(&dry, "dry-run", false, "only count the rows")
+		cf.add(fs, "only count the rows")
 	})
 	if err != nil {
 		return err
 	}
+	if err := cf.check(); err != nil {
+		return err
+	}
+	yes, dry := cf.force, cf.dryRun
 	days, err := parseDays(older)
 	if err != nil {
 		return exitError{2, err.Error() + "\n\n" + dbUsage}
@@ -365,8 +379,12 @@ func dbPurge(ctx context.Context, db *database.DB, d config.Database, days int, 
 
 // gamewe db optimize: the space of deleted rows back.
 func dbOptimizeCmd(args []string, c dbIO) error {
-	cfg, err := loadConfig("db optimize", args, nil)
+	var cf changeFlags
+	cfg, err := loadConfig("db optimize", args, func(fs *flag.FlagSet) { cf.add(fs, "only list the tables") })
 	if err != nil {
+		return err
+	}
+	if err := cf.check(); err != nil {
 		return err
 	}
 	ctx, done, db, err := connect(cfg.Database, 6*time.Hour)
@@ -381,8 +399,23 @@ func dbOptimizeCmd(args []string, c dbIO) error {
 	if len(own) == 0 {
 		return fmt.Errorf("the database %s has no gameWE tables", cfg.Database.Name)
 	}
+	verb := "OPTIMIZE TABLE"
+	if db.Postgres() {
+		verb = "VACUUM ANALYZE"
+	}
+	fmt.Fprintf(c.out, "%s of %d tables of the database %s\n", verb, len(own), cfg.Database.Name)
 	if !db.Postgres() {
 		fmt.Fprintln(c.out, "OPTIMIZE TABLE locks each MyISAM table while it is rebuilt: the collector waits meanwhile (best at a quiet time).")
+	}
+	if cf.dryRun {
+		for _, t := range own {
+			fmt.Fprintf(c.out, "  %s\n", t)
+		}
+		fmt.Fprintln(c.out, "dry run: nothing changed")
+		return nil
+	}
+	if err := approve(ctx, cf, c.in, c.out, c.interactive, "Optimize them now?"); err != nil {
+		return err
 	}
 	start := time.Now()
 	err = database.Optimize(ctx, db, own, func(t string) { fmt.Fprintf(c.out, "optimize %s\n", t) })

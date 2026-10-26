@@ -31,8 +31,10 @@ const adminUsage = `usage:
   gamewe option list
   gamewe option get KEY
   gamewe option set KEY VALUE
-every command takes -config FILE, -dry-run (show what would change) and
--o text|json|yaml; the lists also -o csv|tsv|name`
+every command takes -config FILE and -o text|json|yaml (the lists also
+-o csv|tsv|name); the ones that change something show the change and ask
+[y/N] first: --force (-f; older name -yes) does not ask, --dry-run (-n)
+only shows it`
 
 // optional is a string flag that knows whether it was given.
 type optional struct {
@@ -70,7 +72,9 @@ func adminCmd(kind string, args []string) error {
 	fs := flag.NewFlagSet(kind, flag.ContinueOnError)
 	fs.Usage = func() { fmt.Fprintln(os.Stderr, adminUsage) }
 	path := fs.String("config", config.DefaultPath, "path to the YAML config file")
-	dry := fs.Bool("dry-run", false, "only show what would change")
+	var cf changeFlags
+	cf.add(fs, "only show what would change")
+	dry := &cf.dryRun
 	template := fs.String("template", "", "game whose definitions a new game copies")
 	realgame := fs.String("realgame", "", "base game (css, cstrike, czero, tf, ...); default: the template's")
 	hidden := fs.Bool("hidden", false, "add the game hidden; game set: -hidden=true|false")
@@ -94,6 +98,13 @@ func adminCmd(kind string, args []string) error {
 	list := sub == "list"
 	if err := needList(list); err != nil {
 		return err
+	}
+	if err := cf.check(); err != nil {
+		return err
+	}
+	write := !list && kind+" "+sub != "option get"
+	if write && !cf.dryRun && !cf.force && rconFile.set && rconFile.v == "-" {
+		return exitError{2, "-rcon-password-file - reads stdin, so it cannot ask: add --force (-f), or check it first with --dry-run (-n)"}
 	}
 	given := map[string]bool{}
 	fs.Visit(func(f *flag.Flag) { given[f.Name] = true })
@@ -128,10 +139,27 @@ func adminCmd(kind string, args []string) error {
 		a.Out = os.Stderr // notes; the document goes to stdout
 		return adminDoc(ctx, a, kind, rest)
 	}
+	aa := adminArgs{fields: admin.ServerFields{Game: game.ptr(), Name: name.ptr(), RconPassword: rcon.ptr(), PublicAddress: public.ptr(), LogSecret: logSecret.ptr()},
+		game: admin.GameFields{Name: name.ptr()}, given: given, template: *template, realgame: *realgame, hidden: *hidden, order: *order, logSecret: logSecret, dry: *dry}
 	return captured(os.Stdout, func(w io.Writer, _ *result) error {
 		a.Out = w
-		return adminRun(ctx, a, kind, sub, rest, adminArgs{fields: admin.ServerFields{Game: game.ptr(), Name: name.ptr(), RconPassword: rcon.ptr(), PublicAddress: public.ptr(), LogSecret: logSecret.ptr()},
-			game: admin.GameFields{Name: name.ptr()}, given: given, template: *template, realgame: *realgame, hidden: *hidden, order: *order, logSecret: logSecret, dry: *dry})
+		if write && !cf.dryRun && !cf.force {
+			// What it will change first (as --dry-run), then the question.
+			preview := *a
+			preview.DryRun = true
+			pa := aa
+			pa.dry = true
+			if err := adminRun(ctx, &preview, kind, sub, rest, pa); err != nil {
+				return err
+			}
+			if err := approve(context.Background(), cf, os.Stdin, w, stdinIsTerminal(), "Apply it now?"); err != nil {
+				return err
+			}
+			var cancel func()
+			ctx, cancel = context.WithTimeout(context.Background(), time.Minute)
+			defer cancel()
+		}
+		return adminRun(ctx, a, kind, sub, rest, aa)
 	})
 }
 

@@ -387,8 +387,11 @@ gamewe server add 198.51.100.7:27015 -game css -name "My CS:S server" -rcon-pass
 gamewe server list
 ```
 
-`-rcon-password-file -` reads it from stdin; `-rcon-password` works too but is
-visible in the process list. The RCON password is never printed.
+`server add` shows the change and asks `[y/N]` (`--force` / `-f` does not
+ask, `--dry-run` / `-n` only shows it). `-rcon-password-file -` reads it from
+stdin, which then cannot answer the question: add `--force`. `-rcon-password`
+works too but is visible in the process list. The RCON password is never
+printed.
 
 **Source games (CS:S, CS:GO, TF2, DoD:S, HL2:DM, L4D, ...)**, in `server.cfg`:
 

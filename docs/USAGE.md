@@ -167,6 +167,33 @@ sudo -u gamewe /opt/gamewe/collector/bin/gamewe awards -date 2026-10-21
 command except `run` also takes `-o FORMAT` for scripts
 ([output formats](#output-formats-for-scripts)).
 
+**Every command that changes something asks first.** It shows what it is
+going to do (the plan, the rows per table, the players, the change) and asks
+`[y/N]` (`y`, `yes`, `j`, `ja`; anything else changes nothing). The most
+destructive ones (`db reset`, `db drop`, `reset`) want the database name or
+game code typed instead.
+
+- `--dry-run` (`-n`): only show it, change nothing (exit code 0; `db migrate
+  -n`: 2 when a migration is pending).
+- `--force` (`-f`): do not ask, for scripts and cron. The older `-yes` and
+  `-y` still work and mean the same.
+- Without a terminal on stdin (cron, a pipe) and without `--force` the
+  command stops before changing anything, with exit code 1 and the hint to
+  use `--force` or `--dry-run`.
+- `--force` and `--dry-run` together are refused (exit code 2).
+
+This holds for `db migrate`, `db init`, `db grants`, `db seed`, `db purge`,
+`db optimize`, `db reset`, `db drop`, `db convert`, `reset`, `inactive`,
+`awards`, `serverinfo`, `logaddress -add`, `geoip-update`, `simulate` and
+the changing `game`, `server` and `option` commands. Commands that only read
+never ask: `check`, `status`, `config test`, `db status`, `version`,
+`reset -list`, `game|server|option list`, `option get`, `logaddress`
+without `-add`, `db grants|seed|drop -print`. `gamewe rcon` does not ask
+either: the RCON command typed on its command line is the intent itself
+(as in the server console), and there is nothing to show beforehand. `run`
+is the service and never asks; its automatic migration is
+`database.auto_migrate`.
+
 | Command | What it does |
 |---------|--------------|
 | `gamewe run` | the collector (systemd starts it); migrates an outdated database schema at start (`database.auto_migrate`), with `auto_migrate: false` it refuses to start (exit code 78) until `gamewe db migrate` ran; reports "ready" to systemd (`Type=notify`) once the config, database and UDP port are fine, exit code 78 for a config error (not restarted by the unit), 1 for other errors |
@@ -289,12 +316,12 @@ gamewe db grants                 # grant the web users their table rights again
 gamewe db grants -print | mariadb -u root -p gamewe   # the same SQL, run as a database admin
 gamewe db seed                   # add missing reference data; existing rows stay as they are
 gamewe db init                   # a new, empty database: tables, reference data, rights
-gamewe db purge -older-than 90d  # delete the events older than 90 days (-dry-run: count only; asks [y/N], -yes)
+gamewe db purge -older-than 90d  # delete the events older than 90 days (--dry-run: count only; asks [y/N], --force)
 gamewe db optimize               # give the space of deleted rows back (OPTIMIZE TABLE / VACUUM ANALYZE)
-gamewe db reset                  # empty every table, reference data again: as new (asks for the database name, -yes)
+gamewe db reset                  # empty every table, reference data again: as new (asks for the database name, --force)
 gamewe db drop                   # drop all gameWE tables (-print: the SQL for a database admin; MariaDB needs DROP)
 gamewe db convert -from hlstatsx -n   # HLstatsX:CE -> this new gameWE database: the plan only (MIGRATION-HLSTATSX.md)
-gamewe db convert -from hlstatsx -source-timezone Europe/Berlin   # plan, then "Convert now? [y/N]" (-yes)
+gamewe db convert -from hlstatsx -source-timezone Europe/Berlin   # plan, then "Convert now? [y/N]" (--force)
 ```
 
 `migrate`, `convert`, `reset` and `drop` refuse while a collector runs on the database,
@@ -401,15 +428,16 @@ gamewe awards -date 2026-10-21                # decide the daily awards of a day
 ### Collector jobs by hand and from cron
 
 Every job of the collector that works on the database alone can be run from
-the command line, whether its feature in the config file is on or off:
+the command line, whether its feature in the config file is on or off (each
+asks first, `--dry-run` shows what it would do, `--force` does not ask):
 
 | Job of the running collector | When | By hand |
 |---|---|---|
 | daily awards (`features.daily_awards`), with the cleanup of ping samples older than 90 days | daily at `time` | `gamewe awards [-date YYYY-MM-DD] [-game CODE] [-tz ZONE]` (default: yesterday; the ping cleanup only without `-game`) |
-| move inactive players (`features.inactive_players`) | daily at `time` | `gamewe inactive [-dry-run]` |
-| ranking reset queued by the web admin | every 10 s | `gamewe reset GAME -mode ... -yes` ([below](#resetting-a-ranking)) |
+| move inactive players (`features.inactive_players`) | daily at `time` | `gamewe inactive` |
+| ranking reset queued by the web admin | every 10 s | `gamewe reset GAME -mode ... --force` ([below](#resetting-a-ranking)) |
 | delete finished jobs older than 30 days | hourly | part of `gamewe db purge -older-than DAYS` |
-| server info `A2S_INFO` (`features.server_info`) | every 5 min | `gamewe serverinfo [-server ...] [-dry-run]` |
+| server info `A2S_INFO` (`features.server_info`) | every 5 min | `gamewe serverinfo [-server ...]` |
 | log address (`features.log_address`) | every minute | `gamewe logaddress -add` |
 | GeoIP update (`geoip.auto_update`) | monthly | `gamewe geoip-update` |
 
@@ -430,7 +458,8 @@ twice. `gamewe reset` and `gamewe inactive` hand the job to a running collector
 for its result (`gamewe reset -list` lists all jobs); without one they run it
 themselves.
 
-Cron (instead of, or in addition to, the features in the config file), as
+Cron (instead of, or in addition to, the features in the config file; with
+`--force`, since cron has no terminal to ask on), as
 `/etc/cron.d/gamewe`; the user `gamewe` can read the config file (`640
 root:gamewe`), the output goes to the journal (`journalctl -t gamewe-awards`):
 
@@ -438,13 +467,13 @@ root:gamewe`), the output goes to the journal (`journalctl -t gamewe-awards`):
 SHELL=/bin/sh
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 # the daily awards of yesterday at 00:30 (with features.daily_awards.enabled: false)
-30 0 * * * gamewe /opt/gamewe/collector/bin/gamewe awards -config /etc/gamewe/collector/config.yaml 2>&1 | systemd-cat -t gamewe-awards
+30 0 * * * gamewe /opt/gamewe/collector/bin/gamewe awards --force -config /etc/gamewe/collector/config.yaml 2>&1 | systemd-cat -t gamewe-awards
 # inactive players at 01:00 (with features.inactive_players.enabled: false)
-0 1 * * * gamewe /opt/gamewe/collector/bin/gamewe inactive -config /etc/gamewe/collector/config.yaml 2>&1 | systemd-cat -t gamewe-inactive
+0 1 * * * gamewe /opt/gamewe/collector/bin/gamewe inactive --force -config /etc/gamewe/collector/config.yaml 2>&1 | systemd-cat -t gamewe-inactive
 # reset the ranking css on the 1st of every month at 05:00, the players stay
-0 5 1 * * gamewe /opt/gamewe/collector/bin/gamewe reset css -mode player-stats -yes -config /etc/gamewe/collector/config.yaml 2>&1 | systemd-cat -t gamewe-reset
+0 5 1 * * gamewe /opt/gamewe/collector/bin/gamewe reset css -mode player-stats --force -config /etc/gamewe/collector/config.yaml 2>&1 | systemd-cat -t gamewe-reset
 # events older than 180 days and old jobs, every Sunday at 04:00
-0 4 * * 0 gamewe /opt/gamewe/collector/bin/gamewe db purge -older-than 180 -yes -config /etc/gamewe/collector/config.yaml 2>&1 | systemd-cat -t gamewe-purge
+0 4 * * 0 gamewe /opt/gamewe/collector/bin/gamewe db purge -older-than 180 --force -config /etc/gamewe/collector/config.yaml 2>&1 | systemd-cat -t gamewe-purge
 ```
 
 Cron uses the system's time zone (cronie also reads `CRON_TZ=Europe/Berlin`).
@@ -516,7 +545,7 @@ gamewe option get gamewe_kill_points -o json   # {"key": ..., "value": "5", "def
   (`tables`) or the SQL of `-print` (`sql`).
 - Questions (`[y/N]`, type the database name) and notes such as the root
   warning go to stderr then, so stdout holds only the document. Without a
-  terminal give `-yes` / `-f` as with the text output.
+  terminal give `--force` (`-f`) as with the text output.
 - Errors go to stderr and the exit codes stay the same; `check`, `status`
   and `logaddress` print their document also when a server fails (with
   `error` per server, or `ok: false` and `error` for `check`).
@@ -555,7 +584,7 @@ line. `stats`, the name of `player-stats` before collector 0.2, still works
 statistics too.
 
 Games, servers, teams, weapons, actions, awards and settings stay; other
-games are not touched. It asks for the game code to confirm (`-yes` skips
+games are not touched. It asks for the game code to confirm (`--force` skips
 that). With a running collector (table `hlstats_gamewe_jobs` present, heartbeat
 less than 2 minutes old) the reset is queued for it in `hlstats_gamewe_jobs` (as the web
 admin does): it pauses the servers of that game between two log lines,

@@ -21,12 +21,15 @@ import (
 // not report keeps its stored value).
 func serverInfoCmd(args []string) error {
 	var server string
-	var dry bool
+	var cf changeFlags
 	cfg, err := loadConfig("serverinfo", args, func(fs *flag.FlagSet) {
 		fs.StringVar(&server, "server", "all", "serverId, ip:port or all")
-		fs.BoolVar(&dry, "dry-run", false, "only show the answers, store nothing")
+		cf.add(fs, "only show the answers")
 	})
 	if err != nil {
+		return err
+	}
+	if err := cf.check(); err != nil {
 		return err
 	}
 	servers, err := gameServers(cfg, server)
@@ -46,38 +49,51 @@ func serverInfoCmd(args []string) error {
 	text := !structured()
 	failed := 0
 	doc := serverInfoList{}
+	var changed []int // indexes into doc
 	for _, s := range servers {
 		d := serverInfoDoc{ID: s.ID, Address: s.Address, Name: s.Name}
 		got, err := collector.QueryServerInfo(ctx, s.AddrPort, 3*time.Second)
-		if err == nil {
-			info := got.Or(s.Info)
-			d.Version, d.OS, d.VAC = info.Version, info.OS, info.VAC
-			if info != s.Info && !dry {
-				if err = store.ServerInfo(ctx, s.ID, info); err == nil {
-					d.Stored = true
-				}
-			}
-		}
 		if err != nil {
 			d.Error = err.Error()
 			failed++
+		} else {
+			info := got.Or(s.Info)
+			d.Version, d.OS, d.VAC = info.Version, info.OS, info.VAC
+			if info != s.Info {
+				changed = append(changed, len(doc))
+			}
 		}
 		if text {
 			fmt.Printf("server #%d %s %q: ", s.ID, s.Address, s.Name)
-			switch {
-			case d.Error != "":
+			if d.Error != "" {
 				fmt.Printf("error: %s\n", d.Error)
-			default:
+			} else {
 				state := "unchanged"
-				if d.Stored {
-					state = "stored"
-				} else if dry && (stats.ServerInfo{Version: d.Version, OS: d.OS, VAC: d.VAC}) != s.Info {
-					state = "changed (dry run: not stored)"
+				if info := (stats.ServerInfo{Version: d.Version, OS: d.OS, VAC: d.VAC}); info != s.Info {
+					state = fmt.Sprintf("changed, stored: version %q, os %q, vac %q", s.Info.Version, s.Info.OS, s.Info.VAC)
 				}
 				fmt.Printf("version %q, os %q, vac %q (%s)\n", d.Version, d.OS, d.VAC, state)
 			}
 		}
 		doc = append(doc, d)
+	}
+	switch {
+	case len(changed) == 0:
+	case cf.dryRun:
+		fmt.Fprintf(textOut(), "dry run: nothing changed (%d servers would be updated in hlstats_Servers)\n", len(changed))
+	default:
+		err := approve(ctx, cf, os.Stdin, textOut(), stdinIsTerminal(), fmt.Sprintf("Store the changed values of %d servers in hlstats_Servers now?", len(changed)))
+		if err != nil {
+			return err
+		}
+		for _, i := range changed {
+			d := &doc[i]
+			if err := store.ServerInfo(ctx, d.ID, stats.ServerInfo{Version: d.Version, OS: d.OS, VAC: d.VAC}); err != nil {
+				return fmt.Errorf("database: %w", database.Explain(err))
+			}
+			d.Stored = true
+		}
+		fmt.Fprintf(textOut(), "done: %d servers updated\n", len(changed))
 	}
 	if !text {
 		if err := emit(os.Stdout, doc); err != nil {

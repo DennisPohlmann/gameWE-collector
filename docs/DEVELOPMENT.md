@@ -60,8 +60,12 @@ code 1 with `database.auto_migrate: false`, `db migrate -n` / `-f` / the
 question, `run` starts afterwards; `run` migrates a new database itself with
 `auto_migrate`, refuses an HLstatsX database without versions and stops on
 missing rights). `TestMigrateMaintenance` and `TestMigrateDBCommands` cover
-`gamewe db init`, `purge`, `optimize`, `reset` and `drop` (questions, `-yes`,
-`-dry-run`, a running collector, the missing DROP right on MariaDB).
+`gamewe db init`, `purge`, `optimize`, `reset` and `drop` (questions, `--force`
+and its older name `-yes`, `--dry-run`, a running collector, the missing DROP
+right on MariaDB); `TestMigrateJobCommands` the job commands (`inactive`,
+`awards`, `serverinfo`, the admin commands, `simulate`, `geoip-update`)
+without a terminal, with `--force` and `--dry-run`. New commands that change
+something use `changeFlags` and `approve` (`cmd/gamewe/confirm.go`).
 `TestMigrateCollectorLock` (`internal/database/running_integration_test.go`)
 and `TestMigrateRefusesRunningCollector` cover the collector lock (migrate
 refuses while `gamewe run` holds the lock, while only the lock of a collector

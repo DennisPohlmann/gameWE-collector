@@ -212,8 +212,8 @@ func TestDBCmdUsage(t *testing.T) {
 	if err := dbCmd([]string{"frobnicate"}); !errors.As(err, &ee) || ee.code != 2 || !strings.Contains(ee.msg, "db migrate") {
 		t.Errorf("unknown: %v", err)
 	}
-	for _, want := range []string{"migrate", "status", "grants", "seed", "-f|--force", "-n|--dry-run", "2: migration pending",
-		"db init", "db drop", "db reset", "db purge", "-older-than DAYS", "db optimize", "database.auto_migrate", "-yes"} {
+	for _, want := range []string{"migrate", "status", "grants", "seed", "--force|-f", "--dry-run|-n", "2: migration pending",
+		"db init", "db drop", "db reset", "db purge", "-older-than DAYS", "db optimize", "database.auto_migrate", "-yes, -y"} {
 		if !strings.Contains(dbUsage, want) {
 			t.Errorf("usage lacks %q", want)
 		}

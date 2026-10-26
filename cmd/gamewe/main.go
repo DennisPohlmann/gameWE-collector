@@ -50,7 +50,7 @@ Usage:
                                    code 1 on errors; also gamewe --config-test, -t, run -t
   gamewe check    [-config FILE]   test the database (shows TLS state and pending
                                    migrations), list the game servers and settings found in it
-  gamewe db migrate [-config FILE] [-f|--force] [-n|--dry-run]
+  gamewe db migrate [-config FILE] [--force|-f] [--dry-run|-n]
                                    create the tables of a new database, or bring an older
                                    gameWE / HLstatsX database to this version (shows the plan,
                                    asks first; -n only shows it); "run" does it at start
@@ -68,11 +68,12 @@ Usage:
                                    replay sample log lines into the database, or send
                                    them as UDP log packets to a running collector
   gamewe awards   [-config FILE] [-date YYYY-MM-DD] [-game CODE] [-tz ZONE] [-wait DURATION]
+                  [--dry-run|-n] [--force|-f]
                                    decide the daily awards of a day (again; default: yesterday
                                    in features.daily_awards.timezone), also when
                                    features.daily_awards is off; the collector does it every
                                    day at features.daily_awards.time
-  gamewe inactive [-config FILE] [-dry-run] [-wait DURATION]
+  gamewe inactive [-config FILE] [--dry-run|-n] [--force|-f] [-wait DURATION]
                                    move the players without play for MinActivity days to
                                    hlstats_PlayersInactive now, also when
                                    features.inactive_players is off; queued for the running
@@ -82,7 +83,7 @@ Usage:
                                    hlstats_Servers and print the answer
   gamewe status   [-config FILE] [-server ID|IP:PORT|all]
                                    RCON "status" of the game servers, as the collector reads it
-  gamewe serverinfo [-config FILE] [-server ID|IP:PORT|all] [-dry-run]
+  gamewe serverinfo [-config FILE] [-server ID|IP:PORT|all] [--dry-run|-n] [--force|-f]
                                    ask the game servers for version, OS and VAC (A2S_INFO) and
                                    store what changed in hlstats_Servers, also when
                                    features.server_info is off
@@ -93,17 +94,23 @@ Usage:
   gamewe server list|add|set|remove ...           game servers (hlstats_Servers)
   gamewe option list|get|set ...                  settings (hlstats_Options)
                                    see "gamewe game help"; all take -config and -dry-run
-  gamewe reset GAME -mode player-stats|all-stats|all [-dry-run] [-yes]
+  gamewe reset GAME -mode player-stats|all-stats|all [--dry-run|-n] [--force|-f]
                                    reset a ranking (player-stats: players stay with the
                                    start skill, server statistics stay; all-stats: server
                                    statistics too; all: players deleted too); queued for
                                    the running collector if there is one
-  gamewe reset -list               the latest queued resets
-  gamewe geoip-update [-file FILE]  download DB-IP City Lite now (default
+  gamewe reset -list               the latest queued jobs (resets, inactive players)
+  gamewe geoip-update [-file FILE] [--dry-run|-n] [--force|-f]
+                                   download DB-IP City Lite now (default
                                    /var/lib/gamewe/collector/dbip-city-lite.mmdb); the
                                    collector does it on the first start and monthly
                                    itself (geoip.auto_update)
   gamewe version                   print the version (also -V, -version, --version)
+
+Every command that changes something shows what it will do and asks [y/N]
+first: --dry-run (-n) only shows it, --force (-f; older names -yes, -y)
+does not ask (scripts, cron); without a terminal and without --force it
+changes nothing (exit code 1). Commands that only read never ask.
 
 Every command except run takes -o FORMAT (or --output FORMAT, also before the
 command: gamewe -o json server list): text (default), json, yaml; the lists
@@ -794,7 +801,9 @@ func check(cfg config.Config, out io.Writer, rep *checkReport) error {
 
 func simulateCmd(args []string) error {
 	var file, send, game, server string
+	var cf changeFlags
 	cfg, err := loadConfig("simulate", args, func(fs *flag.FlagSet) {
+		cf.add(fs, "only say what it would replay")
 		fs.StringVar(&file, "file", "", "log file to replay (default: built-in sample)")
 		fs.StringVar(&send, "send", "", "send as UDP log packets to the collector at this address instead")
 		fs.StringVar(&game, "game", "css", "hlstats_Games code of the simulated server")
@@ -807,6 +816,9 @@ func simulateCmd(args []string) error {
 	if err != nil {
 		return fmt.Errorf("-server: %w", err)
 	}
+	if err := cf.check(); err != nil {
+		return err
+	}
 	lines, err := simulate.Lines(file)
 	if err != nil {
 		return err
@@ -814,6 +826,18 @@ func simulateCmd(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return captured(os.Stdout, func(w io.Writer, _ *result) error {
+		target := fmt.Sprintf("into the database %s (players, events and statistics of game %s; the test server %s is added to hlstats_Servers if missing)", cfg.Database.Name, game, ap)
+		if send != "" {
+			target = fmt.Sprintf("as UDP log packets from %s to the collector at %s (the test server is added to hlstats_Servers of the database %s if missing)", ap, send, cfg.Database.Name)
+		}
+		fmt.Fprintf(w, "replay %d log lines %s\n", len(lines), target)
+		if cf.dryRun {
+			fmt.Fprintln(w, "dry run: nothing changed")
+			return nil
+		}
+		if err := approve(ctx, cf, os.Stdin, w, stdinIsTerminal(), "Replay them now?"); err != nil {
+			return err
+		}
 		return simulate.Run(ctx, cfg, simulate.Options{Server: ap, Game: game, Send: send}, lines, w, newLogger("info"))
 	})
 }
@@ -821,7 +845,9 @@ func simulateCmd(args []string) error {
 func awardsCmd(args []string) error {
 	var date, game, tz string
 	var wait time.Duration
+	var cf changeFlags
 	cfg, err := loadConfig("awards", args, func(fs *flag.FlagSet) {
+		cf.add(fs, "only show the winners it would store")
 		fs.DurationVar(&wait, "wait", 10*time.Minute, "how long to wait while another job (reset, inactive players, the collector's daily awards) runs")
 		fs.StringVar(&date, "date", "", "day YYYY-MM-DD (default: yesterday)")
 		fs.StringVar(&game, "game", "", "game code (default: all games)")
@@ -831,6 +857,9 @@ func awardsCmd(args []string) error {
 		return err
 	}
 	if err := needList(true); err != nil {
+		return err
+	}
+	if err := cf.check(); err != nil {
 		return err
 	}
 	loc, err := cfg.Features.DailyAwards.Location(cfg.Timezone) // checked by config.Validate
@@ -852,17 +881,30 @@ func awardsCmd(args []string) error {
 	}
 	defer db.Close()
 	ctx := context.Background()
-	// The same lock as the collector's daily run and its resets: no two
-	// runs write the history of a day at once.
-	release, err := database.JobLock(ctx, db, wait, func() {
-		fmt.Fprintln(textOut(), "waiting for another job (reset, inactive players, daily awards) to finish ...")
-	})
-	if err != nil {
-		return fmt.Errorf("database: %w", database.Explain(err))
-	}
-	defer release()
 	store := stats.NewStore(db, settings.NewLive(settings.Defaults()))
-	res, err := store.DailyAwards(ctx, day, game)
+	games := "all games, and ping samples older than 90 days are deleted"
+	if game != "" {
+		games = "game " + game
+	}
+	fmt.Fprintf(textOut(), "decide the daily awards of %s (%s) for %s; stored winners of that day are replaced\n", stats.AwardDate(day), loc, games)
+	var res []stats.AwardResult
+	if cf.dryRun {
+		res, err = store.AwardWinners(ctx, day, game)
+	} else {
+		if err := approve(ctx, cf, os.Stdin, textOut(), stdinIsTerminal(), "Decide them now?"); err != nil {
+			return err
+		}
+		// The same lock as the collector's daily run and its resets: no
+		// two runs write the history of a day at once.
+		release, err := database.JobLock(ctx, db, wait, func() {
+			fmt.Fprintln(textOut(), "waiting for another job (reset, inactive players, daily awards) to finish ...")
+		})
+		if err != nil {
+			return fmt.Errorf("database: %w", database.Explain(err))
+		}
+		defer release()
+		res, err = store.DailyAwards(ctx, day, game)
+	}
 	if err != nil {
 		return fmt.Errorf("database: %w", database.Explain(err))
 	}
@@ -889,6 +931,9 @@ func awardsCmd(args []string) error {
 	}
 	if structured() {
 		return emit(os.Stdout, doc)
+	}
+	if cf.dryRun {
+		fmt.Println("dry run: nothing changed")
 	}
 	return nil
 }
@@ -1075,12 +1120,17 @@ func statusCmd(args []string) error {
 func logaddressCmd(args []string) error {
 	var server, address string
 	var add bool
+	var cf changeFlags
 	cfg, err := loadConfig("logaddress", args, func(fs *flag.FlagSet) {
 		fs.StringVar(&server, "server", "all", "serverId, ip:port or all")
-		fs.BoolVar(&add, "add", false, "register the collector where it is missing (logaddress_add, CS2: logaddress_add_http; log on)")
+		fs.BoolVar(&add, "add", false, "register the collector where it is missing (logaddress_add, CS2: logaddress_add_http; log on); asks first")
+		cf.add(fs, "with -add: only show where it would register")
 		fs.StringVar(&address, "address", "", "ip:port to register (default: listen.public_address, else the address of the RCON connection and listen.port)")
 	})
 	if err != nil {
+		return err
+	}
+	if err := cf.check(); err != nil {
 		return err
 	}
 	if address == "" {
@@ -1094,6 +1144,47 @@ func logaddressCmd(args []string) error {
 		return err
 	}
 	text := !structured()
+	// Without --force -add first only looks, then asks before registering.
+	doc, failed := logaddressPass(cfg, servers, address, add && cf.force, text)
+	if add && !cf.force {
+		var missing []stats.Server
+		for i, d := range doc {
+			if d.Error == "" && !d.Registered {
+				missing = append(missing, servers[i])
+			}
+		}
+		switch {
+		case len(missing) == 0:
+		case cf.dryRun:
+			fmt.Fprintf(textOut(), "dry run: nothing changed (the collector would be registered on %d servers)\n", len(missing))
+		default:
+			if err := approve(context.Background(), cf, os.Stdin, textOut(), stdinIsTerminal(), fmt.Sprintf("Register the collector on %d servers now?", len(missing))); err != nil {
+				return err
+			}
+			added, f := logaddressPass(cfg, missing, address, true, text)
+			failed += f
+			for _, a := range added {
+				for i := range doc {
+					if doc[i].ID == a.ID {
+						doc[i] = a
+					}
+				}
+			}
+		}
+	}
+	if !text {
+		if err := emit(os.Stdout, doc); err != nil {
+			return err
+		}
+	}
+	if failed > 0 {
+		return fmt.Errorf("%d of %d servers failed", failed, len(servers))
+	}
+	return nil
+}
+
+// logaddressPass checks (add: and registers) the log address on servers.
+func logaddressPass(cfg config.Config, servers []stats.Server, address string, add, text bool) (logaddressList, int) {
 	failed := 0
 	doc := logaddressList{}
 	for _, s := range servers {
@@ -1149,15 +1240,7 @@ func logaddressCmd(args []string) error {
 		}
 		doc = append(doc, d)
 	}
-	if !text {
-		if err := emit(os.Stdout, doc); err != nil {
-			return err
-		}
-	}
-	if failed > 0 {
-		return fmt.Errorf("%d of %d servers failed", failed, len(servers))
-	}
-	return nil
+	return doc, failed
 }
 
 type statusDoc struct {

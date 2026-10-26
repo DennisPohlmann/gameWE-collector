@@ -156,7 +156,7 @@ Then convert:
 sudo -u gamewe /opt/gamewe/collector/bin/gamewe db convert -from hlstatsx -source-timezone Europe/Berlin
 ```
 
-It shows the plan again and asks `Convert now? [y/N]` (`-yes` for scripts);
+It shows the plan again and asks `Convert now? [y/N]` (`--force` for scripts);
 it refuses while a collector runs on the gameWE database and holds the
 collector lock meanwhile, so none starts. Large event tables take a while: it copies in batches of 500 rows and
 builds the indexes of the event tables once at the end of each table,
@@ -181,7 +181,7 @@ rows without a date, or merged player names.
 
 If it fails halfway (for example a value out of range in an unusual
 installation), fix the cause, empty the gameWE database
-(`gamewe db reset -yes`) and convert again. The CE database is not
+(`gamewe db reset --force`) and convert again. The CE database is not
 changed. The indexes of the event tables are switched off while a table is
 copied and built again right after it, also after an error or Ctrl-C; only
 a process killed hard (`kill -9`, power loss) can leave them off, and the

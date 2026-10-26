@@ -21,9 +21,24 @@ import (
 func geoipUpdateCmd(args []string) error {
 	fs := flag.NewFlagSet("geoip-update", flag.ExitOnError)
 	file := fs.String("file", geoip.DefaultPath, "database file to write (replaced in one step)")
+	var cf changeFlags
+	cf.add(fs, "only say what it would download")
 	addOutputFlag(fs)
 	fs.Parse(args)
-	return captured(os.Stdout, func(out io.Writer, _ *result) error { return geoipUpdate(*file, out) })
+	if err := cf.check(); err != nil {
+		return err
+	}
+	return captured(os.Stdout, func(out io.Writer, _ *result) error {
+		fmt.Fprintf(out, "download DB-IP City Lite (this month's, else last month's) from download.db-ip.com and replace %s\n", *file)
+		if cf.dryRun {
+			fmt.Fprintln(out, "dry run: nothing changed")
+			return nil
+		}
+		if err := approve(context.Background(), cf, os.Stdin, out, stdinIsTerminal(), "Download it now?"); err != nil {
+			return err
+		}
+		return geoipUpdate(*file, out)
+	})
 }
 
 func geoipUpdate(file string, out io.Writer) error {

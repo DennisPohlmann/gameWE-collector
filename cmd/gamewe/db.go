@@ -23,7 +23,7 @@ import (
 )
 
 const dbUsage = `usage:
-  gamewe db migrate [-config FILE] [-f|--force] [-n|--dry-run]
+  gamewe db migrate [-config FILE] [--force|-f] [--dry-run|-n]
         bring the database to the schema of this collector: shows the plan,
         recommends a backup and asks "Backup made? Migrate now? [y/N]"
         -f, --force    no question (scripts); the plan is printed anyway
@@ -33,46 +33,50 @@ const dbUsage = `usage:
         true), except for an HLstatsX database without schema versions
   gamewe db status  [-config FILE]
         schema version, pending and applied migrations (with date)
-  gamewe db init    [-config FILE]
+  gamewe db init    [-config FILE] [--dry-run|-n] [--force|-f]
         create the tables, the reference data and the web users' rights of a
         new, empty database; refuses a database that has tables
-  gamewe db grants  [-config FILE] [-print]
+  gamewe db grants  [-config FILE] [-print] [--dry-run|-n] [--force|-f]
         grant the web users their table rights again (runs after every
         migration); -print only prints the SQL, to run it as a database admin
-  gamewe db seed    [-config FILE] [-print]
+  gamewe db seed    [-config FILE] [-print] [--dry-run|-n] [--force|-f]
         add the missing reference data (games, teams, actions, weapons,
         awards, ranks, options); existing rows stay as they are
-  gamewe db purge   -older-than DAYS [-config FILE] [-dry-run] [-yes]
+  gamewe db purge   -older-than DAYS [-config FILE] [--dry-run|-n] [--force|-f]
         delete the events (hlstats_Events_*) older than DAYS days (at least
         7, e.g. 90 or 90d); players, totals, rankings, awards and the history
         per day stay; also the finished jobs older than 30 days (as the
-        collector does every hour). Asks [y/N] unless -yes; -dry-run only counts
-  gamewe db optimize [-config FILE]
+        collector does every hour). Asks [y/N] unless --force; --dry-run only counts
+  gamewe db optimize [-config FILE] [--dry-run|-n] [--force|-f]
         give the space of deleted rows back to the disk (OPTIMIZE TABLE,
         PostgreSQL: VACUUM ANALYZE), e.g. after purge
-  gamewe db reset   [-config FILE] [-dry-run] [-yes]
+  gamewe db reset   [-config FILE] [--dry-run|-n] [--force|-f]
         empty every table and load the reference data again: the database is
         as new (players, statistics, servers, settings, admin logins go; the
         tables stay). One ranking only: gamewe reset GAME -mode all
-  gamewe db drop    [-config FILE] [-dry-run] [-yes] [-print]
+  gamewe db drop    [-config FILE] [--dry-run|-n] [--force|-f] [-print]
         drop all tables of the gameWE schema (other tables stay); needs the
         DROP right, which the collector user has not on MariaDB: -print only
         prints the SQL, to run it as a database admin. Afterwards db init
         (or the next start) creates them again
   gamewe db convert -from CE [-config FILE] [-source-timezone ZONE]
-                    [-mojibake auto|repair|keep] [-dry-run] [-yes]
+                    [-mojibake auto|repair|keep] [--dry-run|-n] [--force|-f]
         copy an HLstatsX:CE database (only read) into this new gameWE
         database: shows the plan (source, target, time zone, character
-        sets, rows per table) and asks [y/N] unless -yes; -dry-run only
+        sets, rows per table) and asks [y/N] unless --force; --dry-run only
         prints the plan. CE is NAME (a database on the gameWE database
         server) or mysql://[user@]host[:port]/NAME (password in
         GAMEWE_FROM_PASSWORD). -source-timezone: the zone in which CE wrote
         eventTime, default server (the CE server's), e.g. Europe/Berlin;
         -mojibake: UTF-8 stored twice (MÃ¼ller), auto repairs it in latin1
         tables. MariaDB / MySQL only; docs/MIGRATION-HLSTATSX.md
+Every db command that changes something shows the plan and asks [y/N] (reset
+and drop: type the database name); --dry-run (-n) only shows it, --force
+(-f; older names -yes, -y) does not ask; without a terminal and without
+--force it changes nothing.
 migrate, convert, reset and drop refuse while a collector runs on the database (stop
 it first: systemctl stop gamewe-collector); reset and drop ask to type the
-database name unless -yes. Make a backup first.
+database name unless --force. Make a backup first.
 Every db command takes -o text|json|yaml (status: the schema as a document;
 the others: ok, error, plan, rows per table, -print SQL and the text lines;
 questions then go to stderr).
@@ -274,6 +278,8 @@ func stdinIsTerminal() bool {
 type migrateFlags struct {
 	config        string
 	force, dryRun bool
+	// question replaces "Backup made? Migrate now?" (gamewe db init).
+	question string
 }
 
 func parseMigrateFlags(args []string, errOut io.Writer) (migrateFlags, error) {
@@ -281,10 +287,8 @@ func parseMigrateFlags(args []string, errOut io.Writer) (migrateFlags, error) {
 	fs := flag.NewFlagSet("db migrate", flag.ContinueOnError)
 	fs.SetOutput(errOut)
 	fs.StringVar(&f.config, "config", config.DefaultPath, "path to the YAML config file")
-	fs.BoolVar(&f.force, "force", false, "migrate without asking (the plan is printed anyway)")
-	fs.BoolVar(&f.force, "f", false, "short for -force")
-	fs.BoolVar(&f.dryRun, "dry-run", false, "only print the plan; exit code 2 if a migration is pending")
-	fs.BoolVar(&f.dryRun, "n", false, "short for -dry-run")
+	var c changeFlags
+	c.add(fs, "only print the plan; exit code 2 if a migration is pending")
 	addOutputFlag(fs)
 	if err := fs.Parse(args); err != nil {
 		return f, exitError{2, ""}
@@ -292,14 +296,12 @@ func parseMigrateFlags(args []string, errOut io.Writer) (migrateFlags, error) {
 	if fs.NArg() > 0 {
 		return f, exitError{2, fmt.Sprintf("unexpected argument %q\n\n%s", fs.Arg(0), dbUsage)}
 	}
-	if f.force && f.dryRun {
-		return f, exitError{2, "-force and -dry-run cannot be used together"}
-	}
-	return f, nil
+	f.force, f.dryRun = c.force, c.dryRun
+	return f, c.check()
 }
 
 // errNoTTY is returned when the question cannot be asked.
-var errNoTTY = errors.New("no interactive confirmation possible (stdin is not a terminal): use -force (-f) to migrate without asking, or -dry-run (-n) to see the plan")
+var errNoTTY = errors.New("no interactive confirmation possible (stdin is not a terminal), nothing changed: use --force (-f) to migrate without asking, or --dry-run (-n) to see the plan")
 
 // confirm asks whether to migrate now; only y, yes, j or ja (any case)
 // say yes, everything else (also an empty line or end of input) is no.
@@ -496,7 +498,11 @@ func migrate(ctx context.Context, db *database.DB, d config.Database, f migrateF
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, backupAdvice(d, time.Now().Format("20060102-1504")))
 	}
-	if !f.force {
+	if !f.force && f.question != "" {
+		if err := approve(ctx, changeFlags{}, in, out, interactive, f.question); err != nil {
+			return err
+		}
+	} else if !f.force {
 		ok, err := confirm(ctx, in, promptOut(out), interactive)
 		if err != nil {
 			return err
@@ -598,14 +604,27 @@ func printStatus(out io.Writer, p *database.Plan) {
 
 func dbGrantsCmd(args []string, out io.Writer, r *result) error {
 	var print bool
+	var cf changeFlags
 	cfg, err := loadConfig("db grants", args, func(fs *flag.FlagSet) {
 		fs.BoolVar(&print, "print", false, "only print the SQL (to run it as a database admin)")
+		cf.add(fs, "only say what it would grant")
 	})
 	if err != nil {
 		return err
 	}
+	if err := cf.check(); err != nil {
+		return err
+	}
 	if print {
 		return printSQL(out, r, schema.Grants(cfg.Database.Type))
+	}
+	fmt.Fprintf(out, "grant the web users (gamewe_web, gamewe_web_admin) their table rights in the database %s again (the SQL: %s -print)\n", cfg.Database.Name, dbCommand("grants"))
+	if cf.dryRun {
+		fmt.Fprintln(out, "dry run: nothing changed")
+		return nil
+	}
+	if err := approve(context.Background(), cf, os.Stdin, out, stdinIsTerminal(), "Grant them now?"); err != nil {
+		return err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.Database.ConnectTimeout+60)*time.Second)
 	defer cancel()
@@ -627,14 +646,27 @@ func dbGrantsCmd(args []string, out io.Writer, r *result) error {
 
 func dbSeedCmd(args []string, out io.Writer, r *result) error {
 	var print bool
+	var cf changeFlags
 	cfg, err := loadConfig("db seed", args, func(fs *flag.FlagSet) {
 		fs.BoolVar(&print, "print", false, "only print the SQL")
+		cf.add(fs, "only say what it would add")
 	})
 	if err != nil {
 		return err
 	}
+	if err := cf.check(); err != nil {
+		return err
+	}
 	if print {
 		return printSQL(out, r, schema.Seed(cfg.Database.Type))
+	}
+	fmt.Fprintf(out, "add the missing reference data (games, teams, actions, weapons, awards, ranks, options) to the database %s; existing rows stay (the SQL: %s -print)\n", cfg.Database.Name, dbCommand("seed"))
+	if cf.dryRun {
+		fmt.Fprintln(out, "dry run: nothing changed")
+		return nil
+	}
+	if err := approve(context.Background(), cf, os.Stdin, out, stdinIsTerminal(), "Add them now?"); err != nil {
+		return err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.Database.ConnectTimeout+120)*time.Second)
 	defer cancel()

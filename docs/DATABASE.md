@@ -199,9 +199,10 @@ grant decision in `grants.sql`. Released migrations are never changed.
 
 ## Maintenance (gamewe db)
 
-All take `-config FILE`; the destructive ones show what they would do first
-(`-dry-run` only that), ask, and accept `-yes` for scripts (without a
-terminal on stdin they stop unless `-yes` is given). They only touch the
+All take `-config FILE`; those that change something show what they would
+do first (`--dry-run` / `-n` only that), ask, and accept `--force` / `-f`
+for scripts (older name `-yes`; without a terminal on stdin they stop and
+change nothing unless `--force` is given). They only touch the
 tables of the gameWE schema (`hlstats_*` of the compiled schema and
 `gamewe_schema_migrations`); other tables in the database, e.g. left over
 from an old HLstatsX, are listed and left alone.
@@ -212,7 +213,7 @@ from an old HLstatsX, are listed and left alone.
 | `gamewe db purge -older-than 90d` | deletes the **events** (`hlstats_Events_*`: frags, connects, chat, actions, ...) older than that many days (at least 7, plain `90` works too). Players, their totals, rankings, awards, the history per day and the server statistics stay; the event lists of the web pages get shorter. Asks `[y/N]`; on MariaDB in chunks of 20,000 rows, so a table is locked only shortly and the collector can keep running | the collector user |
 | `gamewe db optimize` | gives the space of deleted rows back to the disk and renews the table statistics (MariaDB `OPTIMIZE TABLE`, PostgreSQL `VACUUM ANALYZE`), e.g. after `purge`. MyISAM tables are locked while they are rebuilt: run it at a quiet time | the collector user |
 | `gamewe db reset` | **empties every table** and loads the reference data again, the AUTO_INCREMENT / identity counters start at 1: the database is as new. Everything goes, also the game servers, the settings (`hlstats_Options`), the admin logins (`hlstats_Users`) and own games or changed definitions; the tables and schema versions stay. Asks to type the database name. For one ranking only: `gamewe reset GAME -mode all` | the collector user (PostgreSQL: owner of the tables, for `TRUNCATE`) |
-| `gamewe db convert -from CE` | copies an **HLstatsX:CE** database into this gameWE database, which must be new (no tables) or have no data yet (no players, servers, clans, frags): creates the schema, converts every table (event times to UTC, names and codes to ids, character sets to utf8mb4) and compares the rows of both at the end. The CE database is only read (a read-only session). Shows the plan and asks `[y/N]`; `-dry-run`, `-yes`, `-source-timezone`, `-mojibake`. MariaDB / MySQL only. [MIGRATION-HLSTATSX.md](MIGRATION-HLSTATSX.md) | the collector user; SELECT on the CE database |
+| `gamewe db convert -from CE` | copies an **HLstatsX:CE** database into this gameWE database, which must be new (no tables) or have no data yet (no players, servers, clans, frags): creates the schema, converts every table (event times to UTC, names and codes to ids, character sets to utf8mb4) and compares the rows of both at the end. The CE database is only read (a read-only session). Shows the plan and asks `[y/N]`; `--dry-run`, `--force`, `-source-timezone`, `-mojibake`. MariaDB / MySQL only. [MIGRATION-HLSTATSX.md](MIGRATION-HLSTATSX.md) | the collector user; SELECT on the CE database |
 | `gamewe db drop` | **drops all tables** of the gameWE schema. Afterwards `gamewe db init` (or the next start) creates them again. Asks to type the database name | DROP: on MariaDB a database admin, `gamewe db drop -print \| mariadb -u root -p gamewe` (`-print` only prints the `DROP TABLE IF EXISTS ...`); on PostgreSQL the collector (owner) |
 
 `migrate`, `convert`, `reset` and `drop` refuse while a collector runs on the database
