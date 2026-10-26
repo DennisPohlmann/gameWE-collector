@@ -157,6 +157,12 @@ var Migrations = []Migration{
 			"and gamewe_bot_points_<game> of every ranking with the same effect, then the global rows are deleted",
 		BotsPerRanking: true,
 	},
+	{
+		Version: 16, Name: "hall-of-fame-edit",
+		Desc: "column hlstats_gamewe_hall_of_fame.removed: entries an admin took out of the hall of fame (the places below move up; " +
+			"the row stays and can be restored); gamewe_web_admin may update only this column",
+		Sync: true,
+	},
 }
 
 // Latest is the newest schema version this collector knows.

@@ -99,6 +99,8 @@ GRANT INSERT, UPDATE, DELETE ON `hlstats_Users` TO 'gamewe_web_admin'@'%';
 GRANT UPDATE (`skill`, `hideranking`, `clan`) ON `hlstats_Players` TO 'gamewe_web_admin'@'%';
 -- ranking resets: queued for the collector, which does and updates them
 GRANT INSERT ON `hlstats_gamewe_jobs` TO 'gamewe_web_admin'@'%';
+-- hall of fame: an admin removes (and restores) entries, the rows stay
+GRANT UPDATE (`removed`) ON `hlstats_gamewe_hall_of_fame` TO 'gamewe_web_admin'@'%';
 -- A user gamewe_admin (the manual setup in the web frontend's README) may
 -- queue ranking resets too, for every host it is defined for; skipped when
 -- there is none.

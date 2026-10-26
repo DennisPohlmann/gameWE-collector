@@ -44,6 +44,11 @@ type Store struct {
 	cache map[string]cached
 
 	clanMu sync.Mutex // one creator of hlstats_Clans rows at a time (no unique key)
+
+	// ResetClock is the time of day (minutes after midnight) of the
+	// scheduled ranking resets (features.scheduled_resets.time); set it
+	// before use.
+	ResetClock int
 }
 
 type cached struct {

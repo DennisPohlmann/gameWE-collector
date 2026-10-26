@@ -268,7 +268,19 @@ type Features struct {
 	// (hlstats_Players_Bans) and takes them out of the ranking until the
 	// ban ends; it needs the address of the ban list (web admin).
 	SourceBans SourceBans `yaml:"sourcebans"`
+	// ScheduledResets is the time of day of the scheduled ranking resets
+	// (the schedules themselves are in the database, set in the web admin).
+	ScheduledResets ScheduledResets `yaml:"scheduled_resets"`
 }
+
+// ScheduledResets: the time of day (HH:MM in the collector's timezone) a
+// period of a reset schedule ends and the next one starts.
+type ScheduledResets struct {
+	Time string `yaml:"time"`
+}
+
+// At returns Time as hour and minute.
+func (s ScheduledResets) At() (hour, minute int, err error) { return clock(s.Time) }
 
 // Toggle is a feature without settings: a mapping with enabled, or just
 // true / false.
@@ -637,6 +649,7 @@ func Defaults() Config {
 		LogAddress:      LogAddress{Enabled: true, Interval: "1m", HTTP: true},
 		LogSecret:       LogSecret{Enabled: true},
 		DailyAwards:     DailyAwards{Enabled: true, Time: "00:00"},
+		ScheduledResets: ScheduledResets{Time: "00:00"},
 		ServerInfo:      ServerInfo{Enabled: true, Interval: "5m"},
 		CS2Hitgroups:    Toggle{Enabled: true},
 		UpdateCheck:     Toggle{Enabled: true},
@@ -886,6 +899,9 @@ func (c Config) Problems() []Problem {
 	}
 	if _, _, err := ip.At(); err != nil {
 		add("features.inactive_players.time", "%q: want HH:MM, e.g. \"01:00\"", ip.Time)
+	}
+	if _, _, err := c.Features.ScheduledResets.At(); err != nil {
+		add("features.scheduled_resets.time", "%q: want HH:MM, e.g. \"00:00\"", c.Features.ScheduledResets.Time)
 	}
 	if _, _, err := c.Features.DailyAwards.At(); err != nil {
 		add("features.daily_awards.time", "%q: want HH:MM, e.g. \"00:00\"", c.Features.DailyAwards.Time)

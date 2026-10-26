@@ -989,6 +989,7 @@ CREATE TABLE `hlstats_gamewe_hall_of_fame` (
   `connection_time` int(10) unsigned NOT NULL DEFAULT 0,
   `fav_weapon` varchar(64) NOT NULL DEFAULT '',
   `rank_name` varchar(128) NOT NULL DEFAULT '',
+  `removed` tinyint(1) unsigned NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   UNIQUE KEY `slot` (`game`,`period_start`,`place`),
   KEY `player` (`player_id`)

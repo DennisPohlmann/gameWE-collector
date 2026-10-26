@@ -88,6 +88,7 @@ GRANT INSERT, UPDATE, DELETE ON hlstats_Definition_Ranks_Ribbons TO gamewe_web_a
 GRANT INSERT, UPDATE, DELETE ON hlstats_Users TO gamewe_web_admin;
 GRANT UPDATE (skill, hideranking, clan) ON hlstats_Players TO gamewe_web_admin;
 GRANT INSERT ON hlstats_gamewe_jobs TO gamewe_web_admin;
+GRANT UPDATE (removed) ON hlstats_gamewe_hall_of_fame TO gamewe_web_admin;
 
 -- A role gamewe_admin (the manual setup in the web frontend's README) may
 -- queue ranking resets too; skipped when there is none.

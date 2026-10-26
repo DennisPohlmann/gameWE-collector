@@ -193,6 +193,7 @@ What it does:
 | 13 | `retired-options` | deletes `hlstats_Options` rows that neither the collector nor the web reads: `gamewe_default_game` and `gamewe_daily_awards` always, `contact` and `siteurl` (HLstatsX:CE) when empty, `gamewe_geoip_db` when empty or the old default `/var/lib/gamewe/GeoLite2-City.mmdb` (another path stays: it is still used while config.yaml has no `geoip.path`); no structure change |
 | 14 | `player-bans` | table `hlstats_Players_Bans` (`features.sourcebans`, DB-SEMANTICS.md), readable by `gamewe_web`; nothing else changes |
 | 15 | `bots-per-ranking` | the bot settings per ranking: the global `gamewe_rank_bots` (and the old `gamewe_ignore_bots` = 1) becomes `gamewe_rank_bots_<game>` and `gamewe_bot_points_<game>` of every ranking with the same effect (Left 4 Dead keeps the points for kills of the AI), then the global rows are deleted ([CONFIG.md](CONFIG.md#settings-in-hlstats_options)); no new table or column |
+| 16 | `hall-of-fame-edit` | column `hlstats_gamewe_hall_of_fame.removed` (0 or 1): entries an admin took out of the hall of fame; `gamewe_web_admin` may update this column only (UPDATE (`removed`)). Places 4 and 5 that the collector now stores move up ([USAGE.md](USAGE.md#scheduled-resets-and-the-hall-of-fame)) |
 
 The SQL files of older packages (`/opt/gamewe/collector/doc/schema/hlstatsx.sql`,
 `init/01_schema.sql`, `02_seed.sql`, `03_grants.sql` and the PostgreSQL

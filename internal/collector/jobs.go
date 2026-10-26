@@ -226,6 +226,13 @@ func (j *Jobs) QueueScheduled(ctx context.Context, now time.Time) error {
 			j.Log.Info("jobs: reset schedule started", "game", r.Game, "every", r.Schedule.String(), "next", due.Next.Format(time.DateTime))
 			continue
 		}
+		if !due.Due && r.LastSchedule == "" {
+			// Written by collector 0.19 without the schedule: add it, so a
+			// later change of the schedule is noticed.
+			if err := j.Store.SetOption(ctx, stats.LastResetKey(r.Game), stats.LastResetValue(time.Unix(r.Last, 0), r.Schedule)); err != nil {
+				return fmt.Errorf("%s: %w", r.Game, err)
+			}
+		}
 		if !due.Due || slices.ContainsFunc(open, func(o stats.Job) bool { return o.Game == r.Game }) {
 			continue
 		}

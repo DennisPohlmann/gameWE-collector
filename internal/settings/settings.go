@@ -226,13 +226,15 @@ func gameCode(g string) bool {
 // (gamewe_link_<n>), web admin TOTP secrets (gamewe_totp_<hash>, pending
 // gamewe_totpp_<hash>), the scheduled ranking resets and hall of fame per
 // game (gamewe_reset_schedule_<game>, gamewe_reset_mode_<game>,
-// gamewe_reset_last_<game>, gamewe_hof_<game>), the bot settings per game
+// gamewe_reset_last_<game>, gamewe_hof_<game>) and of all rankings
+// (gamewe_reset_schedule, gamewe_reset_mode), the bot settings per game
 // (gamewe_rank_bots_<game>, gamewe_bot_points_<game>, gamewe_bot_kills_<game>), the VAC block per game
 // (gamewe_block_vac_<game>), the collector's heartbeat and
 // version and retired keys that the migrations delete.
 func otherKey(k string) bool {
 	switch k {
-	case "gamewe_heartbeat", "gamewe_collector_version", // written by the collector
+	case "gamewe_reset_schedule", "gamewe_reset_mode", // the scheduled reset of all rankings
+		"gamewe_heartbeat", "gamewe_collector_version", // written by the collector
 		"gamewe_daily_awards",                    // 1.4.x; now features.daily_awards in the config file
 		"gamewe_default_game",                    // old web setting nothing reads; migration 13 deletes both
 		"gamewe_geoip_db",                        // legacy, read below; config.yaml geoip.path replaces it

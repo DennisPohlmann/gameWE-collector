@@ -63,7 +63,7 @@ func testDB(t *testing.T) *database.DB {
 	if err := database.CheckTables(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	for _, tbl := range append(database.Tables, "hlstats_Options", "hlstats_gamewe_jobs") {
+	for _, tbl := range append(database.Tables, "hlstats_Options", "hlstats_gamewe_jobs", "hlstats_gamewe_hall_of_fame") {
 		if _, err := db.Exec("DELETE FROM " + tbl); err != nil {
 			t.Fatal(err)
 		}

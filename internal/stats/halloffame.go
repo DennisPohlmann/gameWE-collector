@@ -16,18 +16,22 @@ import (
 //
 // A ranking can be reset on a schedule: every N days, weeks, months or
 // years (hlstats_Options gamewe_reset_schedule_<game>, e.g. "month",
-// "2 month", "week", "1 day"; empty or "off": none). The periods follow the
+// "2 month", "week", "1 day"; "off": none). A ranking without its own
+// value follows the schedule for all rankings, gamewe_reset_schedule (and
+// its mode gamewe_reset_mode); without that it has none. The periods follow the
 // calendar of the collector's time zone: a day starts at 00:00, a week on
 // Monday, a month on the 1st, a year on 1 January, and "every N" counts
 // from a fixed start (days and weeks since 1970, months since year 0), so
 // "2 month" always ends on 1 March, 1 May, ... whenever it was set up.
 //
-// When a period ends, the reset job first copies the best three players of
+// When a period ends, the reset job first copies the best five players of
 // the period into hlstats_gamewe_hall_of_fame (with their name, country,
 // rank and values of that moment, so the entry never changes later), then
 // resets the ranking in the mode gamewe_reset_mode_<game> (default
-// player-stats) and stores the end of the period in
-// gamewe_reset_last_<game>. A period that ended while no collector ran is
+// player-stats) and stores the start of the period now running in
+// gamewe_reset_last_<game>, with the schedule it belongs to ("1790805600
+// 3 month"): when the schedule changes, the next check starts the new one
+// with the period now running instead of resetting at once. A period that ended while no collector ran is
 // done at the next start; several missed periods become one entry.
 
 // Units of a reset schedule.
@@ -41,33 +45,62 @@ const (
 // MaxEvery is the largest N of "every N units".
 const MaxEvery = 120
 
-// ResetSchedule is "every Every Unit"; the zero value is no schedule.
+// ResetSchedule is "every Every Unit", starting on a day of its own
+// (Day, Month: the anchor) at Clock; the zero value is no schedule.
+//
+// The anchor: for months (and quarters) the day of the month 1-28, for
+// weeks the weekday 1-7 (Monday 1), for years the month and day; 0 is the
+// default (the 1st, Monday, 1 January). Days have none. Clock (minutes
+// after midnight) comes from the collector's config, not the option.
 type ResetSchedule struct {
 	Unit  string
 	Every int
+	Day   int
+	Month int
+	Clock int
 }
 
 // On reports whether a schedule is set.
 func (s ResetSchedule) On() bool { return s.Unit != "" && s.Every > 0 }
 
-// String is the option value: "month", "2 month", "" (none).
+// String is the option value: "month", "2 month", "month@15", "week@3",
+// "year@07-01", "" (none). The default anchor is left out.
 func (s ResetSchedule) String() string {
-	switch {
-	case !s.On():
+	if !s.On() {
 		return ""
-	case s.Every == 1:
-		return s.Unit
 	}
-	return strconv.Itoa(s.Every) + " " + s.Unit
+	v := s.Unit
+	if s.Every != 1 {
+		v = strconv.Itoa(s.Every) + " " + s.Unit
+	}
+	switch {
+	case s.Unit == UnitYear && (s.month() != 1 || s.day() != 1):
+		v += fmt.Sprintf("@%02d-%02d", s.month(), s.day())
+	case s.Unit != UnitDay && s.Unit != UnitYear && s.day() != 1:
+		v += "@" + strconv.Itoa(s.day())
+	}
+	return v
 }
+
+// Equal reports whether s and o are the same schedule (Clock aside).
+func (s ResetSchedule) Equal(o ResetSchedule) bool { return s.String() == o.String() }
+
+func (s ResetSchedule) day() int   { return max(1, s.Day) }
+func (s ResetSchedule) month() int { return max(1, s.Month) }
 
 // ParseResetSchedule reads an option value: "", "off" (none), "UNIT" or
 // "N UNIT" with UNIT day, week, month, year (also plural, also "quarter"
-// for 3 months), N 1 to MaxEvery.
+// for 3 months), N 1 to MaxEvery, optionally with an anchor after "@":
+// the day of the month 1-28 for months and quarters ("month@15"), the
+// weekday 1-7 for weeks (Monday 1, "week@5"), MM-DD for years ("year@07-01").
 func ParseResetSchedule(v string) (ResetSchedule, error) {
-	f := strings.Fields(strings.ToLower(strings.TrimSpace(v)))
-	if len(f) == 0 || (len(f) == 1 && (f[0] == "off" || f[0] == "0")) {
+	base, anchor, hasAnchor := strings.Cut(strings.ToLower(strings.TrimSpace(v)), "@")
+	f := strings.Fields(base)
+	if !hasAnchor && (len(f) == 0 || (len(f) == 1 && (f[0] == ScheduleOff || f[0] == "0"))) {
 		return ResetSchedule{}, nil
+	}
+	if len(f) == 0 {
+		return ResetSchedule{}, fmt.Errorf("reset schedule %q: want UNIT or N UNIT (day, week, month, year)", v)
 	}
 	n, unit := 1, f[0]
 	if len(f) == 2 {
@@ -90,33 +123,79 @@ func ParseResetSchedule(v string) (ResetSchedule, error) {
 	if n > MaxEvery {
 		return ResetSchedule{}, fmt.Errorf("reset schedule %q: the number must be 1 to %d", v, MaxEvery)
 	}
-	return ResetSchedule{Unit: unit, Every: n}, nil
+	sch := ResetSchedule{Unit: unit, Every: n}
+	if !hasAnchor {
+		return sch, nil
+	}
+	anchor = strings.TrimSpace(anchor)
+	num := func(a string, lo, hi int) (int, bool) {
+		x, err := strconv.Atoi(a)
+		return x, err == nil && x >= lo && x <= hi && len(a) <= 2
+	}
+	var ok bool
+	switch unit {
+	case UnitDay:
+		return ResetSchedule{}, fmt.Errorf("reset schedule %q: a daily schedule has no start day", v)
+	case UnitWeek:
+		if sch.Day, ok = num(anchor, 1, 7); !ok {
+			return ResetSchedule{}, fmt.Errorf("reset schedule %q: the weekday must be 1 (Monday) to 7 (Sunday)", v)
+		}
+	case UnitMonth:
+		if sch.Day, ok = num(anchor, 1, 28); !ok {
+			return ResetSchedule{}, fmt.Errorf("reset schedule %q: the day must be 1 to 28", v)
+		}
+	case UnitYear:
+		m, d, _ := strings.Cut(anchor, "-")
+		var okm, okd bool
+		sch.Month, okm = num(m, 1, 12)
+		sch.Day, okd = num(d, 1, 28)
+		if !okm || !okd {
+			return ResetSchedule{}, fmt.Errorf("reset schedule %q: the date must be MM-DD, day 1 to 28", v)
+		}
+	}
+	return sch, nil
 }
 
 // epochMonday is the Monday the week count starts from.
 var epochMonday = time.Date(1970, 1, 5, 0, 0, 0, 0, time.UTC)
 
 // PeriodStart returns the start of the period of s that contains t, in loc.
+// Every N counts from fixed dates (days and weeks since 1970, months and
+// years since year 0), so the periods do not depend on when s was set.
 func (s ResetSchedule) PeriodStart(t time.Time, loc *time.Location) time.Time {
 	t = t.In(loc)
 	y, m, d := t.Date()
+	if t.Hour()*60+t.Minute() < s.Clock { // before the reset time: still the day before
+		y, m, d = time.Date(y, m, d-1, 12, 0, 0, 0, time.UTC).Date()
+	}
 	n := max(1, s.Every)
+	at := func(y int, m time.Month, d int) time.Time {
+		return time.Date(y, m, d, s.Clock/60, s.Clock%60, 0, 0, loc)
+	}
 	// Days and weeks are counted on the calendar date (as UTC), so a
 	// daylight saving change never shifts a boundary.
 	days := int(time.Date(y, m, d, 0, 0, 0, 0, time.UTC).Sub(epochMonday).Hours() / 24)
 	switch s.Unit {
 	case UnitDay:
-		return time.Date(y, m, d-mod(days, n), 0, 0, 0, 0, loc)
+		return at(y, m, d-mod(days, n))
 	case UnitWeek:
-		weekday := mod(days, 7) // 0 = Monday
-		weeks := (days - weekday) / 7
-		return time.Date(y, m, d-weekday-7*mod(weeks, n), 0, 0, 0, 0, loc)
+		days -= s.day() - 1 // weeks from the anchor weekday
+		back := mod(days, 7)
+		weeks := (days - back) / 7
+		return at(y, m, d-back-7*mod(weeks, n))
 	case UnitYear:
-		return time.Date(y-mod(y, n), 1, 1, 0, 0, 0, 0, loc)
+		am := time.Month(s.month())
+		if m < am || (m == am && d < s.day()) {
+			y--
+		}
+		return at(y-mod(y, n), am, s.day())
 	}
 	months := y*12 + int(m) - 1
+	if d < s.day() {
+		months--
+	}
 	months -= mod(months, n)
-	return time.Date(months/12, time.Month(months%12+1), 1, 0, 0, 0, 0, loc)
+	return at(months/12, time.Month(months%12+1), s.day())
 }
 
 func mod(a, n int) int { return ((a % n) + n) % n }
@@ -126,18 +205,31 @@ func (s ResetSchedule) Next(t time.Time, loc *time.Location) time.Time {
 	start := s.PeriodStart(t, loc)
 	y, m, d := start.Date()
 	n := max(1, s.Every)
+	at := func(y int, m time.Month, d int) time.Time {
+		return time.Date(y, m, d, s.Clock/60, s.Clock%60, 0, 0, loc)
+	}
 	switch s.Unit {
 	case UnitDay:
-		return time.Date(y, m, d+n, 0, 0, 0, 0, loc)
+		return at(y, m, d+n)
 	case UnitWeek:
-		return time.Date(y, m, d+7*n, 0, 0, 0, 0, loc)
+		return at(y, m, d+7*n)
 	case UnitYear:
-		return time.Date(y+n, 1, 1, 0, 0, 0, 0, loc)
+		return at(y+n, m, d)
 	}
-	return time.Date(y, m+time.Month(n), 1, 0, 0, 0, 0, loc)
+	return at(y, m+time.Month(n), d)
 }
 
 // Option keys of a ranking's schedule. game is a code from hlstats_Games.
+// The schedule and mode for all rankings without their own.
+const (
+	GlobalScheduleKey = "gamewe_reset_schedule"
+	GlobalModeKey     = "gamewe_reset_mode"
+)
+
+// ScheduleOff is the value of a ranking's own schedule that turns a global
+// schedule off for it.
+const ScheduleOff = "off"
+
 func ScheduleKey(game string) string  { return "gamewe_reset_schedule_" + game }
 func ModeKey(game string) string      { return "gamewe_reset_mode_" + game }
 func LastResetKey(game string) string { return "gamewe_reset_last_" + game }
@@ -147,7 +239,12 @@ type ScheduledRanking struct {
 	Game     string
 	Schedule ResetSchedule
 	Mode     string // as from ResetMode
-	Last     int64  // Unix time of the end of the last period done; 0: none yet
+	Last     int64  // Unix time of the start of the period running; 0: none yet
+	// LastSchedule is the schedule Last belongs to ("" from collector
+	// 0.19, taken as the current one).
+	LastSchedule string
+	// Inherited: the ranking has no own schedule and follows the global one.
+	Inherited bool
 }
 
 // ScheduledRankings returns the rankings of hlstats_Games with a schedule.
@@ -157,27 +254,14 @@ func (s *Store) ScheduledRankings(ctx context.Context) ([]ScheduledRanking, []er
 	if err != nil {
 		return nil, nil, err
 	}
-	rows, err := s.query(ctx, `SELECT code FROM hlstats_Games ORDER BY code`)
+	games, err := s.gameCodes(ctx)
 	if err != nil {
-		return nil, nil, err
-	}
-	var games []string
-	for rows.Next() {
-		var g string
-		if err := rows.Scan(&g); err != nil {
-			rows.Close()
-			return nil, nil, err
-		}
-		games = append(games, g)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
 		return nil, nil, err
 	}
 	var out []ScheduledRanking
 	var bad []error
 	for _, g := range games {
-		r, err := scheduleOf(g, opts)
+		r, err := s.scheduleOf(g, opts)
 		if err != nil {
 			bad = append(bad, fmt.Errorf("%s: %w", g, err))
 			continue
@@ -189,6 +273,44 @@ func (s *Store) ScheduledRankings(ctx context.Context) ([]ScheduledRanking, []er
 	return out, bad, nil
 }
 
+// InheritingRankings returns the codes of the rankings without a schedule
+// of their own (they follow the schedule for all rankings).
+func (s *Store) InheritingRankings(ctx context.Context) ([]string, error) {
+	opts, err := s.Options(ctx)
+	if err != nil {
+		return nil, err
+	}
+	games, err := s.gameCodes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, g := range games {
+		if strings.TrimSpace(opts[ScheduleKey(g)]) == "" {
+			out = append(out, g)
+		}
+	}
+	return out, nil
+}
+
+// gameCodes returns the codes of hlstats_Games.
+func (s *Store) gameCodes(ctx context.Context) ([]string, error) {
+	rows, err := s.query(ctx, `SELECT code FROM hlstats_Games ORDER BY code`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var games []string
+	for rows.Next() {
+		var g string
+		if err := rows.Scan(&g); err != nil {
+			return nil, err
+		}
+		games = append(games, strings.TrimSpace(g))
+	}
+	return games, rows.Err()
+}
+
 // ScheduledRanking returns the schedule of one ranking (Schedule not On
 // when it has none).
 func (s *Store) ScheduledRanking(ctx context.Context, game string) (ScheduledRanking, error) {
@@ -196,22 +318,46 @@ func (s *Store) ScheduledRanking(ctx context.Context, game string) (ScheduledRan
 	if err != nil {
 		return ScheduledRanking{}, err
 	}
-	return scheduleOf(game, opts)
+	return s.scheduleOf(game, opts)
 }
 
-func scheduleOf(game string, opts map[string]string) (ScheduledRanking, error) {
-	sch, err := ParseResetSchedule(opts[ScheduleKey(game)])
-	if err != nil {
-		return ScheduledRanking{Game: game}, err
+func (s *Store) scheduleOf(game string, opts map[string]string) (ScheduledRanking, error) {
+	r := ScheduledRanking{Game: game}
+	schKey, modeKey := ScheduleKey(game), ModeKey(game)
+	if strings.TrimSpace(opts[schKey]) == "" {
+		r.Inherited = true
+		schKey, modeKey = GlobalScheduleKey, GlobalModeKey
 	}
-	mode := ResetPlayerStats
-	if v := strings.TrimSpace(opts[ModeKey(game)]); v != "" {
-		if mode, err = ResetMode(v); err != nil {
-			return ScheduledRanking{Game: game}, err
+	sch, err := ParseResetSchedule(opts[schKey])
+	if err != nil {
+		return r, fmt.Errorf("%s: %w", schKey, err)
+	}
+	sch.Clock = s.ResetClock
+	r.Schedule, r.Mode = sch, ResetPlayerStats
+	if v := strings.TrimSpace(opts[modeKey]); v != "" {
+		if r.Mode, err = ResetMode(v); err != nil {
+			return r, fmt.Errorf("%s: %w", modeKey, err)
 		}
 	}
-	last, _ := strconv.ParseInt(strings.TrimSpace(opts[LastResetKey(game)]), 10, 64)
-	return ScheduledRanking{Game: game, Schedule: sch, Mode: mode, Last: max(0, last)}, nil
+	r.Last, r.LastSchedule = ParseLastReset(opts[LastResetKey(game)])
+	return r, nil
+}
+
+// ParseLastReset reads gamewe_reset_last_<game>: "UNIX" (collector 0.19)
+// or "UNIX SCHEDULE".
+func ParseLastReset(v string) (int64, string) {
+	ts, sch, _ := strings.Cut(strings.TrimSpace(v), " ")
+	last, _ := strconv.ParseInt(ts, 10, 64)
+	if last <= 0 {
+		return 0, ""
+	}
+	return last, strings.TrimSpace(sch)
+}
+
+// LastResetValue is the value of gamewe_reset_last_<game> for the period
+// of s that started at start.
+func LastResetValue(start time.Time, s ResetSchedule) string {
+	return strconv.FormatInt(start.Unix(), 10) + " " + s.String()
 }
 
 // ScheduledResult is what a scheduled reset did (or would do).
@@ -233,7 +379,7 @@ func (s *Store) Due(ctx context.Context, r ScheduledRanking, now time.Time, loc 
 	}
 	cur := r.Schedule.PeriodStart(now, loc)
 	res := ScheduledResult{Next: r.Schedule.Next(now, loc)}
-	if r.Last == 0 {
+	if r.Last == 0 || (r.LastSchedule != "" && r.LastSchedule != r.Schedule.String()) || r.Last > cur.Unix() {
 		res.Started = true
 		return res, nil
 	}
@@ -249,7 +395,7 @@ func (s *Store) Due(ctx context.Context, r ScheduledRanking, now time.Time, loc 
 }
 
 // ScheduledReset does the scheduled reset of r if one is due at now: the
-// best three into the hall of fame, the reset, the new last reset. Without
+// best five (HallPlaces) into the hall of fame, the reset, the new last reset. Without
 // a last reset it only records the current period's start. Only under the
 // job lock and while the game's servers are paused (like Reset).
 func (s *Store) ScheduledReset(ctx context.Context, r ScheduledRanking, now time.Time, loc *time.Location) (ScheduledResult, error) {
@@ -259,7 +405,7 @@ func (s *Store) ScheduledReset(ctx context.Context, r ScheduledRanking, now time
 	}
 	cur := r.Schedule.PeriodStart(now, loc)
 	if res.Started {
-		return res, s.setOption(ctx, LastResetKey(r.Game), strconv.FormatInt(cur.Unix(), 10))
+		return res, s.setOption(ctx, LastResetKey(r.Game), LastResetValue(cur, r.Schedule))
 	}
 	if !res.Due {
 		return res, nil
@@ -270,8 +416,13 @@ func (s *Store) ScheduledReset(ctx context.Context, r ScheduledRanking, now time
 	if res.Tables, err = s.Reset(ctx, r.Game, r.Mode); err != nil {
 		return res, err
 	}
-	return res, s.setOption(ctx, LastResetKey(r.Game), strconv.FormatInt(cur.Unix(), 10))
+	return res, s.setOption(ctx, LastResetKey(r.Game), LastResetValue(cur, r.Schedule))
 }
+
+// HallPlaces is how many places a period stores: the three of the podium
+// and two who move up when an entry is deleted (web admin) or its player
+// is hidden later. The web shows the first three it may show.
+const HallPlaces = 5
 
 // HallEntry is one place of the hall of fame.
 type HallEntry struct {
@@ -288,7 +439,7 @@ type HallEntry struct {
 const hallPlayers = `p.game = ? AND p.hideranking = 0 AND (p.kills > 0 OR p.deaths > 0)
 	AND NOT EXISTS (SELECT 1 FROM hlstats_PlayerUniqueIds u WHERE u.playerId = p.playerId AND u.uniqueId LIKE 'BOT%')`
 
-// HallTop returns the best three players of game now: most points, then
+// HallTop returns the best HallPlaces players of game now: most points, then
 // most kills, then the lower id.
 func (s *Store) HallTop(ctx context.Context, game string) ([]HallEntry, error) {
 	rows, err := s.query(ctx, `SELECT p.playerId, COALESCE(d.lastName, ''), COALESCE(l.flag, ''), COALESCE(l.country, ''),
@@ -298,7 +449,7 @@ func (s *Store) HallTop(ctx context.Context, game string) ([]HallEntry, error) {
 		LEFT JOIN hlstats_Players_Locations l ON l.id = d.location_id
 		WHERE `+hallPlayers+`
 		ORDER BY p.skill DESC, p.kills DESC, p.playerId
-		LIMIT 3`, game)
+		LIMIT `+strconv.Itoa(HallPlaces), game)
 	if err != nil {
 		return nil, err
 	}
@@ -333,7 +484,7 @@ func (s *Store) HallTop(ctx context.Context, game string) ([]HallEntry, error) {
 	return out, nil
 }
 
-// archive stores the best three of the period res in the hall of fame. A
+// archive stores the best players of the period res in the hall of fame. A
 // place already stored (a reset that stopped and runs again) is kept.
 func (s *Store) archive(ctx context.Context, r ScheduledRanking, res ScheduledResult, now time.Time) error {
 	var players int64
@@ -360,6 +511,7 @@ type HallRow struct {
 	Game, Unit             string
 	Every                  int
 	PeriodStart, PeriodEnd string
+	Removed                bool // taken out by an admin (web)
 	HallEntry
 }
 
@@ -367,7 +519,7 @@ type HallRow struct {
 // first.
 func (s *Store) HallOfFame(ctx context.Context, game string) ([]HallRow, error) {
 	q := `SELECT game, unit, every, period_start, period_end, place, player_id, name, flag, country, rank_name, fav_weapon,
-		skill, kills, deaths, headshots, kill_streak, shots, hits, connection_time FROM hlstats_gamewe_hall_of_fame`
+		skill, kills, deaths, headshots, kill_streak, shots, hits, connection_time, removed FROM hlstats_gamewe_hall_of_fame`
 	var args []any
 	if game != "" {
 		q += ` WHERE game = ?`
@@ -382,10 +534,12 @@ func (s *Store) HallOfFame(ctx context.Context, game string) ([]HallRow, error) 
 	for rows.Next() {
 		var h HallRow
 		var start, end any
+		var removed int
 		if err := rows.Scan(&h.Game, &h.Unit, &h.Every, &start, &end, &h.Place, &h.PlayerID, &h.Name, &h.Flag, &h.Country, &h.Rank, &h.FavWeapon,
-			&h.Skill, &h.Kills, &h.Deaths, &h.Headshots, &h.Streak, &h.Shots, &h.Hits, &h.ConnectionTime); err != nil {
+			&h.Skill, &h.Kills, &h.Deaths, &h.Headshots, &h.Streak, &h.Shots, &h.Hits, &h.ConnectionTime, &removed); err != nil {
 			return nil, err
 		}
+		h.Removed = removed != 0
 		h.PeriodStart, h.PeriodEnd = dateString(start), dateString(end)
 		out = append(out, h)
 	}

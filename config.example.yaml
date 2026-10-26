@@ -119,6 +119,8 @@ features:
     interval: 30m      # how often running bans are checked again (at least 5m)
     phrases: []        # further kick texts that mean a ban, e.g. ["gebannt"]
     allow_private: false # true: the ban list may be on the LAN or localhost
+  scheduled_resets:    # rankings reset on a schedule (set in the web admin or with gamewe halloffame)
+    time: "00:00"      # HH:MM in timezone below: when a period ends and the next one starts
   cs2_hitgroups:       # Counter-Strike 2: hits per body part (head, neck, chest, ...) and damage
     enabled: true      # from the attacked lines (CS2 has no plugin that reports them)
   update_check:        # ask GitHub for the latest release: run logs a newer one at start and

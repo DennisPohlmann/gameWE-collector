@@ -20,8 +20,9 @@ HLstatsX. The **collector** is its core: one static Go binary that
   the web frontend's pages in the in-game browser and can announce points of
   kills and actions,
 - runs daily awards, ranking resets queued by the web admin, scheduled
-  ranking resets (daily to yearly) that keep the best three of every period
-  in a hall of fame, GeoIP locations
+  ranking resets (daily to yearly, one schedule for all rankings or per
+  ranking, from any start day) that keep the best of every period in a hall of
+  fame, GeoIP locations
   (DB-IP database included), the RCON status of every server and, if
   enabled, the daily move of inactive players to `hlstats_PlayersInactive`;
   each of these jobs can also be run from the command line (`gamewe awards`,

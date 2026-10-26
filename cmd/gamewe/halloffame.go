@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -24,21 +25,31 @@ import (
 const hallUsage = `Usage:
   gamewe halloffame [list] [GAME] [-config FILE]
   gamewe halloffame schedule GAME [EVERY] [-mode MODE] [--dry-run|-n] [--force|-f] [-config FILE]
+  gamewe halloffame schedule -all [EVERY] [-mode MODE] [--dry-run|-n] [--force|-f] [-config FILE]
   gamewe halloffame run GAME [--dry-run|-n] [--force|-f] [-wait DURATION] [-config FILE]
 
 Scheduled ranking resets with a hall of fame. When a period of the schedule
-ends, the best three players of the ranking (most points; hidden players and
-bots do not count) are stored in hlstats_gamewe_hall_of_fame with their
-values, then the ranking is reset (-mode, default player-stats). The running
-collector does this by itself; the periods follow the calendar of the
-collector's timezone.
+ends, the best five players of the ranking (most points; hidden players and
+bots do not count; the web shows three, the others move up when an entry is
+deleted) are stored in hlstats_gamewe_hall_of_fame with their values, then
+the ranking is reset (-mode, default player-stats). The running collector
+does this by itself; the periods follow the calendar of the collector's
+timezone, a period ends at features.scheduled_resets.time.
 
   list      the stored entries, newest period first (all rankings or GAME)
   schedule  show the schedule of GAME, or set it: EVERY is day, week, month,
-            quarter or year, optionally with a number ("2 month", "3 day"),
-            or off. A new schedule starts with the period now running.
+            quarter or year, optionally with a number ("2 month", "3 day")
+            and a start day after @: the day of the month 1-28 ("month@15",
+            "quarter@15"), the weekday 1-7 for weeks (Monday 1, "week@5"),
+            MM-DD for years ("year@07-01"); default the 1st, Monday, 1
+            January. "off": no reset for GAME even with a schedule for all;
+            "inherit": follow the schedule for all rankings again.
+            With -all instead of GAME: the schedule for all rankings that
+            have none of their own ("off" removes it).
+            A new schedule starts with the period now running.
             Stored in hlstats_Options (gamewe_reset_schedule_GAME,
-            gamewe_reset_mode_GAME), like the web admin does.
+            gamewe_reset_mode_GAME; for all: gamewe_reset_schedule,
+            gamewe_reset_mode), like the web admin does.
   run       do the scheduled reset of GAME now if a period has ended (e.g.
             from cron while no collector runs). With a running collector it
             is queued for it.
@@ -68,6 +79,7 @@ func hallWith(args []string, in io.Reader, out io.Writer) error {
 	path := fs.String("config", config.DefaultPath, "path to the YAML config file")
 	mode := fs.String("mode", "", "reset mode of the schedule: player-stats (default), all-stats or all")
 	wait := fs.Duration("wait", 10*time.Minute, "how long to wait for the running collector, or for another job to finish")
+	all := fs.Bool("all", false, "schedule: the schedule for all rankings without their own")
 	var cf changeFlags
 	cf.add(fs, "only show what would be done")
 	addOutputFlag(fs)
@@ -94,12 +106,22 @@ func hallWith(args []string, in io.Reader, out io.Writer) error {
 			return hallList(ctx, store, game, out)
 		})
 	case "schedule":
-		if len(pos) < 1 || len(pos) > 3 {
+		game := ""
+		if !*all {
+			if len(pos) < 1 {
+				return exitError{2, hallUsage}
+			}
+			game, pos = pos[0], pos[1:]
+		}
+		if len(pos) > 2 {
 			return exitError{2, hallUsage}
 		}
 		return captured(out, func(out io.Writer, _ *result) error {
 			return hallRun(*path, func(ctx context.Context, _ *database.DB, store *stats.Store, loc *time.Location) error {
-				return hallSchedule(ctx, store, loc, pos[0], strings.Join(pos[1:], " "), *mode, cf, in, out)
+				if game == "" {
+					return hallScheduleAll(ctx, store, loc, strings.Join(pos, " "), *mode, cf, in, out)
+				}
+				return hallSchedule(ctx, store, loc, game, strings.Join(pos, " "), *mode, cf, in, out)
 			})
 		})
 	}
@@ -132,6 +154,7 @@ func hallRun(path string, fn func(ctx context.Context, db *database.DB, store *s
 	ctx := context.Background()
 	set := settings.NewLive(settings.Defaults())
 	store := stats.NewStore(db, set)
+	store.ResetClock = resetClock(cfg)
 	if opts, err := store.Options(ctx); err == nil {
 		s, _ := settings.FromOptions(opts)
 		set.Set(s) // the start skill
@@ -156,7 +179,7 @@ func hallList(ctx context.Context, store *stats.Store, game string, out io.Write
 	if structured() {
 		l := hallEntries{}
 		for _, h := range rows {
-			l = append(l, hallDoc{h.Game, h.PeriodStart, h.PeriodEnd, h.Place, h.PlayerID, h.Name, h.Rank, h.Skill, h.Kills, h.Deaths})
+			l = append(l, hallDoc{h.Game, h.PeriodStart, h.PeriodEnd, h.Place, h.PlayerID, h.Name, h.Rank, h.Skill, h.Kills, h.Deaths, h.Removed})
 		}
 		return emit(out, l)
 	}
@@ -167,11 +190,17 @@ func hallList(ctx context.Context, store *stats.Store, game string, out io.Write
 	w := tabwriter.NewWriter(out, 0, 2, 2, ' ', 0)
 	fmt.Fprintln(w, "GAME\tPERIOD\tPLACE\tPLAYER\tPOINTS\tKILLS\tDEATHS\tRANK")
 	for _, h := range rows {
-		fmt.Fprintf(w, "%s\t%s - %s\t%d\t%s (#%d)\t%d\t%d\t%d\t%s\n", h.Game, h.PeriodStart, h.PeriodEnd, h.Place, h.Name, h.PlayerID, h.Skill, h.Kills, h.Deaths, h.Rank)
+		removed := ""
+		if h.Removed {
+			removed = " [removed]"
+		}
+		fmt.Fprintf(w, "%s\t%s - %s\t%d\t%s (#%d)%s\t%d\t%d\t%d\t%s\n", h.Game, h.PeriodStart, h.PeriodEnd, h.Place, h.Name, h.PlayerID, removed, h.Skill, h.Kills, h.Deaths, h.Rank)
 	}
 	return w.Flush()
 }
 
+// hallSchedule shows or sets the schedule of one ranking: own, "off" or
+// "inherit" (the schedule for all rankings).
 func hallSchedule(ctx context.Context, store *stats.Store, loc *time.Location, game, every, mode string, cf changeFlags, in io.Reader, out io.Writer) error {
 	if _, err := store.ResetCounts(ctx, game, stats.ResetPlayerStats); err != nil { // checks the game
 		return err
@@ -182,30 +211,42 @@ func hallSchedule(ctx context.Context, store *stats.Store, loc *time.Location, g
 	}
 	now := time.Now()
 	if every == "" && mode == "" {
-		if !cur.Schedule.On() {
-			fmt.Fprintf(out, "%s: no reset schedule\n", game)
-			return nil
-		}
-		fmt.Fprintf(out, "%s: reset every %s (mode %s), the current period ends %s\n", game, cur.Schedule, cur.Mode, cur.Schedule.Next(now, loc).Format(time.DateTime+" MST"))
+		fmt.Fprintln(out, scheduleLine(game, cur, now, loc))
 		return nil
 	}
-	sch := cur.Schedule
-	if every != "" {
-		if sch, err = stats.ParseResetSchedule(every); err != nil {
+	own, ownMode := "", ""
+	switch strings.ToLower(strings.TrimSpace(every)) {
+	case "inherit":
+		if mode != "" {
+			return exitError{2, "-mode: a ranking that follows the schedule for all rankings has its mode (gamewe halloffame schedule -all -mode ...)"}
+		}
+	case stats.ScheduleOff:
+		own = stats.ScheduleOff
+	default:
+		sch := cur.Schedule
+		if every != "" {
+			if sch, err = stats.ParseResetSchedule(every); err != nil {
+				return exitError{2, err.Error()}
+			}
+		}
+		if !sch.On() {
+			return exitError{2, "no schedule: give EVERY, off or inherit"}
+		}
+		if ownMode, err = stats.ResetMode(cmp.Or(mode, cur.Mode, stats.ResetPlayerStats)); err != nil {
 			return exitError{2, err.Error()}
 		}
+		own = sch.String()
 	}
-	if mode == "" {
-		mode = cmp.Or(cur.Mode, stats.ResetPlayerStats)
+	next := cur
+	next.Inherited = own == ""
+	if own != "" {
+		next.Schedule, _ = stats.ParseResetSchedule(own)
+		next.Mode = ownMode
+	} else if all, err := store.ScheduledRanking(ctx, ""); err == nil {
+		next.Schedule, next.Mode = all.Schedule, all.Mode
 	}
-	if mode, err = stats.ResetMode(mode); err != nil {
-		return exitError{2, err.Error()}
-	}
-	if sch.On() {
-		fmt.Fprintf(out, "%s: reset every %s (mode %s); the current period ends %s\n", game, sch, mode, sch.Next(now, loc).Format(time.DateTime+" MST"))
-	} else {
-		fmt.Fprintf(out, "%s: no scheduled reset any more (the hall of fame entries stay)\n", game)
-	}
+	next.Schedule.Clock = store.ResetClock
+	fmt.Fprintln(out, scheduleLine(game, next, now, loc))
 	if cf.dryRun {
 		fmt.Fprintln(out, "dry run: nothing changed")
 		return nil
@@ -215,16 +256,84 @@ func hallSchedule(ctx context.Context, store *stats.Store, loc *time.Location, g
 	}
 	// The period now running is the first one: the last reset is its start.
 	last := ""
-	if sch.On() {
-		last = itoa(sch.PeriodStart(now, loc).Unix())
+	if next.Schedule.On() {
+		last = stats.LastResetValue(next.Schedule.PeriodStart(now, loc), next.Schedule)
 	}
-	for k, v := range map[string]string{stats.ScheduleKey(game): sch.String(), stats.ModeKey(game): mode, stats.LastResetKey(game): last} {
-		if err := store.SetOption(ctx, k, v); err != nil {
+	for _, kv := range [][2]string{{stats.ScheduleKey(game), own}, {stats.ModeKey(game), ownMode}, {stats.LastResetKey(game), last}} {
+		if err := store.SetOption(ctx, kv[0], kv[1]); err != nil {
 			return err
 		}
 	}
 	fmt.Fprintln(out, "stored")
 	return nil
+}
+
+// hallScheduleAll shows or sets the schedule for all rankings without
+// their own.
+func hallScheduleAll(ctx context.Context, store *stats.Store, loc *time.Location, every, mode string, cf changeFlags, in io.Reader, out io.Writer) error {
+	all, err := store.ScheduledRanking(ctx, "")
+	if err != nil {
+		fmt.Fprintf(out, "warning: stored schedule for all rankings: %v\n", err)
+	}
+	following, err := store.InheritingRankings(ctx)
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	show := func(r stats.ScheduledRanking) {
+		fmt.Fprintln(out, scheduleLine("all rankings", r, now, loc))
+		if len(following) > 0 {
+			fmt.Fprintf(out, "rankings without a schedule of their own: %s\n", strings.Join(following, ", "))
+		} else {
+			fmt.Fprintln(out, "every ranking has a schedule of its own (or off)")
+		}
+	}
+	if every == "" && mode == "" {
+		show(all)
+		return nil
+	}
+	sch := all.Schedule
+	if every != "" {
+		if sch, err = stats.ParseResetSchedule(every); err != nil {
+			return exitError{2, err.Error()}
+		}
+	}
+	if mode, err = stats.ResetMode(cmp.Or(mode, all.Mode, stats.ResetPlayerStats)); err != nil {
+		return exitError{2, err.Error()}
+	}
+	if !sch.On() {
+		mode = ""
+	}
+	sch.Clock = store.ResetClock
+	show(stats.ScheduledRanking{Schedule: sch, Mode: mode})
+	if cf.dryRun {
+		fmt.Fprintln(out, "dry run: nothing changed")
+		return nil
+	}
+	if err := approve(ctx, cf, in, out, interactive(in), "Store this schedule for all rankings?"); err != nil {
+		return err
+	}
+	// The rankings that follow it start the new schedule with the period
+	// now running: their last reset belongs to the old schedule.
+	for _, kv := range [][2]string{{stats.GlobalScheduleKey, sch.String()}, {stats.GlobalModeKey, mode}} {
+		if err := store.SetOption(ctx, kv[0], kv[1]); err != nil {
+			return err
+		}
+	}
+	fmt.Fprintln(out, "stored")
+	return nil
+}
+
+// scheduleLine describes the schedule of r for `schedule`.
+func scheduleLine(name string, r stats.ScheduledRanking, now time.Time, loc *time.Location) string {
+	from := ""
+	if r.Inherited && name != "all rankings" {
+		from = " (the schedule for all rankings)"
+	}
+	if !r.Schedule.On() {
+		return name + ": no reset schedule" + from
+	}
+	return fmt.Sprintf("%s: reset every %s (mode %s)%s; the current period ends %s", name, r.Schedule, r.Mode, from, r.Schedule.Next(now, loc).Format(time.DateTime+" MST"))
 }
 
 func hallReset(ctx context.Context, db *database.DB, store *stats.Store, loc *time.Location, game string, cf changeFlags, wait time.Duration, in io.Reader, out io.Writer, r *result) error {
@@ -308,17 +417,25 @@ type hallDoc struct {
 	Points      int64  `json:"points"`
 	Kills       int64  `json:"kills"`
 	Deaths      int64  `json:"deaths"`
+	Removed     bool   `json:"removed"`
 }
 
 type hallEntries []hallDoc
 
 func (hallEntries) Header() []string {
-	return []string{"game", "period_start", "period_end", "place", "player_id", "name", "rank", "points", "kills", "deaths"}
+	return []string{"game", "period_start", "period_end", "place", "player_id", "name", "rank", "points", "kills", "deaths", "removed"}
 }
 func (l hallEntries) Rows() [][]string {
 	out := [][]string{}
 	for _, h := range l {
-		out = append(out, []string{h.Game, h.PeriodStart, h.PeriodEnd, itoa(h.Place), itoa(h.PlayerID), h.Name, h.Rank, itoa(h.Points), itoa(h.Kills), itoa(h.Deaths)})
+		out = append(out, []string{h.Game, h.PeriodStart, h.PeriodEnd, itoa(h.Place), itoa(h.PlayerID), h.Name, h.Rank, itoa(h.Points), itoa(h.Kills), itoa(h.Deaths), strconv.FormatBool(h.Removed)})
 	}
 	return out
+}
+
+// resetClock is features.scheduled_resets.time in minutes after midnight
+// (checked when the config is loaded).
+func resetClock(cfg config.Config) int {
+	h, m, _ := cfg.Features.ScheduledResets.At()
+	return h*60 + m
 }

@@ -6,8 +6,10 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -92,6 +94,80 @@ func TestIntegrationScheduledReset(t *testing.T) {
 	top, err = store.HallTop(ctx, "css")
 	if err != nil || len(top) != 0 {
 		t.Errorf("top with a hidden player: %+v, %v", top, err)
+	}
+	hub.Close(ctx)
+}
+
+// The schedule for all rankings: css follows it (every month on the 15th),
+// tf has "off" and is never reset; a changed schedule starts again with the
+// period now running instead of resetting at once.
+func TestIntegrationScheduledResetAll(t *testing.T) {
+	db := testDB(t)
+	hub, store, _ := resetFixture(t, db)
+	flush(t, hub)
+	ctx := context.Background()
+	loc := time.UTC
+	set := func(k, v string) {
+		t.Helper()
+		if err := store.SetOption(ctx, k, v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	set(stats.GlobalScheduleKey, "month@15")
+	set(stats.GlobalModeKey, stats.ResetPlayerStats)
+	set(stats.ScheduleKey("tf"), stats.ScheduleOff)
+	now := time.Date(2026, 10, 26, 14, 0, 0, 0, loc)
+	jobs := &Jobs{Store: store, Hub: hub, Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Zone: loc, Now: func() time.Time { return now }}
+	if err := jobs.QueueScheduled(ctx, now); err != nil {
+		t.Fatal(err)
+	}
+	r, err := store.ScheduledRanking(ctx, "css")
+	if err != nil || !r.Inherited || r.Last != time.Date(2026, 10, 15, 0, 0, 0, 0, loc).Unix() || r.LastSchedule != "month@15" {
+		t.Fatalf("css after start: %+v, %v", r, err)
+	}
+	if r, _ := store.ScheduledRanking(ctx, "tf"); r.Schedule.On() || r.Inherited || r.Last != 0 {
+		t.Fatalf("tf: %+v", r)
+	}
+	if following, err := store.InheritingRankings(ctx); err != nil || !slices.Contains(following, "css") || slices.Contains(following, "tf") {
+		t.Fatalf("inheriting: %v, %v", following, err)
+	}
+
+	now = time.Date(2026, 11, 15, 0, 0, 30, 0, loc)
+	if err := jobs.Poll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	job, err := store.RecentJobs(ctx, 5)
+	if err != nil || len(job) != 1 || job[0].Game != "css" || job[0].Status != stats.JobDone {
+		t.Fatalf("jobs: %+v, %v", job, err)
+	}
+	if n := q(t, db, `SELECT COUNT(*) FROM hlstats_gamewe_hall_of_fame WHERE game = 'css' AND period_start = '2026-10-15' AND period_end = '2026-11-14'`); n != 2 {
+		t.Errorf("hall of fame rows of css: %d, want 2", n)
+	}
+	if q(t, db, `SELECT COUNT(*) FROM hlstats_Players WHERE game = 'tf' AND kills > 0`) == 0 {
+		t.Error("tf was reset although its schedule is off")
+	}
+
+	// A value of collector 0.19 (no schedule) gets the schedule added.
+	exec(t, db, `UPDATE hlstats_Options SET value = ? WHERE keyname = ?`, fmt.Sprint(time.Date(2026, 11, 15, 0, 0, 0, 0, loc).Unix()), stats.LastResetKey("css"))
+	now = time.Date(2026, 11, 16, 12, 0, 0, 0, loc)
+	if err := jobs.Poll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := store.ScheduledRanking(ctx, "css"); err != nil || r.LastSchedule != "month@15" {
+		t.Fatalf("css after the upgrade: %+v, %v", r, err)
+	}
+
+	// Weekly from now on: started with the week now running, no reset.
+	set(stats.GlobalScheduleKey, "week")
+	now = time.Date(2026, 11, 18, 12, 0, 0, 0, loc) // a Wednesday
+	if err := jobs.Poll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if q(t, db, `SELECT COUNT(*) FROM hlstats_gamewe_jobs`) != 1 {
+		t.Error("the changed schedule queued a reset")
+	}
+	if r, err := store.ScheduledRanking(ctx, "css"); err != nil || r.Last != time.Date(2026, 11, 16, 0, 0, 0, 0, loc).Unix() || r.LastSchedule != "week" {
+		t.Errorf("css after the change: %+v, %v", r, err)
 	}
 	hub.Close(ctx)
 }
