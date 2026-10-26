@@ -163,6 +163,12 @@ var Migrations = []Migration{
 			"the row stays and can be restored); gamewe_web_admin may update only this column",
 		Sync: true,
 	},
+	{
+		Version: 17, Name: "event-indexes",
+		Desc: "indexes for the web's latest events: game_time (game_id, timestamp_id) on the twelve event tables of the live box, " +
+			"game_activity (game, hideranking, last_event, playerId) on hlstats_PlayersInactive for the list of inactive players",
+		Sync: true,
+	},
 }
 
 // Latest is the newest schema version this collector knows.

@@ -194,6 +194,7 @@ What it does:
 | 14 | `player-bans` | table `hlstats_Players_Bans` (`features.sourcebans`, DB-SEMANTICS.md), readable by `gamewe_web`; nothing else changes |
 | 15 | `bots-per-ranking` | the bot settings per ranking: the global `gamewe_rank_bots` (and the old `gamewe_ignore_bots` = 1) becomes `gamewe_rank_bots_<game>` and `gamewe_bot_points_<game>` of every ranking with the same effect (Left 4 Dead keeps the points for kills of the AI), then the global rows are deleted ([CONFIG.md](CONFIG.md#settings-in-hlstats_options)); no new table or column |
 | 16 | `hall-of-fame-edit` | column `hlstats_gamewe_hall_of_fame.removed` (0 or 1): entries an admin took out of the hall of fame; `gamewe_web_admin` may update this column only (UPDATE (`removed`)). Places 4 and 5 that the collector now stores move up ([USAGE.md](USAGE.md#scheduled-resets-and-the-hall-of-fame)) |
+| 17 | `event-indexes` | indexes for large databases (e.g. after an import of old players and events): `game_time` (game_id, timestamp_id) on `hlstats_Events_Connects`, `_Entries`, `_Disconnects`, `_ChangeTeam`, `_ChangeRole`, `_ChangeName`, `_PlayerActions`, `_PlayerPlayerActions`, `_TeamBonuses`, `_Frags`, `_Suicides` and `_Teamkills` (the web's latest events of a ranking and its events page read the newest rows of one ranking), `game_activity` (game, hideranking, last_event, playerId) on `hlstats_PlayersInactive` (the web's list of inactive players); no data changes. On MariaDB with MyISAM each table is rebuilt and locked while its index is added: a few seconds per million rows, during which the collector does not record yet |
 
 The SQL files of older packages (`/opt/gamewe/collector/doc/schema/hlstatsx.sql`,
 `init/01_schema.sql`, `02_seed.sql`, `03_grants.sql` and the PostgreSQL
@@ -383,6 +384,32 @@ with 400 concurrent kills from two servers. One event can consist of several
 statements. If the database fails in the middle, an event can be stored
 partially. The error is logged. On PostgreSQL the collector works the same
 way (every statement on its own), so both databases hold the same data.
+
+## Large databases (MariaDB settings)
+
+With hundreds of thousands of players and millions of event rows (e.g. an
+imported HLstatsX database) two MariaDB settings matter, because the tables
+are MyISAM:
+
+- `key_buffer_size` is MyISAM's index cache (`innodb_buffer_pool_size` does
+  not help MyISAM). Give it at least the size of the indexes, as far as the
+  memory allows: `SELECT ROUND(SUM(index_length)/1048576) AS index_mb FROM
+  information_schema.TABLES WHERE table_schema = 'gamewe';`. If
+  `Key_reads / Key_read_requests` (`SHOW GLOBAL STATUS LIKE 'Key_read%';`)
+  stays above 1 %, it is too small.
+- `concurrent_insert = ALWAYS` lets the collector's INSERTs run while the
+  web reads a table, also when the table has gaps from deleted rows
+  (`gamewe db purge`); with the default `AUTO` they wait for the reads.
+
+Both go into the `[mysqld]` section of the server configuration (e.g.
+`/etc/mysql/mariadb.conf.d/50-server.cnf` or `/etc/my.cnf.d/server.cnf`),
+then restart MariaDB:
+
+```ini
+[mysqld]
+key_buffer_size   = 512M
+concurrent_insert = ALWAYS
+```
 
 ## TLS on the server
 

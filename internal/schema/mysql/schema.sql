@@ -118,7 +118,8 @@ CREATE TABLE `hlstats_Events_ChangeName` (
   `oldName` varchar(255) NOT NULL DEFAULT '',
   `newName` varchar(255) NOT NULL DEFAULT '',
   KEY `playerId` (`playerId`),
-  KEY `timestamp_id` (`timestamp_id`)
+  KEY `timestamp_id` (`timestamp_id`),
+  KEY `game_time` (`game_id`,`timestamp_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
 CREATE TABLE `hlstats_Events_ChangeRole` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
@@ -127,7 +128,8 @@ CREATE TABLE `hlstats_Events_ChangeRole` (
   `playerId` mediumint(8) unsigned NOT NULL DEFAULT 0,
   `role` tinyint(3) unsigned NOT NULL DEFAULT 0,
   KEY `playerId` (`playerId`),
-  KEY `timestamp_id` (`timestamp_id`)
+  KEY `timestamp_id` (`timestamp_id`),
+  KEY `game_time` (`game_id`,`timestamp_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
 CREATE TABLE `hlstats_Events_ChangeTeam` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
@@ -138,7 +140,8 @@ CREATE TABLE `hlstats_Events_ChangeTeam` (
   `team` tinyint(3) unsigned NOT NULL DEFAULT 0,
   KEY `playerId` (`playerId`),
   KEY `timestamp_id` (`timestamp_id`),
-  KEY `server_id` (`server_id`,`timestamp_id`)
+  KEY `server_id` (`server_id`,`timestamp_id`),
+  KEY `game_time` (`game_id`,`timestamp_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
 CREATE TABLE `hlstats_Events_Chat` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
@@ -161,7 +164,8 @@ CREATE TABLE `hlstats_Events_Connects` (
   `hostgroup` varchar(255) NOT NULL DEFAULT '',
   KEY `playerId` (`playerId`),
   KEY `ipAddress` (`ipAddress`),
-  KEY `timestamp_id` (`timestamp_id`)
+  KEY `timestamp_id` (`timestamp_id`),
+  KEY `game_time` (`game_id`,`timestamp_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
 CREATE TABLE `hlstats_Events_Disconnects` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
@@ -171,7 +175,8 @@ CREATE TABLE `hlstats_Events_Disconnects` (
   `playerId` mediumint(8) unsigned NOT NULL DEFAULT 0,
   KEY `playerId` (`playerId`),
   KEY `timestamp_id` (`timestamp_id`),
-  KEY `server_id` (`server_id`,`timestamp_id`)
+  KEY `server_id` (`server_id`,`timestamp_id`),
+  KEY `game_time` (`game_id`,`timestamp_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
 CREATE TABLE `hlstats_Events_Entries` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
@@ -181,7 +186,8 @@ CREATE TABLE `hlstats_Events_Entries` (
   `playerId` mediumint(8) unsigned NOT NULL DEFAULT 0,
   KEY `playerId` (`playerId`),
   KEY `timestamp_id` (`timestamp_id`),
-  KEY `server_id` (`server_id`,`timestamp_id`)
+  KEY `server_id` (`server_id`,`timestamp_id`),
+  KEY `game_time` (`game_id`,`timestamp_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
 CREATE TABLE `hlstats_Events_Frags` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
@@ -202,7 +208,8 @@ CREATE TABLE `hlstats_Events_Frags` (
   KEY `killer_time` (`killerId`,`timestamp_id`),
   KEY `victim_time` (`victimId`,`timestamp_id`),
   KEY `map` (`map`),
-  KEY `server_id` (`server_id`,`timestamp_id`)
+  KEY `server_id` (`server_id`,`timestamp_id`),
+  KEY `game_time` (`game_id`,`timestamp_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
 CREATE TABLE `hlstats_Events_Latency` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
@@ -237,7 +244,8 @@ CREATE TABLE `hlstats_Events_PlayerActions` (
   KEY `timestamp_id` (`timestamp_id`),
   KEY `playerId` (`playerId`),
   KEY `server_id` (`server_id`,`timestamp_id`),
-  KEY `time_action` (`timestamp_id`,`actionId`,`playerId`)
+  KEY `time_action` (`timestamp_id`,`actionId`,`playerId`),
+  KEY `game_time` (`game_id`,`timestamp_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
 CREATE TABLE `hlstats_Events_PlayerPlayerActions` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
@@ -251,7 +259,8 @@ CREATE TABLE `hlstats_Events_PlayerPlayerActions` (
   KEY `timestamp_id` (`timestamp_id`),
   KEY `playerId` (`playerId`),
   KEY `victimId` (`victimId`),
-  KEY `server_id` (`server_id`,`timestamp_id`)
+  KEY `server_id` (`server_id`,`timestamp_id`),
+  KEY `game_time` (`game_id`,`timestamp_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
 CREATE TABLE `hlstats_Events_Rcon` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
@@ -272,7 +281,8 @@ CREATE TABLE `hlstats_Events_Suicides` (
   `weapon` smallint(5) unsigned NOT NULL DEFAULT 0,
   KEY `playerId` (`playerId`),
   KEY `timestamp_id` (`timestamp_id`),
-  KEY `server_id` (`server_id`,`timestamp_id`)
+  KEY `server_id` (`server_id`,`timestamp_id`),
+  KEY `game_time` (`game_id`,`timestamp_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
 CREATE TABLE `hlstats_Events_TeamBonuses` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
@@ -284,7 +294,8 @@ CREATE TABLE `hlstats_Events_TeamBonuses` (
   `bonus` tinyint(4) NOT NULL DEFAULT 0,
   KEY `timestamp_id` (`timestamp_id`),
   KEY `playerId` (`playerId`),
-  KEY `server_id` (`server_id`,`timestamp_id`)
+  KEY `server_id` (`server_id`,`timestamp_id`),
+  KEY `game_time` (`game_id`,`timestamp_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
 CREATE TABLE `hlstats_Events_Teamkills` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
@@ -296,7 +307,8 @@ CREATE TABLE `hlstats_Events_Teamkills` (
   `weapon` smallint(5) unsigned NOT NULL DEFAULT 0,
   KEY `killerId` (`killerId`),
   KEY `victimId` (`victimId`),
-  KEY `server_id` (`server_id`,`timestamp_id`)
+  KEY `server_id` (`server_id`,`timestamp_id`),
+  KEY `game_time` (`game_id`,`timestamp_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
 CREATE TABLE `hlstats_Games` (
   `id` tinyint(3) unsigned NOT NULL AUTO_INCREMENT,
@@ -493,7 +505,8 @@ CREATE TABLE `hlstats_PlayersInactive` (
   UNIQUE KEY `playerId` (`playerId`),
   KEY `game` (`game`),
   KEY `game_id` (`game_id`,`hideranking`),
-  KEY `clan` (`clan`)
+  KEY `clan` (`clan`),
+  KEY `game_activity` (`game`,`hideranking`,`last_event`,`playerId`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Players_Actions` (
   `player_id` mediumint(8) unsigned NOT NULL,

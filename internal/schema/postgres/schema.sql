@@ -125,6 +125,7 @@ CREATE TABLE hlstats_Events_ChangeName (
 );
 CREATE INDEX hlstats_Events_ChangeName_playerId ON hlstats_Events_ChangeName (playerId);
 CREATE INDEX hlstats_Events_ChangeName_timestamp_id ON hlstats_Events_ChangeName (timestamp_id);
+CREATE INDEX hlstats_Events_ChangeName_game_time ON hlstats_Events_ChangeName (game_id, timestamp_id);
 CREATE TABLE hlstats_Events_ChangeRole (
   timestamp_id bigint NOT NULL DEFAULT 0,
   game_id smallint NOT NULL DEFAULT 0,
@@ -134,6 +135,7 @@ CREATE TABLE hlstats_Events_ChangeRole (
 );
 CREATE INDEX hlstats_Events_ChangeRole_playerId ON hlstats_Events_ChangeRole (playerId);
 CREATE INDEX hlstats_Events_ChangeRole_timestamp_id ON hlstats_Events_ChangeRole (timestamp_id);
+CREATE INDEX hlstats_Events_ChangeRole_game_time ON hlstats_Events_ChangeRole (game_id, timestamp_id);
 CREATE TABLE hlstats_Events_ChangeTeam (
   timestamp_id bigint NOT NULL DEFAULT 0,
   game_id smallint NOT NULL DEFAULT 0,
@@ -145,6 +147,7 @@ CREATE TABLE hlstats_Events_ChangeTeam (
 CREATE INDEX hlstats_Events_ChangeTeam_playerId ON hlstats_Events_ChangeTeam (playerId);
 CREATE INDEX hlstats_Events_ChangeTeam_timestamp_id ON hlstats_Events_ChangeTeam (timestamp_id);
 CREATE INDEX hlstats_Events_ChangeTeam_server_id ON hlstats_Events_ChangeTeam (server_id, timestamp_id);
+CREATE INDEX hlstats_Events_ChangeTeam_game_time ON hlstats_Events_ChangeTeam (game_id, timestamp_id);
 CREATE TABLE hlstats_Events_Chat (
   timestamp_id bigint NOT NULL DEFAULT 0,
   game_id smallint NOT NULL DEFAULT 0,
@@ -168,6 +171,7 @@ CREATE TABLE hlstats_Events_Connects (
 CREATE INDEX hlstats_Events_Connects_playerId ON hlstats_Events_Connects (playerId);
 CREATE INDEX hlstats_Events_Connects_ipAddress ON hlstats_Events_Connects (ipAddress);
 CREATE INDEX hlstats_Events_Connects_timestamp_id ON hlstats_Events_Connects (timestamp_id);
+CREATE INDEX hlstats_Events_Connects_game_time ON hlstats_Events_Connects (game_id, timestamp_id);
 CREATE TABLE hlstats_Events_Disconnects (
   timestamp_id bigint NOT NULL DEFAULT 0,
   game_id smallint NOT NULL DEFAULT 0,
@@ -178,6 +182,7 @@ CREATE TABLE hlstats_Events_Disconnects (
 CREATE INDEX hlstats_Events_Disconnects_playerId ON hlstats_Events_Disconnects (playerId);
 CREATE INDEX hlstats_Events_Disconnects_timestamp_id ON hlstats_Events_Disconnects (timestamp_id);
 CREATE INDEX hlstats_Events_Disconnects_server_id ON hlstats_Events_Disconnects (server_id, timestamp_id);
+CREATE INDEX hlstats_Events_Disconnects_game_time ON hlstats_Events_Disconnects (game_id, timestamp_id);
 CREATE TABLE hlstats_Events_Entries (
   timestamp_id bigint NOT NULL DEFAULT 0,
   game_id smallint NOT NULL DEFAULT 0,
@@ -188,6 +193,7 @@ CREATE TABLE hlstats_Events_Entries (
 CREATE INDEX hlstats_Events_Entries_playerId ON hlstats_Events_Entries (playerId);
 CREATE INDEX hlstats_Events_Entries_timestamp_id ON hlstats_Events_Entries (timestamp_id);
 CREATE INDEX hlstats_Events_Entries_server_id ON hlstats_Events_Entries (server_id, timestamp_id);
+CREATE INDEX hlstats_Events_Entries_game_time ON hlstats_Events_Entries (game_id, timestamp_id);
 CREATE TABLE hlstats_Events_Frags (
   timestamp_id bigint NOT NULL DEFAULT 0,
   game_id smallint NOT NULL DEFAULT 0,
@@ -209,6 +215,7 @@ CREATE INDEX hlstats_Events_Frags_killer_time ON hlstats_Events_Frags (killerId,
 CREATE INDEX hlstats_Events_Frags_victim_time ON hlstats_Events_Frags (victimId, timestamp_id);
 CREATE INDEX hlstats_Events_Frags_map ON hlstats_Events_Frags (map);
 CREATE INDEX hlstats_Events_Frags_server_id ON hlstats_Events_Frags (server_id, timestamp_id);
+CREATE INDEX hlstats_Events_Frags_game_time ON hlstats_Events_Frags (game_id, timestamp_id);
 CREATE TABLE hlstats_Events_Latency (
   timestamp_id bigint NOT NULL DEFAULT 0,
   game_id smallint NOT NULL DEFAULT 0,
@@ -244,6 +251,7 @@ CREATE INDEX hlstats_Events_PlayerActions_timestamp_id ON hlstats_Events_PlayerA
 CREATE INDEX hlstats_Events_PlayerActions_playerId ON hlstats_Events_PlayerActions (playerId);
 CREATE INDEX hlstats_Events_PlayerActions_server_id ON hlstats_Events_PlayerActions (server_id, timestamp_id);
 CREATE INDEX hlstats_Events_PlayerActions_time_action ON hlstats_Events_PlayerActions (timestamp_id, actionId, playerId);
+CREATE INDEX hlstats_Events_PlayerActions_game_time ON hlstats_Events_PlayerActions (game_id, timestamp_id);
 CREATE TABLE hlstats_Events_PlayerPlayerActions (
   timestamp_id bigint NOT NULL DEFAULT 0,
   game_id smallint NOT NULL DEFAULT 0,
@@ -258,6 +266,7 @@ CREATE INDEX hlstats_Events_PlayerPlayerActions_timestamp_id ON hlstats_Events_P
 CREATE INDEX hlstats_Events_PlayerPlayerActions_playerId ON hlstats_Events_PlayerPlayerActions (playerId);
 CREATE INDEX hlstats_Events_PlayerPlayerActions_victimId ON hlstats_Events_PlayerPlayerActions (victimId);
 CREATE INDEX hlstats_Events_PlayerPlayerActions_server_id ON hlstats_Events_PlayerPlayerActions (server_id, timestamp_id);
+CREATE INDEX hlstats_Events_PlayerPlayerActions_game_time ON hlstats_Events_PlayerPlayerActions (game_id, timestamp_id);
 CREATE TABLE hlstats_Events_Rcon (
   timestamp_id bigint NOT NULL DEFAULT 0,
   game_id smallint NOT NULL DEFAULT 0,
@@ -279,6 +288,7 @@ CREATE TABLE hlstats_Events_Suicides (
 CREATE INDEX hlstats_Events_Suicides_playerId ON hlstats_Events_Suicides (playerId);
 CREATE INDEX hlstats_Events_Suicides_timestamp_id ON hlstats_Events_Suicides (timestamp_id);
 CREATE INDEX hlstats_Events_Suicides_server_id ON hlstats_Events_Suicides (server_id, timestamp_id);
+CREATE INDEX hlstats_Events_Suicides_game_time ON hlstats_Events_Suicides (game_id, timestamp_id);
 CREATE TABLE hlstats_Events_TeamBonuses (
   timestamp_id bigint NOT NULL DEFAULT 0,
   game_id smallint NOT NULL DEFAULT 0,
@@ -291,6 +301,7 @@ CREATE TABLE hlstats_Events_TeamBonuses (
 CREATE INDEX hlstats_Events_TeamBonuses_timestamp_id ON hlstats_Events_TeamBonuses (timestamp_id);
 CREATE INDEX hlstats_Events_TeamBonuses_playerId ON hlstats_Events_TeamBonuses (playerId);
 CREATE INDEX hlstats_Events_TeamBonuses_server_id ON hlstats_Events_TeamBonuses (server_id, timestamp_id);
+CREATE INDEX hlstats_Events_TeamBonuses_game_time ON hlstats_Events_TeamBonuses (game_id, timestamp_id);
 CREATE TABLE hlstats_Events_Teamkills (
   timestamp_id bigint NOT NULL DEFAULT 0,
   game_id smallint NOT NULL DEFAULT 0,
@@ -303,6 +314,7 @@ CREATE TABLE hlstats_Events_Teamkills (
 CREATE INDEX hlstats_Events_Teamkills_killerId ON hlstats_Events_Teamkills (killerId);
 CREATE INDEX hlstats_Events_Teamkills_victimId ON hlstats_Events_Teamkills (victimId);
 CREATE INDEX hlstats_Events_Teamkills_server_id ON hlstats_Events_Teamkills (server_id, timestamp_id);
+CREATE INDEX hlstats_Events_Teamkills_game_time ON hlstats_Events_Teamkills (game_id, timestamp_id);
 CREATE TABLE hlstats_Games (
   id smallint GENERATED BY DEFAULT AS IDENTITY NOT NULL,
   code varchar(10) NOT NULL DEFAULT '',
@@ -500,6 +512,7 @@ CREATE UNIQUE INDEX hlstats_PlayersInactive_playerId ON hlstats_PlayersInactive 
 CREATE INDEX hlstats_PlayersInactive_game ON hlstats_PlayersInactive (game);
 CREATE INDEX hlstats_PlayersInactive_game_id ON hlstats_PlayersInactive (game_id, hideranking);
 CREATE INDEX hlstats_PlayersInactive_clan ON hlstats_PlayersInactive (clan);
+CREATE INDEX hlstats_PlayersInactive_game_activity ON hlstats_PlayersInactive (game, hideranking, last_event, playerId);
 CREATE TABLE hlstats_Players_Actions (
   player_id integer NOT NULL,
   yearweek_id integer NOT NULL,
