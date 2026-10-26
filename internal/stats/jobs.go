@@ -19,8 +19,12 @@ const (
 	JobFailed  = "failed"
 )
 
-// JobReset is the only job type: a ranking reset.
-const JobReset = "reset"
+// Job types: a ranking reset (game and mode), the move of inactive players
+// (features.inactive_players; no game, no mode).
+const (
+	JobReset    = "reset"
+	JobInactive = "inactive"
+)
 
 // Job is a row of hlstats_gamewe_jobs.
 type Job struct {
@@ -120,9 +124,19 @@ func (s *Store) FinishJob(ctx context.Context, id int64, status, result string, 
 	return s.run(ctx, step{`UPDATE hlstats_gamewe_jobs SET status = ?, finished_at = ?, result = ? WHERE id = ?`, []any{status, at.Unix(), result, id}})
 }
 
+// JobKeep is how long finished jobs stay in hlstats_gamewe_jobs.
+const JobKeep = 30 * 24 * time.Hour
+
 // DeleteOldJobs removes finished jobs requested before t.
 func (s *Store) DeleteOldJobs(ctx context.Context, before time.Time) error {
 	return s.run(ctx, step{`DELETE FROM hlstats_gamewe_jobs WHERE requested_at < ? AND status IN (?, ?)`, []any{before.Unix(), JobDone, JobFailed}})
+}
+
+// CountOldJobs counts the finished jobs requested before t.
+func (s *Store) CountOldJobs(ctx context.Context, before time.Time) (int64, error) {
+	var n int64
+	err := s.queryRow(ctx, `SELECT COUNT(*) FROM hlstats_gamewe_jobs WHERE requested_at < ? AND status IN (?, ?)`, before.Unix(), JobDone, JobFailed).Scan(&n)
+	return n, err
 }
 
 // Heartbeat writes the time to hlstats_Options gamewe_heartbeat.

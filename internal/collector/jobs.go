@@ -14,9 +14,6 @@ import (
 // JobPoll is how often the collector looks for queued jobs.
 const JobPoll = 10 * time.Second
 
-// jobKeep is how long finished jobs stay in hlstats_gamewe_jobs.
-const jobKeep = 30 * 24 * time.Hour
-
 // Jobs runs the jobs of hlstats_gamewe_jobs (ranking resets queued by the
 // web admin or `gamewe reset`) in the running collector, which pauses the
 // game's servers for it, writes the heartbeat and moves inactive players
@@ -27,6 +24,9 @@ type Jobs struct {
 	Log      *slog.Logger
 	Now      func() time.Time // tests
 	Inactive InactiveConfig
+	// Lock takes the job lock of the database (database.JobLock) for a
+	// reset and a move of inactive players; nil: none (tests).
+	Lock func(ctx context.Context) (release func(), err error)
 
 	lastBeat     time.Time
 	lastPrune    time.Time
@@ -95,7 +95,7 @@ func (j *Jobs) Poll(ctx context.Context) error {
 		j.lastBeat = now
 	}
 	if now.Sub(j.lastPrune) >= time.Hour {
-		if err := j.Store.DeleteOldJobs(ctx, now.Add(-jobKeep)); err != nil {
+		if err := j.Store.DeleteOldJobs(ctx, now.Add(-stats.JobKeep)); err != nil {
 			return fmt.Errorf("delete old jobs: %w", err)
 		}
 		j.lastPrune = now
@@ -121,6 +121,16 @@ func (j *Jobs) Poll(ctx context.Context) error {
 		busy[r.Game] = r.ID
 	}
 	for _, job := range pending {
+		if job.Type == stats.JobInactive { // all games; a second one is a no-op
+			if ok, err := j.Store.ClaimJob(ctx, job.ID, stats.JobPending, j.now()); err != nil || !ok {
+				continue
+			}
+			j.do(ctx, job)
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			continue
+		}
 		if other, ok := busy[job.Game]; ok {
 			if ok, err := j.Store.ClaimJob(ctx, job.ID, stats.JobPending, j.now()); err != nil || !ok {
 				continue
@@ -158,25 +168,60 @@ func (j *Jobs) inactiveDue(now time.Time) bool {
 	return true
 }
 
+// lock takes the job lock (a no-op without Lock).
+func (j *Jobs) lock(ctx context.Context) (func(), error) {
+	if j.Lock == nil {
+		return func() {}, nil
+	}
+	return j.Lock(ctx)
+}
+
 // MoveInactive moves the players without an event for hlstats_Options
-// MinActivity days before now (and not online) to hlstats_PlayersInactive.
+// MinActivity days before now (and not online) to hlstats_PlayersInactive,
+// under the job lock.
 func (j *Jobs) MoveInactive(ctx context.Context, now time.Time) error {
-	days, warn, err := j.Store.InactiveDays(ctx)
+	_, err := j.moveInactive(ctx, now)
+	return err
+}
+
+// moveInactive is MoveInactive with its result for the job row.
+func (j *Jobs) moveInactive(ctx context.Context, now time.Time) (string, error) {
+	release, err := j.lock(ctx)
 	if err != nil {
-		return err
+		return "", err
+	}
+	defer release()
+	cutoff, days, warn, err := j.Store.InactiveCutoff(ctx, now)
+	if err != nil {
+		return "", err
 	}
 	if warn != "" {
 		j.Log.Warn("jobs: " + warn)
 	}
-	n, err := j.Store.MoveInactive(ctx, now.Add(-time.Duration(days)*24*time.Hour))
+	n, err := j.Store.MoveInactive(ctx, cutoff)
 	if n > 0 || err != nil {
 		j.Log.Info("jobs: inactive players moved to hlstats_PlayersInactive", "players", n, "days", days)
 	}
-	return err
+	return InactiveResult(n, days), err
+}
+
+// InactiveResult is the result text of a move of inactive players.
+func InactiveResult(moved int64, days int) string {
+	return fmt.Sprintf("%d players moved to hlstats_PlayersInactive (no event for %d days, not online)", moved, days)
 }
 
 // do runs a claimed job and stores its result.
 func (j *Jobs) do(ctx context.Context, job stats.Job) {
+	if job.Type == stats.JobInactive {
+		res, err := j.moveInactive(ctx, j.now())
+		if err != nil {
+			j.Log.Error("jobs: moving inactive players failed", "job", job.ID, "err", err)
+			j.finish(ctx, job, stats.JobFailed, err.Error())
+			return
+		}
+		j.finish(ctx, job, stats.JobDone, res)
+		return
+	}
 	if job.Type != stats.JobReset {
 		j.finish(ctx, job, stats.JobFailed, fmt.Sprintf("unknown job type %q", job.Type))
 		return
@@ -204,6 +249,11 @@ func (j *Jobs) reset(ctx context.Context, game, mode string) ([]stats.TableCount
 	if _, err := j.Store.ResetCounts(ctx, game, mode); err != nil { // checks the game before pausing
 		return nil, err
 	}
+	release, err := j.lock(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	pctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 	resume := func() {}

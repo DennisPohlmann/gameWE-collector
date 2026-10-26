@@ -844,18 +844,39 @@ func versionTableSQL(dialect string) string {
 const (
 	migrateLockPrefix = "gamewe_db_migrate."
 	migrateLockKey    = 0x67616d6577650001 // pg_advisory_lock, per database
+	jobLockPrefix     = "gamewe_jobs."
+	jobLockKey        = 0x67616d6577650002
 )
 
 // migrateLock takes the migration lock on conn, waiting up to wait.
 func migrateLock(ctx context.Context, conn *sql.Conn, postgres bool, wait time.Duration, waiting func()) (func(), error) {
+	release, err := namedLock(ctx, conn, postgres, migrateLockPrefix, migrateLockKey, wait, waiting)
+	if errors.Is(err, errLockBusy) {
+		return nil, fmt.Errorf("another gamewe db migrate has been running on this database for more than %s", wait)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("migration lock: %w", err)
+	}
+	return release, nil
+}
+
+// errLockBusy: another session held a named lock for the whole wait.
+var errLockBusy = errors.New("lock busy")
+
+// namedLock takes a lock of the database on conn: GET_LOCK of prefix and
+// the database name (MariaDB / MySQL), pg_advisory_lock of key
+// (PostgreSQL). It tries every second up to wait (calling waiting once
+// when it has to wait) and returns errLockBusy after that. The lock ends
+// with release or when conn closes.
+func namedLock(ctx context.Context, conn *sql.Conn, postgres bool, prefix string, key int64, wait time.Duration, waiting func()) (func(), error) {
 	try := func() (bool, error) {
 		var got sql.NullInt64
 		if postgres {
 			var ok bool
-			err := conn.QueryRowContext(ctx, `SELECT pg_try_advisory_lock($1)`, int64(migrateLockKey)).Scan(&ok)
+			err := conn.QueryRowContext(ctx, `SELECT pg_try_advisory_lock($1)`, key).Scan(&ok)
 			return ok, err
 		}
-		err := conn.QueryRowContext(ctx, `SELECT GET_LOCK(LEFT(CONCAT(?, DATABASE()), 64), 0)`, migrateLockPrefix).Scan(&got)
+		err := conn.QueryRowContext(ctx, `SELECT GET_LOCK(LEFT(CONCAT(?, DATABASE()), 64), 0)`, prefix).Scan(&got)
 		return got.Valid && got.Int64 == 1, err
 	}
 	deadline := time.Now().Add(wait)
@@ -863,7 +884,7 @@ func migrateLock(ctx context.Context, conn *sql.Conn, postgres bool, wait time.D
 	for {
 		ok, err := try()
 		if err != nil {
-			return nil, fmt.Errorf("migration lock: %w", err)
+			return nil, err
 		}
 		if ok {
 			break
@@ -873,7 +894,7 @@ func migrateLock(ctx context.Context, conn *sql.Conn, postgres bool, wait time.D
 			told = true
 		}
 		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("another gamewe db migrate has been running on this database for more than %s", wait)
+			return nil, errLockBusy
 		}
 		select {
 		case <-ctx.Done():
@@ -883,9 +904,9 @@ func migrateLock(ctx context.Context, conn *sql.Conn, postgres bool, wait time.D
 	}
 	return func() {
 		if postgres {
-			conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock($1)`, int64(migrateLockKey))
+			conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock($1)`, key)
 		} else {
-			conn.ExecContext(context.Background(), `SELECT RELEASE_LOCK(LEFT(CONCAT(?, DATABASE()), 64))`, migrateLockPrefix)
+			conn.ExecContext(context.Background(), `SELECT RELEASE_LOCK(LEFT(CONCAT(?, DATABASE()), 64))`, prefix)
 		}
 	}, nil
 }

@@ -145,7 +145,9 @@ collector moves once a day (default 01:00 in `timezone`, else the server's
 time zone) the players who have not played for `MinActivity` days (web
 admin, default 28) and are not online to `hlstats_PlayersInactive`, and
 logs how many. They come back unchanged with their next log line. It is off
-by default; see [CONFIG.md](CONFIG.md#features).
+by default; see [CONFIG.md](CONFIG.md#features). `gamewe inactive` does it
+now, also when the feature is off
+([jobs by hand](#collector-jobs-by-hand-and-from-cron)).
 
 Daily awards (most kills with a weapon, most actions, most kills, longest play
 time, ...) are decided every day for the previous day, by default at 00:00
@@ -175,9 +177,11 @@ command except `run` also takes `-o FORMAT` for scripts
 | `gamewe db init`, `purge`, `optimize`, `reset`, `drop` | tables of a new database; delete old events; give the space back; empty everything; drop the tables (below) |
 | `gamewe -V` / `--version` / `version` | the version |
 | `gamewe status`, `gamewe logaddress`, `gamewe rcon` | RCON status, log address registration, any RCON command (below) |
+| `gamewe serverinfo` | ask the servers for version, OS and VAC (`A2S_INFO`) and store what changed, as `features.server_info` does |
 | `gamewe game`, `gamewe server`, `gamewe option` | games, servers and settings like the web admin (below) |
 | `gamewe reset GAME -mode player-stats\|all-stats\|all` | reset a ranking (below) |
-| `gamewe awards -date YYYY-MM-DD` | decide the daily awards of a day again |
+| `gamewe awards [-date YYYY-MM-DD]` | decide the daily awards of a day (again), also with `features.daily_awards` off |
+| `gamewe inactive` | move the inactive players to `hlstats_PlayersInactive` now, also with `features.inactive_players` off |
 | `gamewe geoip-update` | download the DB-IP database now |
 | `gamewe simulate` | replay a sample game into the database or to a running collector |
 
@@ -390,8 +394,60 @@ gamewe logaddress -add                        # register it where it is missing
 gamewe logaddress -server 198.51.100.7:27015 -address 203.0.113.4:41337 -add
 gamewe logaddress -server 198.51.100.8:27015 -add  # a CS2 server: logaddress_add_http with listen.http (token shown as <token>)
 gamewe rcon -server 3 sv_maxplayers           # any RCON command, prints the answer
+gamewe serverinfo                             # A2S_INFO of all servers, store version, OS, VAC (-dry-run: only show)
 gamewe awards -date 2026-10-21                # decide the daily awards of a day again
 ```
+
+### Collector jobs by hand and from cron
+
+Every job of the collector that works on the database alone can be run from
+the command line, whether its feature in the config file is on or off:
+
+| Job of the running collector | When | By hand |
+|---|---|---|
+| daily awards (`features.daily_awards`), with the cleanup of ping samples older than 90 days | daily at `time` | `gamewe awards [-date YYYY-MM-DD] [-game CODE] [-tz ZONE]` (default: yesterday; the ping cleanup only without `-game`) |
+| move inactive players (`features.inactive_players`) | daily at `time` | `gamewe inactive [-dry-run]` |
+| ranking reset queued by the web admin | every 10 s | `gamewe reset GAME -mode ... -yes` ([below](#resetting-a-ranking)) |
+| delete finished jobs older than 30 days | hourly | part of `gamewe db purge -older-than DAYS` |
+| server info `A2S_INFO` (`features.server_info`) | every 5 min | `gamewe serverinfo [-server ...] [-dry-run]` |
+| log address (`features.log_address`) | every minute | `gamewe logaddress -add` |
+| GeoIP update (`geoip.auto_update`) | monthly | `gamewe geoip-update` |
+
+Not by hand, because they only make sense with the collector's own state in
+memory (the players it tracks): the live view and `act_players` from RCON
+status (`gamewe status` only shows it), `hlstats_server_load` every 10
+minutes, ending idle visits, the heartbeat, reloading servers and settings.
+`gamewe db purge` and `gamewe db optimize` exist only on the command line.
+
+**One job at a time.** A ranking reset, the move of inactive players and the
+daily awards take the same lock in the database (`GET_LOCK` on MariaDB /
+MySQL, `pg_advisory_lock` on PostgreSQL), in the collector and in the
+commands; a command waits for a job in progress up to `-wait` (default 10
+minutes, then exit code 1 and nothing changed). So a cron run of
+`gamewe awards` at the minute of the collector's own run cannot write a day
+twice. `gamewe reset` and `gamewe inactive` hand the job to a running collector
+(heartbeat less than 2 minutes old) through `hlstats_gamewe_jobs` and wait
+for its result (`gamewe reset -list` lists all jobs); without one they run it
+themselves.
+
+Cron (instead of, or in addition to, the features in the config file), as
+`/etc/cron.d/gamewe`; the user `gamewe` can read the config file (`640
+root:gamewe`), the output goes to the journal (`journalctl -t gamewe-awards`):
+
+```
+SHELL=/bin/sh
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+# the daily awards of yesterday at 00:30 (with features.daily_awards.enabled: false)
+30 0 * * * gamewe /opt/gamewe/collector/bin/gamewe awards -config /etc/gamewe/collector/config.yaml 2>&1 | systemd-cat -t gamewe-awards
+# inactive players at 01:00 (with features.inactive_players.enabled: false)
+0 1 * * * gamewe /opt/gamewe/collector/bin/gamewe inactive -config /etc/gamewe/collector/config.yaml 2>&1 | systemd-cat -t gamewe-inactive
+# reset the ranking css on the 1st of every month at 05:00, the players stay
+0 5 1 * * gamewe /opt/gamewe/collector/bin/gamewe reset css -mode player-stats -yes -config /etc/gamewe/collector/config.yaml 2>&1 | systemd-cat -t gamewe-reset
+# events older than 180 days and old jobs, every Sunday at 04:00
+0 4 * * 0 gamewe /opt/gamewe/collector/bin/gamewe db purge -older-than 180 -yes -config /etc/gamewe/collector/config.yaml 2>&1 | systemd-cat -t gamewe-purge
+```
+
+Cron uses the system's time zone (cronie also reads `CRON_TZ=Europe/Berlin`).
 
 ### Games, servers and settings
 

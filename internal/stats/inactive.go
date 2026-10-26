@@ -70,6 +70,21 @@ func (s *Store) MoveInactive(ctx context.Context, cutoff time.Time) (int64, erro
 	}
 }
 
+// InactiveCount returns how many players MoveInactive would move now.
+func (s *Store) InactiveCount(ctx context.Context, cutoff time.Time) (int64, error) {
+	var n int64
+	err := s.queryRow(ctx, `SELECT COUNT(*) FROM hlstats_Players p WHERE `+inactive, cutoff.Unix()).Scan(&n)
+	return n, err
+}
+
+// InactiveCutoff is the last_event before which a player counts as
+// inactive at now: MinActivity days (and a warning when the key is missing
+// or invalid).
+func (s *Store) InactiveCutoff(ctx context.Context, now time.Time) (cutoff time.Time, days int, warning string, err error) {
+	days, warning, err = s.InactiveDays(ctx)
+	return now.Add(-time.Duration(days) * 24 * time.Hour), days, warning, err
+}
+
 // inactiveIDs returns the next batch of players to move, by id after after.
 func (s *Store) inactiveIDs(ctx context.Context, cutoff time.Time, after int64) ([]int64, error) {
 	rows, err := s.query(ctx, `SELECT p.playerId FROM hlstats_Players p WHERE p.playerId > ? AND `+inactive+

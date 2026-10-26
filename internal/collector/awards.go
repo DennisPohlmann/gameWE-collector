@@ -50,11 +50,13 @@ func (s Schedule) Next(now time.Time) time.Time {
 // RunDailyAwards decides the awards of the previous day at every run of
 // the schedule, and at start if the day of the latest run has no awards
 // yet, until ctx is done (features.daily_awards in the config file).
-func RunDailyAwards(ctx context.Context, a Awarder, s Schedule, log *slog.Logger) {
+// lock is the job lock (database.JobLock; nil: none), so that a run of
+// gamewe awards or a ranking reset never runs at the same time.
+func RunDailyAwards(ctx context.Context, a Awarder, s Schedule, lock func(context.Context) (func(), error), log *slog.Logger) {
 	for {
 		now := time.Now()
 		_, day := s.Last(now)
-		DecideAwards(ctx, a, day, log)
+		DecideAwards(ctx, a, day, lock, log)
 		select {
 		case <-ctx.Done():
 			return
@@ -63,8 +65,17 @@ func RunDailyAwards(ctx context.Context, a Awarder, s Schedule, log *slog.Logger
 	}
 }
 
-// DecideAwards decides the awards of day unless the day has some already.
-func DecideAwards(ctx context.Context, a Awarder, day time.Time, log *slog.Logger) {
+// DecideAwards decides the awards of day unless the day has some already,
+// under the job lock (nil: none).
+func DecideAwards(ctx context.Context, a Awarder, day time.Time, lock func(context.Context) (func(), error), log *slog.Logger) {
+	if lock != nil {
+		release, err := lock(ctx)
+		if err != nil {
+			log.Error("daily awards", "day", stats.AwardDate(day), "err", err)
+			return
+		}
+		defer release()
+	}
 	done, err := a.AwardsDone(ctx, day)
 	if err != nil {
 		log.Error("daily awards", "day", stats.AwardDate(day), "err", err)

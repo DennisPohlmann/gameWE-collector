@@ -18,6 +18,8 @@ import (
 
 	"gamewe-collector/internal/config"
 	"gamewe-collector/internal/database"
+	"gamewe-collector/internal/settings"
+	"gamewe-collector/internal/stats"
 )
 
 // MinPurgeDays is the smallest -older-than of gamewe db purge: the daily
@@ -301,8 +303,26 @@ func dbPurge(ctx context.Context, db *database.DB, d config.Database, days int, 
 	if err != nil {
 		return err
 	}
+	// The finished jobs older than stats.JobKeep, as the collector deletes
+	// them every hour.
+	store := stats.NewStore(db, settings.NewLive(settings.Defaults()))
+	jobsBefore := time.Now().Add(-stats.JobKeep)
+	jobs, err := jobsTable(ctx, db)
+	if err != nil {
+		return err
+	}
+	if jobs {
+		n, err := store.CountOldJobs(ctx, jobsBefore)
+		if err != nil {
+			return err
+		}
+		rows = append(rows, database.TableRows{Table: "hlstats_gamewe_jobs", Rows: n})
+	}
 	fmt.Fprintf(c.out, "events before %s (older than %d days), rows per table:\n", before.UTC().Format("2006-01-02 15:04 UTC"), days)
 	total := c.printRows(rows)
+	if jobs {
+		fmt.Fprintf(c.out, "hlstats_gamewe_jobs: the finished jobs older than %d days (as the collector does every hour).\n", int(stats.JobKeep.Hours()/24))
+	}
 	fmt.Fprintln(c.out, "Players, their totals, rankings, awards and the history per day stay; the event lists of the web pages lose these rows.")
 	if dry || total == 0 {
 		if total == 0 {
@@ -327,6 +347,14 @@ func dbPurge(ctx context.Context, db *database.DB, d config.Database, days int, 
 	var n int64
 	for _, r := range res {
 		n += r.Rows
+	}
+	if err == nil && jobs {
+		var old int64
+		if old, err = store.CountOldJobs(ctx, jobsBefore); err == nil {
+			if err = store.DeleteOldJobs(ctx, jobsBefore); err == nil {
+				n += old
+			}
+		}
 	}
 	if err != nil {
 		return fmt.Errorf("purge stopped after %d rows (run it again to complete it): %w", n, err)

@@ -122,12 +122,19 @@ the audit summary of `security-privacy-audit`.
   Besides that only the explicit maintenance commands `gamewe db drop` /
   `reset` / `purge` (`internal/database/maintenance.go`) remove tables or
   rows, only of the compiled schema's tables, with confirmation. The daily
-  `features.inactive_players` job (off by default, `internal/stats/inactive.go`)
+  `features.inactive_players` job (off by default, `internal/stats/inactive.go`;
+  by hand `gamewe inactive`)
   only moves whole rows between `hlstats_Players` and
   `hlstats_PlayersInactive` (`SELECT *`, the column order must stay equal;
   an integration test checks it) and deletes nothing else. Migrations
   only add (tables, columns, indexes, missing seed rows), are idempotent,
   never delete rows or drop tables/columns; released migrations are never
   changed. How to add one: `docs/DEVELOPMENT.md`, "Adding a migration".
+- Jobs that change many rows (ranking reset, move of inactive players,
+  daily awards) hold the job lock (`database.JobLock`, GET_LOCK /
+  pg_advisory_lock) in the collector and in the CLI; a new such job takes
+  it too. Every job of the collector that only needs the database has a
+  CLI command that works with its feature off (USAGE.md, "Collector jobs by
+  hand and from cron").
 - Secrets stay out of git: `config.yaml`, `*.pem`, `*.key`, real
   `docker-compose.yml` values are ignored; examples use `change-me`.

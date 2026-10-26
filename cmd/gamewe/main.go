@@ -67,15 +67,25 @@ Usage:
   gamewe simulate [-config FILE] [-file LOG] [-game CODE] [-server IP:PORT] [-send HOST:PORT]
                                    replay sample log lines into the database, or send
                                    them as UDP log packets to a running collector
-  gamewe awards   [-config FILE] [-date YYYY-MM-DD] [-game CODE] [-tz ZONE]
-                                   decide the daily awards of a day again (default: yesterday
-                                   in features.daily_awards.timezone); the collector does it
-                                   every day at features.daily_awards.time
+  gamewe awards   [-config FILE] [-date YYYY-MM-DD] [-game CODE] [-tz ZONE] [-wait DURATION]
+                                   decide the daily awards of a day (again; default: yesterday
+                                   in features.daily_awards.timezone), also when
+                                   features.daily_awards is off; the collector does it every
+                                   day at features.daily_awards.time
+  gamewe inactive [-config FILE] [-dry-run] [-wait DURATION]
+                                   move the players without play for MinActivity days to
+                                   hlstats_PlayersInactive now, also when
+                                   features.inactive_players is off; queued for the running
+                                   collector if there is one
   gamewe rcon     [-config FILE] -server ID|IP:PORT COMMAND...
                                    send an RCON command to a game server of
                                    hlstats_Servers and print the answer
   gamewe status   [-config FILE] [-server ID|IP:PORT|all]
                                    RCON "status" of the game servers, as the collector reads it
+  gamewe serverinfo [-config FILE] [-server ID|IP:PORT|all] [-dry-run]
+                                   ask the game servers for version, OS and VAC (A2S_INFO) and
+                                   store what changed in hlstats_Servers, also when
+                                   features.server_info is off
   gamewe logaddress [-config FILE] [-server ID|IP:PORT|all] [-add] [-address IP:PORT]
                                    is the collector registered as log address (logaddress_list)?
                                    -add registers it where it is missing (logaddress_add, log on)
@@ -97,7 +107,7 @@ Usage:
 
 Every command except run takes -o FORMAT (or --output FORMAT, also before the
 command: gamewe -o json server list): text (default), json, yaml; the lists
-(game|server|option list, status, logaddress, awards, reset -list) also csv,
+(game|server|option list, status, serverinfo, logaddress, awards, reset -list) also csv,
 tsv and name (only the id / code / key, one per line). Passwords and log
 secrets are never printed, in no format: only whether they are set.
 
@@ -149,6 +159,10 @@ func main() {
 		err = adminCmd(cmd, args)
 	case "reset":
 		err = resetCmd(args)
+	case "inactive":
+		err = inactiveCmd(args)
+	case "serverinfo":
+		err = serverInfoCmd(args)
 	case "db":
 		err = dbCmd(args)
 	case "version", "-V", "-version", "--version":
@@ -415,13 +429,14 @@ func runCmd(args []string) error {
 	ip := cfg.Features.InactivePlayers
 	ipLoc, _ := ip.Location(cfg.Timezone) // checked by config.Validate
 	ipH, ipM, _ := ip.At()
-	go (&collector.Jobs{Store: store, Hub: hub, Log: log,
+	jobLock := func(ctx context.Context) (func(), error) { return database.JobLock(ctx, db, time.Hour, nil) }
+	go (&collector.Jobs{Store: store, Hub: hub, Log: log, Lock: jobLock,
 		Inactive: collector.InactiveConfig{Enabled: ip.Enabled, At: collector.Schedule{Loc: ipLoc, Hour: ipH, Minute: ipM}}}).Run(ctx)
 	da := cfg.Features.DailyAwards
 	daLoc, _ := da.Location(cfg.Timezone) // checked by config.Validate
 	if da.Enabled {
 		h, m, _ := da.At()
-		go collector.RunDailyAwards(ctx, store, collector.Schedule{Loc: daLoc, Hour: h, Minute: m}, log)
+		go collector.RunDailyAwards(ctx, store, collector.Schedule{Loc: daLoc, Hour: h, Minute: m}, jobLock, log)
 	}
 	log.Info("features", "rcon_status", rs.Enabled, "rcon_status_every", every.String(), "log_address", la.Enabled, "log_address_every", laEvery.String(),
 		"log_address_http", la.HTTP, "log_secret", ls.Enabled, "server_info", si.Enabled, "server_info_every", siEvery.String(),
@@ -805,7 +820,9 @@ func simulateCmd(args []string) error {
 
 func awardsCmd(args []string) error {
 	var date, game, tz string
+	var wait time.Duration
 	cfg, err := loadConfig("awards", args, func(fs *flag.FlagSet) {
+		fs.DurationVar(&wait, "wait", 10*time.Minute, "how long to wait while another job (reset, inactive players, the collector's daily awards) runs")
 		fs.StringVar(&date, "date", "", "day YYYY-MM-DD (default: yesterday)")
 		fs.StringVar(&game, "game", "", "game code (default: all games)")
 		fs.StringVar(&tz, "tz", "", "time zone of the day (default: features.daily_awards.timezone, else timezone, else the server's)")
@@ -835,6 +852,15 @@ func awardsCmd(args []string) error {
 	}
 	defer db.Close()
 	ctx := context.Background()
+	// The same lock as the collector's daily run and its resets: no two
+	// runs write the history of a day at once.
+	release, err := database.JobLock(ctx, db, wait, func() {
+		fmt.Fprintln(textOut(), "waiting for another job (reset, inactive players, daily awards) to finish ...")
+	})
+	if err != nil {
+		return fmt.Errorf("database: %w", database.Explain(err))
+	}
+	defer release()
 	store := stats.NewStore(db, settings.NewLive(settings.Defaults()))
 	res, err := store.DailyAwards(ctx, day, game)
 	if err != nil {

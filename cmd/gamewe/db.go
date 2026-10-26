@@ -45,7 +45,8 @@ const dbUsage = `usage:
   gamewe db purge   -older-than DAYS [-config FILE] [-dry-run] [-yes]
         delete the events (hlstats_Events_*) older than DAYS days (at least
         7, e.g. 90 or 90d); players, totals, rankings, awards and the history
-        per day stay. Asks [y/N] unless -yes; -dry-run only counts
+        per day stay; also the finished jobs older than 30 days (as the
+        collector does every hour). Asks [y/N] unless -yes; -dry-run only counts
   gamewe db optimize [-config FILE]
         give the space of deleted rows back to the disk (OPTIMIZE TABLE,
         PostgreSQL: VACUUM ANALYZE), e.g. after purge

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"flag"
@@ -130,21 +131,40 @@ func resetRun(pos []string, path, mode string, dry, yes, list bool, wait time.Du
 			return errors.New("not confirmed, nothing changed")
 		}
 	}
+	here := func() (string, error) {
+		release, err := database.JobLock(ctx, db, wait, func() { fmt.Fprintln(out, "waiting for another job to finish ...") })
+		if err != nil {
+			return "", err
+		}
+		defer release()
+		res, err := store.Reset(ctx, game, mode)
+		if err != nil {
+			return "", fmt.Errorf("reset stopped (run it again to complete it): %w; done before: %s", err, stats.FormatCounts(res))
+		}
+		return stats.FormatCounts(res), nil
+	}
+	return runJob(ctx, store, jobs, stats.JobReset, game, mode, wait, out, "resetting here", here)
+}
+
+// runJob hands a job to the running collector (heartbeat fresh, table
+// hlstats_gamewe_jobs present) and waits for it, or else runs it here with
+// here (which takes the job lock).
+func runJob(ctx context.Context, store *stats.Store, jobs bool, typ, game, mode string, wait time.Duration, out io.Writer, doing string, here func() (string, error)) error {
 	if jobs {
 		beat, err := store.LastHeartbeat(ctx)
 		if err != nil {
 			return err
 		}
 		if !beat.IsZero() && time.Since(beat) < stats.HeartbeatFresh {
-			return queueReset(ctx, store, game, mode, wait, out)
+			return queueJob(ctx, store, typ, game, mode, wait, out, doing, here)
 		}
 	}
-	fmt.Fprintln(out, "no running collector (no heartbeat in the last 2 minutes): resetting here")
-	res, err := store.Reset(ctx, game, mode)
+	fmt.Fprintf(out, "no running collector (no heartbeat in the last 2 minutes): %s\n", doing)
+	res, err := here()
 	if err != nil {
-		return fmt.Errorf("reset stopped (run it again to complete it): %w; done before: %s", err, stats.FormatCounts(res))
+		return err
 	}
-	fmt.Fprintf(out, "done: %s\n", stats.FormatCounts(res))
+	fmt.Fprintf(out, "done: %s\n", res)
 	return nil
 }
 
@@ -162,9 +182,10 @@ func jobsTable(ctx context.Context, db *database.DB) (bool, error) {
 	return true, nil
 }
 
-// queueReset hands the reset to the running collector and waits for it.
-func queueReset(ctx context.Context, store *stats.Store, game, mode string, wait time.Duration, out io.Writer) error {
-	id, err := store.AddJob(ctx, stats.JobReset, game, mode, "cli", time.Now())
+// queueJob hands the job to the running collector and waits for it; if
+// the collector stops before it took the job, here runs it.
+func queueJob(ctx context.Context, store *stats.Store, typ, game, mode string, wait time.Duration, out io.Writer, doing string, here func() (string, error)) error {
+	id, err := store.AddJob(ctx, typ, game, mode, "cli", time.Now())
 	if err != nil {
 		return err
 	}
@@ -199,17 +220,17 @@ func queueReset(ctx context.Context, store *stats.Store, game, mode string, wait
 			if !ok {
 				continue // the collector took it after all
 			}
-			fmt.Fprintln(out, "the collector stopped (no heartbeat any more): resetting here")
-			res, err := store.Reset(ctx, game, mode)
-			status, result := stats.JobDone, stats.FormatCounts(res)
+			fmt.Fprintf(out, "the collector stopped (no heartbeat any more): %s\n", doing)
+			result, err := here()
+			status := stats.JobDone
 			if err != nil {
-				status, result = stats.JobFailed, err.Error()+"; done before: "+result
+				status, result = stats.JobFailed, err.Error()
 			}
 			if ferr := store.FinishJob(ctx, id, status, result, time.Now()); ferr != nil && err == nil {
 				err = ferr
 			}
 			if err != nil {
-				return fmt.Errorf("reset stopped (run it again to complete it): %w", err)
+				return err
 			}
 			fmt.Fprintf(out, "done: %s\n", result)
 			return nil
@@ -231,7 +252,7 @@ func listJobs(ctx context.Context, store *stats.Store, out io.Writer) error {
 		return emit(out, l)
 	}
 	w := tabwriter.NewWriter(out, 0, 2, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\tGAME\tMODE\tSTATUS\tBY\tREQUESTED\tFINISHED\tRESULT")
+	fmt.Fprintln(w, "ID\tTYPE\tGAME\tMODE\tSTATUS\tBY\tREQUESTED\tFINISHED\tRESULT")
 	ts := func(t int64) string {
 		if t == 0 {
 			return "-"
@@ -243,7 +264,7 @@ func listJobs(ctx context.Context, store *stats.Store, out io.Writer) error {
 		if r := []rune(res); len(r) > 80 {
 			res = string(r[:77]) + "..."
 		}
-		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", j.ID, j.Game, j.Mode, j.Status, j.RequestedBy, ts(j.RequestedAt), ts(j.FinishedAt), res)
+		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", j.ID, j.Type, cmp.Or(j.Game, "-"), cmp.Or(j.Mode, "-"), j.Status, j.RequestedBy, ts(j.RequestedAt), ts(j.FinishedAt), res)
 	}
 	return w.Flush()
 }

@@ -7,6 +7,7 @@ package collector
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"io"
 	"log/slog"
 	"maps"
@@ -289,5 +290,46 @@ func TestIntegrationInactiveDays(t *testing.T) {
 		if err != nil || days != c.days || (warn != "") != c.warn {
 			t.Errorf("MinActivity %q: %d days, warning %q, err %v; want %d, warning %v", c.value, days, warn, err, c.days, c.warn)
 		}
+	}
+}
+
+// The job lock keeps a reset, the move of inactive players and the daily
+// awards apart, also between connections (the CLI and the collector).
+func TestIntegrationJobLock(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	release, err := database.JobLock(ctx, db, time.Second, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lock := func(ctx context.Context) (func(), error) { return database.JobLock(ctx, db, time.Second, nil) }
+	store := stats.NewStore(db, settings.NewLive(settings.Defaults()))
+	j := &Jobs{Store: store, Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Lock: lock}
+	if err := j.MoveInactive(ctx, time.Now()); !errors.Is(err, database.ErrJobBusy) {
+		t.Errorf("move under a held lock: %v, want ErrJobBusy", err)
+	}
+	var buf strings.Builder
+	DecideAwards(ctx, store, time.Now().AddDate(0, 0, -1), lock, slog.New(slog.NewTextHandler(&buf, nil)))
+	if !strings.Contains(buf.String(), "another job") {
+		t.Errorf("awards under a held lock logged %q", buf.String())
+	}
+	// A queued inactive job fails with the reason, and runs once the lock is free.
+	id, err := store.AddJob(ctx, stats.JobInactive, "", "", "test", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Poll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if job, _ := store.Job(ctx, id); job.Status != stats.JobFailed || !strings.Contains(job.Result, "another job") {
+		t.Errorf("job under a held lock: %+v", job)
+	}
+	release()
+	id, _ = store.AddJob(ctx, stats.JobInactive, "", "", "test", time.Now())
+	if err := j.Poll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if job, _ := store.Job(ctx, id); job.Status != stats.JobDone || !strings.Contains(job.Result, "players moved") {
+		t.Errorf("job: %+v", job)
 	}
 }
