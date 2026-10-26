@@ -60,6 +60,9 @@ type Hub struct {
 	// Source2Hits is features.cs2_hitgroups (Processor.Source2Hits). Set it
 	// before the first SetServers.
 	Source2Hits bool
+	// Bans is features.sourcebans (Processor.Bans; nil: off). Set it
+	// before the first SetServers.
+	Bans BanNotifier
 
 	mu      sync.RWMutex
 	byID    map[int64]*worker
@@ -231,6 +234,7 @@ func (h *Hub) SetServers(list []stats.Server) (added, removed int) {
 			gate: newSecretGate()}
 		w.proc.Geo = h.Geo
 		w.proc.Source2Hits = h.Source2Hits
+		w.proc.Bans = h.Bans
 		h.applySecret(w, srv, now, grace)
 		if h.Monitor.Status || h.Monitor.LogAddress || h.Monitor.ServerInfo {
 			ctx, cancel := context.WithCancel(context.Background())

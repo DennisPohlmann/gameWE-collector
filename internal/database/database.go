@@ -35,7 +35,7 @@ var Tables = []string{
 	"hlstats_Events_PlayerActions", "hlstats_Events_TeamBonuses", "hlstats_Events_Chat",
 	"hlstats_Events_PlayerPlayerActions", "hlstats_Events_ChangeRole", "hlstats_Events_Locations", "hlstats_Events_Latency",
 	"hlstats_Roles", "hlstats_Clans", "hlstats_ClanTags", "hlstats_Awards", "hlstats_Awards_History",
-	"hlstats_Players_Locations", "hlstats_server_load",
+	"hlstats_Players_Locations", "hlstats_server_load", "hlstats_Players_Bans",
 }
 
 // DB is a connection pool together with its SQL dialect and table prefix.

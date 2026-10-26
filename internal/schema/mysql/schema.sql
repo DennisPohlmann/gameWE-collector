@@ -518,6 +518,25 @@ CREATE TABLE `hlstats_Players_Actions_History_Months` (
   UNIQUE KEY `player_id` (`player_id`,`year_id`,`month_id`,`game_id`,`action_id`),
   KEY `action_id` (`action_id`,`count`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
+CREATE TABLE `hlstats_Players_Bans` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `player_id` mediumint(8) unsigned NOT NULL DEFAULT 0,
+  `game` varchar(32) NOT NULL DEFAULT '',
+  `unique_id` varchar(64) NOT NULL DEFAULT '',
+  `ban_type` varchar(16) NOT NULL DEFAULT 'sourcebans',
+  `reason` varchar(255) NOT NULL DEFAULT '',
+  `length_minutes` int(10) unsigned NOT NULL DEFAULT 0,
+  `banned_at` int(10) unsigned NOT NULL DEFAULT 0,
+  `ends_at` int(10) unsigned NOT NULL DEFAULT 0,
+  `active` tinyint(1) unsigned NOT NULL DEFAULT 1,
+  `hid` tinyint(1) unsigned NOT NULL DEFAULT 0,
+  `checked_at` int(10) unsigned NOT NULL DEFAULT 0,
+  `ended_at` int(10) unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `ban` (`player_id`,`ban_type`,`banned_at`),
+  KEY `game` (`game`,`active`,`banned_at`),
+  KEY `active` (`active`,`checked_at`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Players_Data` (
   `playerId` mediumint(8) unsigned NOT NULL,
   `first_connect` int(10) unsigned NOT NULL DEFAULT 0,

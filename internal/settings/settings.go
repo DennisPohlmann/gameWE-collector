@@ -46,6 +46,7 @@ type Settings struct {
 	StoreLocations  bool     // gamewe_store_locations
 	RankBots        bool     // gamewe_rank_bots
 	GeoIPDB         string   // gamewe_geoip_db (path of a MaxMind-format city database)
+	SourceBansURL   string   // gamewe_sourcebans_url (public ban list, shared with the web)
 	ServerLoad      bool     // gamewe_server_load
 	PlayerReset     bool     // gamewe_player_reset
 	ResetCooldown   int      // gamewe_player_reset_cooldown (hours)
@@ -109,6 +110,7 @@ func Keys() []Key {
 		{"gamewe_raw_messages", b(d.RawMessages), "1 = answer !rank, !session, !top10 and !next with gamewe_raw_message for a message plugin instead of chat text"},
 		{"gamewe_store_locations", b(d.StoreLocations), "1 = store kill and death positions (plugin location lines) in hlstats_Events_Locations"},
 		{"gamewe_server_load", b(d.ServerLoad), "1 = write hlstats_server_load every 10 minutes per server"},
+		{"gamewe_sourcebans_url", d.SourceBansURL, "address of the public SourceBans ban list (set in the web admin under Settings → Bans); with features.sourcebans the collector looks up players kicked as banned there"},
 		{"gamewe_player_reset", b(d.PlayerReset), "1 = players may reset their own stats in game (!gamewe_reset, confirmed with !gamewe_reset 1); never for banned or admin-hidden players"},
 		{"gamewe_player_reset_cooldown", strconv.Itoa(d.ResetCooldown), "hours before a player may reset the own stats again (0 = no wait)"},
 		{"gamewe_console_events", b(d.ConsoleEvents), "1 = tell the involved players in their console the points of every kill and action (players switch it off with gamewe_display 0)"},
@@ -125,7 +127,7 @@ var WebKeys = []string{
 	"gamewe_page_size", "gamewe_site_url", "gamewe_logo_url", "gamewe_header_logo",
 	"gamewe_favicon", "gamewe_apple_icon", "gamewe_title_format", "gamewe_title_ranking", "gamewe_geoip_credit",
 	"gamewe_sig_brand", "gamewe_chat_public", "gamewe_game_events", "gamewe_player_events", "gamewe_skin",
-	"gamewe_game_skins", "gamewe_map_live", "gamewe_map_players", "gamewe_map_style", "gamewe_sourcebans_url",
+	"gamewe_game_skins", "gamewe_map_live", "gamewe_map_players", "gamewe_map_style",
 	"gamewe_seo_description", "gamewe_seo_keywords", "gamewe_seo_image", "gamewe_seo_index", "gamewe_seo_twitter",
 	"gamewe_header_home", "gamewe_header_order", "gamewe_metrics_token",
 	"gamewe_voice_type", "gamewe_discord_guild", "gamewe_discord_invite",
@@ -242,6 +244,9 @@ func FromOptions(opts map[string]string) (Settings, []string) {
 	s.SiteURL = strings.TrimSpace(opts["gamewe_site_url"])
 	if v, ok := opts["gamewe_geoip_db"]; ok {
 		s.GeoIPDB = strings.TrimSpace(v)
+	}
+	if v, ok := opts["gamewe_sourcebans_url"]; ok {
+		s.SourceBansURL = strings.TrimSpace(v)
 	}
 	if v, ok := opts["gamewe_command_prefix"]; ok {
 		switch p := strings.ToLower(strings.TrimSpace(v)); p {

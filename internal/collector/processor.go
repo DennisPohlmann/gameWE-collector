@@ -101,6 +101,9 @@ type Processor struct {
 	// servers (features.cs2_hitgroups); CS2 has no plugin that reports them.
 	// Set before the first line.
 	Source2Hits bool
+	// Bans is told the disconnect reasons (features.sourcebans; nil: off).
+	// Set before the first line.
+	Bans BanNotifier
 }
 
 // GeoLookup finds the location of an IP address (*geoip.DB).
@@ -394,6 +397,8 @@ func (p *Processor) Handle(ctx context.Context, line string, now time.Time) erro
 			if err := p.store.HideBanned(ctx, ev, UniqueID(e.Player)); err != nil {
 				return err
 			}
+		} else if p.Bans != nil && e.Reason != "" && e.Player.Trackable() && !e.Player.IsBot() {
+			p.Bans.Notice(p.srv.info.Game, UniqueID(e.Player), e.Reason)
 		}
 		return p.disconnect(ctx, ev, e.Player)
 	case logparse.Requested:

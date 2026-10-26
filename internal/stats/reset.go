@@ -147,6 +147,7 @@ func resetSteps(mode string) []resetStep {
 			resetStep{table: "hlstats_Players_Data", where: players, args: byGame2},
 			resetStep{table: "hlstats_PlayerNames", where: players, args: byGame2},
 			resetStep{table: "hlstats_Players_Resets", where: strings.Replace(players, "playerId IN", "player_id IN", 1), args: byGame2},
+			resetStep{table: "hlstats_Players_Bans", where: "game = ?", args: byGame},
 			resetStep{table: "hlstats_PlayerUniqueIds", where: "game = ?", args: byGame},
 			resetStep{table: "hlstats_PlayersInactive", where: "game = ?", args: byGame},
 			resetStep{table: "hlstats_Players", where: "game = ?", args: byGame},

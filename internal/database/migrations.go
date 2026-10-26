@@ -141,6 +141,12 @@ var Migrations = []Migration{
 			{Key: "gamewe_geoip_db", IfValue: []string{"", "/var/lib/gamewe/GeoLite2-City.mmdb"}},
 		},
 	},
+	{
+		Version: 14, Name: "player-bans",
+		Desc: "table hlstats_Players_Bans: bans the collector records (features.sourcebans: SourceBans bans of players kicked as banned), " +
+			"with type, reason, length, start, end and whether the ban is still running; readable by gamewe_web",
+		Sync: true,
+	},
 }
 
 // Latest is the newest schema version this collector knows.

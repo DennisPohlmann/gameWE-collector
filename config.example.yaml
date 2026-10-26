@@ -114,6 +114,11 @@ features:
                        # they come back unchanged with their next log line
     time: "01:00"      # HH:MM in timezone
     timezone: ""       # IANA time zone; empty: timezone below, else the server's
+  sourcebans:          # players kicked by SourceBans are looked up on the ban list (address: web admin,
+    enabled: true      # Settings -> Bans); a running ban takes them out of the ranking until it ends
+    interval: 30m      # how often running bans are checked again (at least 5m)
+    phrases: []        # further kick texts that mean a ban, e.g. ["gebannt"]
+    allow_private: false # true: the ban list may be on the LAN or localhost
   cs2_hitgroups:       # Counter-Strike 2: hits per body part (head, neck, chest, ...) and damage
     enabled: true      # from the attacked lines (CS2 has no plugin that reports them)
   update_check:        # ask GitHub for the latest release: run logs a newer one at start and

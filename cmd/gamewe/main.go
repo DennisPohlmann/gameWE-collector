@@ -33,6 +33,7 @@ import (
 	"gamewe-collector/internal/sdnotify"
 	"gamewe-collector/internal/settings"
 	"gamewe-collector/internal/simulate"
+	"gamewe-collector/internal/sourcebans"
 	"gamewe-collector/internal/stats"
 	"gamewe-collector/internal/version"
 
@@ -414,6 +415,16 @@ func runCmd(args []string) error {
 		PublicAddress: cfg.Listen.PublicAddress, ListenPort: listenPort(listen, cfg.Listen.Port), NoUDP: !udpOn,
 		HTTP: lh.Enabled && la.HTTP, HTTPPublicURL: lh.PublicURL, HTTPPort: lh.Port, HTTPToken: lh.Token}
 	hub.Source2Hits = cfg.Features.CS2Hitgroups.Enabled
+	sb := cfg.Features.SourceBans
+	sbEvery, _ := sb.Every() // checked by config.Validate
+	var banWatch *collector.BanWatch
+	if sb.Enabled {
+		sbLoc, _ := sb.Location(cfg.Timezone) // checked by config.Validate
+		client := &sourcebans.Client{AllowPrivate: sb.AllowPrivate}
+		banWatch = &collector.BanWatch{Store: store, Set: set, Lookup: client.Lookup, Log: log, Loc: sbLoc,
+			Phrases: sb.Phrases, Interval: sbEvery}
+		hub.Bans = banWatch
+	}
 	ls := cfg.Features.LogSecret
 	hub.Secret = collector.SecretConfig{Mode: secretMode(ls.Enabled)}
 	if len(ls.Obsolete) > 0 {
@@ -462,6 +473,9 @@ func runCmd(args []string) error {
 	zoneLoc, _ := cfg.Location() // checked by config.Validate
 	go (&collector.Jobs{Store: store, Hub: hub, Log: log, Lock: jobLock, Version: version.Version, Zone: zoneLoc,
 		Inactive: collector.InactiveConfig{Enabled: ip.Enabled, At: collector.Schedule{Loc: ipLoc, Hour: ipH, Minute: ipM}}}).Run(ctx)
+	if banWatch != nil {
+		go banWatch.Run(ctx)
+	}
 	da := cfg.Features.DailyAwards
 	daLoc, _ := da.Location(cfg.Timezone) // checked by config.Validate
 	if da.Enabled {
@@ -471,7 +485,8 @@ func runCmd(args []string) error {
 	log.Info("features", "rcon_status", rs.Enabled, "rcon_status_every", every.String(), "log_address", la.Enabled, "log_address_every", laEvery.String(),
 		"log_address_http", la.HTTP, "log_secret", ls.Enabled, "server_info", si.Enabled, "server_info_every", siEvery.String(),
 		"daily_awards", da.Enabled, "daily_awards_at", da.Time+" "+daLoc.String(), "cs2_hitgroups", cfg.Features.CS2Hitgroups.Enabled,
-		"inactive_players", ip.Enabled, "inactive_players_at", ip.Time+" "+ipLoc.String())
+		"inactive_players", ip.Enabled, "inactive_players_at", ip.Time+" "+ipLoc.String(),
+		"sourcebans", sb.Enabled, "sourcebans_every", sbEvery.String(), "sourcebans_url_set", set.Get().SourceBansURL != "")
 
 	// Config, database and servers are fine; READY=1 once every input is
 	// open, so that systemctl start / restart report every failure before.
@@ -624,6 +639,8 @@ type checkFeatures struct {
 	InactiveTime        string `json:"inactive_players_time"`
 	InactiveTimezone    string `json:"inactive_players_timezone"`
 	UpdateCheck         bool   `json:"update_check"`
+	SourceBans          bool   `json:"sourcebans"`
+	SourceBansEvery     string `json:"sourcebans_every"`
 }
 
 type checkDatabase struct {
@@ -710,12 +727,14 @@ func check(cfg config.Config, out io.Writer, rep *checkReport) error {
 	ip := cfg.Features.InactivePlayers
 	daLoc, _ := da.Location(cfg.Timezone) // checked by config.Validate
 	ipLoc, _ := ip.Location(cfg.Timezone)
-	fmt.Fprintf(out, "features:  rcon_status %v (every %v), log_address %v (every %v, http %v), log_secret %v, server_info %v (every %v), daily_awards %v (%s %s), cs2_hitgroups %v, inactive_players %v (%s %s, days: hlstats_Options MinActivity), update_check %v\n",
+	sb := cfg.Features.SourceBans
+	sbEvery, _ := sb.Every()
+	fmt.Fprintf(out, "features:  rcon_status %v (every %v), log_address %v (every %v, http %v), log_secret %v, server_info %v (every %v), daily_awards %v (%s %s), cs2_hitgroups %v, inactive_players %v (%s %s, days: hlstats_Options MinActivity), update_check %v, sourcebans %v (check every %v, address: hlstats_Options gamewe_sourcebans_url)\n",
 		cfg.Features.RconStatus.Enabled, every, cfg.Features.LogAddress.Enabled, laEvery, cfg.Features.LogAddress.HTTP, cfg.Features.LogSecret.Enabled,
-		si.Enabled, siEvery, da.Enabled, da.Time, daLoc, cfg.Features.CS2Hitgroups.Enabled, ip.Enabled, ip.Time, ipLoc, cfg.Features.UpdateCheck.Enabled)
+		si.Enabled, siEvery, da.Enabled, da.Time, daLoc, cfg.Features.CS2Hitgroups.Enabled, ip.Enabled, ip.Time, ipLoc, cfg.Features.UpdateCheck.Enabled, sb.Enabled, sbEvery)
 	rep.Features = checkFeatures{cfg.Features.RconStatus.Enabled, every.String(), cfg.Features.LogAddress.Enabled, laEvery.String(),
 		cfg.Features.LogAddress.HTTP, cfg.Features.LogSecret.Enabled, si.Enabled, siEvery.String(), da.Enabled, da.Time, daLoc.String(),
-		cfg.Features.CS2Hitgroups.Enabled, ip.Enabled, ip.Time, ipLoc.String(), cfg.Features.UpdateCheck.Enabled}
+		cfg.Features.CS2Hitgroups.Enabled, ip.Enabled, ip.Time, ipLoc.String(), cfg.Features.UpdateCheck.Enabled, sb.Enabled, sbEvery.String()}
 	if o := cfg.Features.LogSecret.ObsoleteWarning(); o != "" {
 		warn("features.log_secret: " + o)
 	}

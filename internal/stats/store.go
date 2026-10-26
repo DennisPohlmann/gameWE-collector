@@ -1338,7 +1338,12 @@ func (s *Store) SetHideRanking(ctx context.Context, playerID int64, from, to int
 func (s *Store) HideBanned(ctx context.Context, ev Ev, uniqueID string) error {
 	return s.run(ctx, step{`UPDATE hlstats_Players SET hideranking = 2 WHERE hideranking <> 2
 		AND playerId IN (SELECT playerId FROM hlstats_PlayerUniqueIds WHERE uniqueId = ? AND game = ?)`,
-		[]any{clip(uniqueID, 64), ev.Srv.Game}})
+		[]any{clip(uniqueID, 64), ev.Srv.Game}},
+		// The ban hides the player now: the end of a recorded ban (EndBan)
+		// must not put the player back.
+		step{`UPDATE hlstats_Players_Bans SET hid = 0 WHERE active = 1
+		AND player_id IN (SELECT playerId FROM hlstats_PlayerUniqueIds WHERE uniqueId = ? AND game = ?)`,
+			[]any{clip(uniqueID, 64), ev.Srv.Game}})
 }
 
 // UpdateServerPlayers sets hlstats_Servers.players to the number of players

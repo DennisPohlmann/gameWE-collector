@@ -86,6 +86,20 @@ packet of at most 1400 bytes from the server's own address is read (split
 answers are not supported); the strings are cut to printable ASCII. The game
 server needs nothing extra: the server browser uses the same query.
 
+**SourceBans lookup.** With `features.sourcebans` and a ban list address
+(`hlstats_Options` `gamewe_sourcebans_url`), a disconnect line whose reason
+names that address's host or one of `features.sourcebans.phrases`, e.g.
+`"Name<5><STEAM_1:1:123><>" disconnected (reason "You have been banned from this server. Access bans.example.org for more info.")`,
+makes the collector read the public search page of the list:
+`GET <address>index.php?p=banlist&advSearch=STEAM_0:1:123&advType=steamid`
+(user agent `gameWE collector`, 8 s, at most 3 MiB, redirects not followed,
+only public addresses unless `allow_private`). It reads the bans of exactly
+that Steam ID from the SourceBans 1.x, SB++ 1.8 default and SB++ 2026 page
+templates (player, Steam ID, invoked on, length, reason, and the state:
+permanent, running, expired, lifted). The running bans are read again the
+same way every `features.sourcebans.interval`. Nothing is sent to the game
+server; SourceBans itself kicks the player.
+
 Replies are console commands that the collector sends over **Source RCON** (TCP,
 to the server's `address` and `port` with `rcon_password` from `hlstats_Servers`).
 The plugin offers them. The collector uses the `gamewe_` prefix, which the gameWE

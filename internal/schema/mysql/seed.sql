@@ -2639,6 +2639,7 @@ INSERT IGNORE INTO hlstats_Options (keyname, value) VALUES
   ('gamewe_player_reset_cooldown', '24'), -- hours between two own resets
   ('gamewe_console_events', '0'),     -- 1 = points of kills and actions in the players' console
   ('gamewe_global_chat', '0'),        -- 1 = player and team actions with points in the chat
+  ('gamewe_sourcebans_url', ''),     -- public SourceBans ban list (web admin: Settings → Bans; features.sourcebans)
   ('gamewe_heartbeat', '0');          -- written by the running collector every 60 s (Unix time)
 
 -- ---------------------------------------------------------------------------

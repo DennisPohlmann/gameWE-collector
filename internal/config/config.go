@@ -264,6 +264,10 @@ type Features struct {
 	// UpdateCheck asks GitHub for the latest release: at start and daily in
 	// "run" (log), before the other commands (stderr). Never installs.
 	UpdateCheck Toggle `yaml:"update_check"`
+	// SourceBans records the SourceBans bans of players kicked as banned
+	// (hlstats_Players_Bans) and takes them out of the ranking until the
+	// ban ends; it needs the address of the ban list (web admin).
+	SourceBans SourceBans `yaml:"sourcebans"`
 }
 
 // Toggle is a feature without settings: a mapping with enabled, or just
@@ -440,6 +444,49 @@ func (p InactivePlayers) Location(global string) (*time.Location, error) {
 // At returns hour and minute of Time.
 func (p InactivePlayers) At() (hour, minute int, err error) { return clock(p.Time) }
 
+// SourceBans looks up players kicked with SourceBans' ban message (it names
+// the ban list's host in every language, or one of Phrases) on the public
+// ban list of hlstats_Options gamewe_sourcebans_url, stores a running ban in
+// hlstats_Players_Bans and takes the player out of the ranking; every
+// Interval the running bans are checked again and ended ones put the player
+// back. In the config file it is a mapping, or just true / false.
+type SourceBans struct {
+	Enabled  bool     `yaml:"enabled"`
+	Interval string   `yaml:"interval"` // Go duration ("30m") or seconds
+	Phrases  []string `yaml:"phrases"`  // further kick texts that mean a ban (case insensitive)
+	// AllowPrivate lets the address be on the LAN or localhost.
+	AllowPrivate bool `yaml:"allow_private"`
+}
+
+// MinSourceBansInterval is the shortest features.sourcebans.interval.
+const MinSourceBansInterval = 5 * time.Minute
+
+// UnmarshalYAML accepts "sourcebans: true" and the mapping.
+func (s *SourceBans) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode {
+		return n.Decode(&s.Enabled)
+	}
+	if n.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: features.sourcebans: want true / false or enabled, interval, phrases, allow_private", n.Line)
+	}
+	for i := 0; i < len(n.Content); i += 2 {
+		switch k := n.Content[i].Value; k {
+		case "enabled", "interval", "phrases", "allow_private":
+		default:
+			return fmt.Errorf("line %d: features.sourcebans: unknown key %q (enabled, interval, phrases, allow_private)", n.Content[i].Line, k)
+		}
+	}
+	type plain SourceBans
+	return n.Decode((*plain)(s))
+}
+
+// Every returns Interval as a duration ("30m" or plain seconds).
+func (s SourceBans) Every() (time.Duration, error) { return interval(s.Interval) }
+
+// Location is the time zone the ban list shows its dates in: the
+// collector's (global, Config.Timezone), else the server's.
+func (s SourceBans) Location(global string) (*time.Location, error) { return zone("", global) }
+
 // LogSecret checks the secret (sv_logsecret) in the log packets against
 // hlstats_Servers.log_secret: a server with a stored secret must send it,
 // a server without one is not checked. The secret is set by hand (gamewe
@@ -593,7 +640,8 @@ func Defaults() Config {
 		ServerInfo:      ServerInfo{Enabled: true, Interval: "5m"},
 		CS2Hitgroups:    Toggle{Enabled: true},
 		UpdateCheck:     Toggle{Enabled: true},
-		InactivePlayers: InactivePlayers{Time: "01:00"}}}
+		InactivePlayers: InactivePlayers{Time: "01:00"},
+		SourceBans:      SourceBans{Enabled: true, Interval: "30m"}}}
 }
 
 // Load reads, decodes and validates the YAML file at path.
@@ -810,6 +858,14 @@ func (c Config) Problems() []Problem {
 	}
 	if d, err := c.Features.ServerInfo.Every(); err != nil || d < MinServerInfoInterval {
 		add("features.server_info.interval", "%q: want a duration of at least %v, e.g. \"5m\"", c.Features.ServerInfo.Interval, MinServerInfoInterval)
+	}
+	if d, err := c.Features.SourceBans.Every(); err != nil || d < MinSourceBansInterval {
+		add("features.sourcebans.interval", "%q: want a duration of at least %v, e.g. \"30m\"", c.Features.SourceBans.Interval, MinSourceBansInterval)
+	}
+	for i, p := range c.Features.SourceBans.Phrases {
+		if l := len(strings.TrimSpace(p)); l < 4 || l > 200 {
+			add(fmt.Sprintf("features.sourcebans.phrases[%d]", i), "%q: want 4 to 200 characters (a part of the kick message that means a ban)", p)
+		}
 	}
 	const tzHint = "(an IANA name such as UTC or Europe/Berlin; empty: the server's time zone)"
 	if c.Timezone != "" {

@@ -537,6 +537,10 @@ func (l *linter) unused(cfg Config) {
 	off("features.inactive_players.enabled", !f.InactivePlayers.Enabled,
 		changed("features.inactive_players.time", f.InactivePlayers.Time != df.InactivePlayers.Time),
 		changed("features.inactive_players.timezone", f.InactivePlayers.Timezone != ""))
+	off("features.sourcebans.enabled", !f.SourceBans.Enabled,
+		changed("features.sourcebans.interval", f.SourceBans.Interval != df.SourceBans.Interval),
+		changed("features.sourcebans.phrases", len(f.SourceBans.Phrases) > 0),
+		changed("features.sourcebans.allow_private", f.SourceBans.AllowPrivate))
 	// The public addresses are only what features.log_address registers.
 	if u.UDPEnabled && u.PublicAddress != "" && !f.LogAddress.Enabled {
 		l.warnf(l.udpKey("listen.public_address"), "has no effect while features.log_address.enabled is false (nothing registers it); use it in logaddress_add by hand")

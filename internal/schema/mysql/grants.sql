@@ -61,6 +61,7 @@ GRANT SELECT ON `hlstats_Players` TO 'gamewe_web'@'%';
 GRANT SELECT ON `hlstats_PlayersInactive` TO 'gamewe_web'@'%';
 GRANT SELECT ON `hlstats_Players_Actions` TO 'gamewe_web'@'%';
 GRANT SELECT ON `hlstats_Players_Actions_History_Months` TO 'gamewe_web'@'%';
+GRANT SELECT ON `hlstats_Players_Bans` TO 'gamewe_web'@'%';
 GRANT SELECT ON `hlstats_Players_Data` TO 'gamewe_web'@'%';
 GRANT SELECT ON `hlstats_Players_History` TO 'gamewe_web'@'%';
 GRANT SELECT ON `hlstats_Players_Locations` TO 'gamewe_web'@'%';

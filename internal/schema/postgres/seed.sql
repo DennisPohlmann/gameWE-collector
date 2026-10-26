@@ -2624,6 +2624,7 @@ INSERT INTO hlstats_Options (keyname, value) VALUES
   ('gamewe_player_reset_cooldown', '24'),
   ('gamewe_console_events', '0'),
   ('gamewe_global_chat', '0'),
+  ('gamewe_sourcebans_url', ''),
   ('gamewe_heartbeat', '0') ON CONFLICT DO NOTHING;
 
 -- ---------------------------------------------------------------------------
