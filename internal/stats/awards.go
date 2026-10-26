@@ -70,8 +70,9 @@ func dayBounds(day time.Time) (from, to int64) {
 // code (hlstats_Events_Frags); O awards to the player with the most
 // actions of that code (hlstats_Events_PlayerActions); the player awards
 // (historyAwards: most_kills, teamkills, ...) to the highest value in the
-// hlstats_Players_History row of that date (history days are UTC days, so
-// in another time zone these awards are off by the UTC offset). The W award
+// hlstats_Players_History row of that date (history days are days of
+// Store.HistoryZone, the same zone as day's when the collector sets both
+// from features.daily_awards; older collectors wrote UTC days). The W award
 // "latency" goes to the player with the lowest average ping of the day
 // (hlstats_Events_Latency, samples of 0 left out) among players with at least
 // LatencyMinSamples samples; its count is the rounded average in ms.

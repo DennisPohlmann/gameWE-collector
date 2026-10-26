@@ -71,6 +71,9 @@ func Run(ctx context.Context, cfg config.Config, o Options, lines []string, w io
 	}
 	live := settings.NewLive(settings.Defaults())
 	store := stats.NewStore(db, live)
+	if store.HistoryZone, err = cfg.Features.DailyAwards.Location(cfg.Timezone); err != nil {
+		return err
+	}
 	opts, err := store.Options(ctx)
 	if err != nil {
 		return err

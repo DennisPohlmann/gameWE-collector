@@ -388,6 +388,7 @@ func runCmd(args []string) error {
 	set := settings.NewLive(settings.Defaults())
 	store := stats.NewStore(db, set)
 	store.ResetClock = resetClock(cfg)
+	store.HistoryZone, _ = cfg.Features.DailyAwards.Location(cfg.Timezone) // checked by config.Validate
 	replier := collector.NewRconReplier(ctx, set, log)
 	hub := collector.NewHub(store, set, replier, log)
 	hub.LineLog = os.Stderr // gamewe_log_lines: every received log line in the journal

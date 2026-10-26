@@ -49,6 +49,11 @@ type Store struct {
 	// scheduled ranking resets (features.scheduled_resets.time); set it
 	// before use.
 	ResetClock int
+
+	// HistoryZone is the time zone of the days of hlstats_Players_History
+	// (the daily awards' zone, features.daily_awards.timezone); nil: UTC.
+	// Set it before use.
+	HistoryZone *time.Location
 }
 
 type cached struct {
@@ -114,8 +119,7 @@ type Ev struct {
 	Time  time.Time
 }
 
-func (e Ev) ts() int64   { return e.Time.Unix() }
-func (e Ev) day() string { return e.Time.UTC().Format("2006-01-02") }
+func (e Ev) ts() int64 { return e.Time.Unix() }
 
 // Live is what the collector knows about a player on a server.
 type Live struct {
@@ -1124,7 +1128,7 @@ func (s *Store) RecordRoundWin(ctx context.Context, ev Ev, team, trigger string,
 	var hsteps []step
 	for _, p := range append(append([]Live{}, winners...), losers...) {
 		hsteps = append(hsteps, step{`UPDATE hlstats_Players_History SET survived = ` + pct + ` WHERE playerId = ? AND eventTime = ? AND game = ?`,
-			[]any{p.ID, ev.day(), ev.Srv.Game}})
+			[]any{p.ID, s.historyDay(ev.Time), ev.Srv.Game}})
 	}
 	if err := s.run(ctx, hsteps...); err != nil {
 		return 0, err
@@ -1302,6 +1306,15 @@ func (s *Store) KillAssist(ctx context.Context, ev Ev, p Live) error {
 	return s.history(ctx, ev, p, hist{killAssists: 1})
 }
 
+// historyDay is the day of t in hlstats_Players_History: the calendar day
+// in HistoryZone, so that it is the day of the daily awards and of the web.
+func (s *Store) historyDay(t time.Time) string {
+	if s.HistoryZone == nil {
+		return t.UTC().Format("2006-01-02")
+	}
+	return t.In(s.HistoryZone).Format("2006-01-02")
+}
+
 // history adds to the player's row of today in hlstats_Players_History.
 // kill_streak and death_streak are the best of the day.
 func (s *Store) history(ctx context.Context, ev Ev, p Live, h hist) error {
@@ -1319,7 +1332,7 @@ func (s *Store) history(ctx context.Context, ev Ev, p Live, h hist) error {
 		set{"kill_streak", "GREATEST({old}, {new})"}, set{"death_streak", "GREATEST({old}, {new})"},
 		set{"damage", "LEAST({old} + {new}, 4294967295)"}, set{"kill_assists", "LEAST({old} + {new}, 65535)"},
 		set{"survived_count", "LEAST({old} + {new}, 65535)"}),
-		[]any{p.ID, ev.day(), ev.Srv.Game, h.kills, h.deaths, h.suicides, h.headshots, h.teamkills,
+		[]any{p.ID, s.historyDay(ev.Time), ev.Srv.Game, h.kills, h.deaths, h.suicides, h.headshots, h.teamkills,
 			h.shots, h.hits, h.conn, max(p.Skill, 0), h.skillChange,
 			min(h.rounds, 65535), min(h.wins, 65535), min(h.losses, 65535), min(h.killStreak, 65535), min(h.deathStreak, 255),
 			min(h.damage, 4294967295), min(h.killAssists, 65535), min(h.survived, 65535)}})

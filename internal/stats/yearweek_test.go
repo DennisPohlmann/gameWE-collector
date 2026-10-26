@@ -21,3 +21,23 @@ func TestYearWeek(t *testing.T) {
 		}
 	}
 }
+
+// The history day is the calendar day in HistoryZone, UTC without one:
+// 23:30 UTC on 25 Oct is already 26 Oct in Berlin (CET, +1).
+func TestHistoryDay(t *testing.T) {
+	berlin, err := time.LoadLocation("Europe/Berlin")
+	if err != nil {
+		t.Skip("no tzdata:", err)
+	}
+	at := time.Date(2026, 10, 25, 23, 30, 0, 0, time.UTC)
+	if got := (&Store{}).historyDay(at); got != "2026-10-25" {
+		t.Errorf("without zone: %s, want 2026-10-25", got)
+	}
+	if got := (&Store{HistoryZone: berlin}).historyDay(at); got != "2026-10-26" {
+		t.Errorf("Europe/Berlin: %s, want 2026-10-26", got)
+	}
+	// 21:59 UTC in summer is still the same day in Berlin (CEST, +2).
+	if got := (&Store{HistoryZone: berlin}).historyDay(time.Date(2026, 7, 1, 21, 59, 0, 0, time.UTC)); got != "2026-07-01" {
+		t.Errorf("Europe/Berlin summer: %s, want 2026-07-01", got)
+	}
+}

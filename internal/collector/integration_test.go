@@ -1231,6 +1231,43 @@ func TestIntegrationSurvived(t *testing.T) {
 	}
 }
 
+// The history day is the day of the store's HistoryZone (the daily awards'
+// zone), not the UTC day: a kill and a round at 23:30 UTC count for the
+// next day at UTC+5, also the survived share written at the round end.
+func TestIntegrationHistoryZone(t *testing.T) {
+	db := testDB(t)
+	addr := "198.51.100.45:27015"
+	insertServer(t, db, addr, "css")
+	set := settings.NewLive(settings.Defaults())
+	store := stats.NewStore(db, set)
+	store.HistoryZone = time.FixedZone("UTC+5", 5*3600)
+	hub := NewHub(store, set, &recorder{}, strictLog(t))
+	if err := hub.Reload(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 10, 25, 23, 30, 0, 0, time.UTC)
+	for _, l := range []string{
+		`World triggered "Round_Start"`,
+		`"A<2><STEAM_1:0:91><CT>" killed "B<3><STEAM_1:1:92><TERRORIST>" with "weapon1"`,
+		`Team "CT" triggered "CTs_Win" (CT "1") (T "0")`,
+	} {
+		if err := hub.Dispatch(netip.MustParseAddrPort(addr), pkt(l), at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	hub.Close(context.Background())
+	// (The shutdown adds the play time at the real now, on that day's row.)
+	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Players_History WHERE eventTime = ?`, "2026-10-25"); n != 0 {
+		t.Errorf("%d history rows on the UTC day 2026-10-25", n)
+	}
+	if n := count(t, db, `SELECT COALESCE(SUM(kills), 0) FROM hlstats_Players_History WHERE eventTime = ?`, "2026-10-26"); n != 1 {
+		t.Errorf("history kills on 2026-10-26: %d, want 1", n)
+	}
+	if n := count(t, db, `SELECT COALESCE(SUM(survived_count), 0) FROM hlstats_Players_History WHERE eventTime = ?`, "2026-10-26"); n != 1 {
+		t.Errorf("history survived_count on 2026-10-26: %d, want 1", n)
+	}
+}
+
 // hlstats_Teams and hlstats_Roles: time, kills, deaths, rounds, wins,
 // losses and survived (the web's teams page) on both databases.
 func TestIntegrationTeamRoleStats(t *testing.T) {

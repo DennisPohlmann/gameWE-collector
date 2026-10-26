@@ -69,7 +69,9 @@ variant are listed in [PostgreSQL](#postgresql) at the end.
   share these rows, also the live row (one per player): the bot is live on the
   server that saw it last; `act_bots` counts per server. `hlstats_Servers.players` counts the game's players without
   `hideranking = 2`.
-- **Day / week:** `hlstats_Players_History.eventTime` is the UTC date.
+- **Day / week:** `hlstats_Players_History.eventTime` is the date in the time zone of the daily awards
+  (`features.daily_awards.timezone`, else the collector's `timezone`, else the server's), the same day as
+  the awards and the web's `TZ`; collectors before this change wrote the UTC date.
   `yearweek_id` is MySQL `YEARWEEK(date)` (default mode 0, weeks start on Sunday).
 - Counters only ever grow by relative updates, and skill never goes below 0.
 
@@ -128,7 +130,7 @@ database without the column the collector writes the events without it
 | `hlstats_Players_Bans` | `features.sourcebans`: a player kicked with SourceBans' ban message who has a running ban on the list; every `features.sourcebans.interval` | one row per ban and player (unique: `player_id`, `ban_type`, `banned_at`): `game`, `unique_id`, `ban_type` (`sourcebans`, or `vac` for the VAC block), `reason` (from the list, at most 255 characters), `length_minutes` (0: permanent or unknown), `banned_at` (Unix time from the list, else the time of the first record), `ends_at` (0: permanent or unknown), `active` (1 while the ban runs), `hid` (1: this ban set `hideranking` 2), `checked_at`, `ended_at`. A running ban of the player is updated instead of adding a second row. It ends (`active` 0, `ended_at`) when `ends_at` has passed or the list no longer shows it as running; then the player gets `hideranking` 0 back if `hid` is 1, no other running ban has `hid` 1 and `hideranking` is still 2. A VAC kick sets `hid` 0 on the player's running bans. Rows are never deleted except by `gamewe reset -mode all` of the game. Readable by `gamewe_web` (the bans page). |
 | `hlstats_Players_Data` | new player, connect, rename | `first_connect`, `last_connect` (Unix time), `total_connects`, `lastName` (the name shown in game) |
 | `hlstats_PlayerNames` | first seen on a server, rename, kills, disconnect | per (player, name): `numuses` + 1 per visit, `lastuse` (UTC datetime), `connection_time`, `kills`, `deaths`, `suicides`, `headshots`, `shots`, `hits` |
-| `hlstats_Players_History` | every scoring event, round end, disconnect | one row per (player, UTC day, game): `kills`, `deaths`, `suicides`, `headshots`, `team_kills`, `shots`, `hits`, `connection_time`, `rounds`, `wins`, `losses` added; `kill_streak`, `death_streak` = best of the day; `skill` = latest; `skill_change` = sum |
+| `hlstats_Players_History` | every scoring event, round end, disconnect | one row per (player, day in the daily awards' zone, game): `kills`, `deaths`, `suicides`, `headshots`, `team_kills`, `shots`, `hits`, `connection_time`, `rounds`, `wins`, `losses` added; `kill_streak`, `death_streak` = best of the day; `skill` = latest; `skill_change` = sum |
 | `hlstats_Players_Weapons` | plugin `weaponstats` / `weaponstats2` | one row per (player, `YEARWEEK`, game, weapon): `shots`, `hits`, `headshots`, `damage`, `kills`, `deaths`, `head` … `rightleg` added (the plugin sends deltas). The plugin's `tks` has no column and is dropped. Counter-Strike 2 (no plugin): `damage` and the areas, plus `neck` (only CS2 reports it), summed from the game's `attacked` lines per round (`features.cs2_hitgroups`), and `kills`, `headshots`, `deaths` from its kill lines (the victim's death under the killer's weapon); `shots` and `hits` stay 0. |
 | `hlstats_Players_Maps` | plugin `weaponstats` / `weaponstats2` on a known map | one row per (player, `YEARWEEK`, game, map): only `shots` and `hits` added (the web's accuracy per map); the other columns are not written |
 | `hlstats_Players_Actions` | player action with a reward | one row per (player, `YEARWEEK`, game, action): `count`, `points` |
@@ -301,7 +303,7 @@ ends). For each award of the game:
 |-----------|------|-------------------------------------------------------------|
 | `W` | a weapon code (`ak47`, `knife`, ...) | kills with that weapon (`hlstats_Events_Frags` joined to `hlstats_Weapons` by id, same game) |
 | `W` | `latency` | the **lowest** average ping of the day in `hlstats_Events_Latency` (samples of 0 left out), among players with at least 30 samples of the day (about 30 minutes online); `winner_count` = the average in ms, rounded (at least 1). Needs RCON status (`features.rcon_status`). |
-| `O` or `W` | `most_kills`, `most_deaths`, `most_suicides`, `most_headshots`, `most_damage`, `most_improved`, `longest_playtime`, `longest_killstreak`, and HLstatsX:CE's `teamkills` (type `W` there) | the `hlstats_Players_History` row of that date (history days are **UTC days**, so with another time zone these awards are shifted by the UTC offset, e.g. 01:00 to 01:00 in Berlin in winter): `kills`, `deaths`, `suicides`, `headshots`, `damage`, `skill_change`, `connection_time` (seconds), `kill_streak`; `teamkills` `team_kills` |
+| `O` or `W` | `most_kills`, `most_deaths`, `most_suicides`, `most_headshots`, `most_damage`, `most_improved`, `longest_playtime`, `longest_killstreak`, and HLstatsX:CE's `teamkills` (type `W` there) | the `hlstats_Players_History` row of that date (history days are days of the same time zone as the awards): `kills`, `deaths`, `suicides`, `headshots`, `damage`, `skill_change`, `connection_time` (seconds), `kill_streak`; `teamkills` `team_kills` |
 | `O` | any other code | actions with that code (`hlstats_Events_PlayerActions` joined to `hlstats_Actions`, same game) |
 
 Only ranked players (`hideranking = 0`) win; ties go to the lowest
