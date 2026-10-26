@@ -213,6 +213,9 @@ type Features struct {
 	// InactivePlayers moves players without play for a while to
 	// hlstats_PlayersInactive (off by default).
 	InactivePlayers InactivePlayers `yaml:"inactive_players"`
+	// UpdateCheck asks GitHub for the latest release: at start and daily in
+	// "run" (log), before the other commands (stderr). Never installs.
+	UpdateCheck Toggle `yaml:"update_check"`
 }
 
 // Toggle is a feature without settings: a mapping with enabled, or just
@@ -537,6 +540,7 @@ func Defaults() Config {
 		DailyAwards:     DailyAwards{Enabled: true, Time: "00:00"},
 		ServerInfo:      ServerInfo{Enabled: true, Interval: "5m"},
 		CS2Hitgroups:    Toggle{Enabled: true},
+		UpdateCheck:     Toggle{Enabled: true},
 		InactivePlayers: InactivePlayers{Time: "01:00"}}}
 }
 

@@ -40,6 +40,11 @@ type Job struct {
 // every HeartbeatInterval (Unix time).
 const HeartbeatKey = "gamewe_heartbeat"
 
+// VersionKey is the hlstats_Options key with the running collector's
+// version, written at its first heartbeat; the web admin compares it with
+// the latest release.
+const VersionKey = "gamewe_collector_version"
+
 // HeartbeatInterval and HeartbeatFresh: a heartbeat younger than
 // HeartbeatFresh means a collector runs and will do queued jobs.
 const (
@@ -141,15 +146,27 @@ func (s *Store) CountOldJobs(ctx context.Context, before time.Time) (int64, erro
 
 // Heartbeat writes the time to hlstats_Options gamewe_heartbeat.
 func (s *Store) Heartbeat(ctx context.Context, at time.Time) error {
-	v := strconv.FormatInt(at.Unix(), 10)
-	res, err := s.exec(ctx, `UPDATE hlstats_Options SET value = ? WHERE keyname = ?`, v, HeartbeatKey)
+	return s.setOption(ctx, HeartbeatKey, strconv.FormatInt(at.Unix(), 10))
+}
+
+// SetVersion writes the collector's version to hlstats_Options
+// gamewe_collector_version.
+func (s *Store) SetVersion(ctx context.Context, v string) error {
+	return s.setOption(ctx, VersionKey, v)
+}
+
+// setOption updates or inserts one hlstats_Options row. An update that
+// keeps the value counts no row on MariaDB; the insert then skips the
+// existing key.
+func (s *Store) setOption(ctx context.Context, key, v string) error {
+	res, err := s.exec(ctx, `UPDATE hlstats_Options SET value = ? WHERE keyname = ?`, v, key)
 	if err != nil {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n > 0 {
 		return nil
 	}
-	_, err = s.exec(ctx, s.ignore(`INSERT INTO hlstats_Options (keyname, value) VALUES (?, ?)`), HeartbeatKey, v)
+	_, err = s.exec(ctx, s.ignore(`INSERT INTO hlstats_Options (keyname, value) VALUES (?, ?)`), key, v)
 	return err
 }
 

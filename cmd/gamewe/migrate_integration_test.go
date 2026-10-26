@@ -30,6 +30,8 @@ import (
 
 func buildGamewe(t *testing.T) string {
 	t.Helper()
+	// No update check against GitHub from the commands under test.
+	t.Setenv("GAMEWE_UPDATE_CHECK", "off")
 	bin := filepath.Join(t.TempDir(), "gamewe")
 	out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput()
 	if err != nil {

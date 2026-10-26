@@ -130,7 +130,7 @@ func TestMigrateJobCommands(t *testing.T) {
 	players(3, old)
 	stop := beating(t, admin)
 	store := stats.NewStore(db, settings.NewLive(settings.Defaults()))
-	jobs := &collector.Jobs{Store: store, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	jobs := &collector.Jobs{Store: store, Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Version: "9.8.7",
 		Lock: func(ctx context.Context) (func(), error) { return database.JobLock(ctx, db, time.Minute, nil) }}
 	jctx, cancel := context.WithCancel(ctx)
 	loop := make(chan struct{})
@@ -151,6 +151,9 @@ func TestMigrateJobCommands(t *testing.T) {
 	expect(t, out, code, 0, "queued as job", "done: 3 players moved")
 	if n := num(`SELECT COUNT(*) FROM hlstats_gamewe_jobs WHERE job_type = 'inactive' AND status = 'done'`); n != 1 {
 		t.Errorf("%d done inactive jobs, want 1", n)
+	}
+	if n := num(`SELECT COUNT(*) FROM hlstats_Options WHERE keyname = 'gamewe_collector_version' AND value = '9.8.7'`); n != 1 {
+		t.Errorf("gamewe_collector_version not written (%d rows)", n)
 	}
 	out, code = gw(t, bin, "reset", "-list", "-config", cfg)
 	expect(t, out, code, 0, "inactive")

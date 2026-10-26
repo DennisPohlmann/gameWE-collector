@@ -105,12 +105,19 @@ Usage:
                                    /var/lib/gamewe/collector/dbip-city-lite.mmdb); the
                                    collector does it on the first start and monthly
                                    itself (geoip.auto_update)
+  gamewe check-update              ask GitHub for the latest release and report on stderr
+                                   whether it is newer (nothing is installed)
   gamewe version                   print the version (also -V, -version, --version)
 
 Every command that changes something shows what it will do and asks [y/N]
 first: --dry-run (-n) only shows it, --force (-f; older names -yes, -y)
 does not ask (scripts, cron); without a terminal and without --force it
 changes nothing (exit code 1). Commands that only read never ask.
+
+Before its work every command (except run, version and help) prints a note
+on stderr when a newer release is out (GitHub, cached for 6 hours); run logs
+it at start and once a day. features.update_check: false or
+GAMEWE_UPDATE_CHECK=off turns that off. Nothing is updated automatically.
 
 Every command except run takes -o FORMAT (or --output FORMAT, also before the
 command: gamewe -o json server list): text (default), json, yaml; the lists
@@ -141,9 +148,14 @@ func main() {
 		globalFlags(args) // gamewe version -o json; other arguments are ignored
 		err = printVersion(os.Stdout)
 	}
+	if err == nil {
+		updateNote(os.Stderr, cmd, args) // first the note, then the command
+	}
 	switch cmd {
 	case "run":
 		err = runCmd(args)
+	case "check-update":
+		err = checkUpdateCmd(args)
 	case "check":
 		err = checkCmd(args)
 	case "config":
@@ -300,6 +312,9 @@ func runCmd(args []string) error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if cfg.Features.UpdateCheck.Enabled && !updateCheckOff() {
+		go watchUpdates(ctx, log)
+	}
 
 	db, err := database.Open(cfg.Database)
 	if err != nil {
@@ -437,7 +452,7 @@ func runCmd(args []string) error {
 	ipLoc, _ := ip.Location(cfg.Timezone) // checked by config.Validate
 	ipH, ipM, _ := ip.At()
 	jobLock := func(ctx context.Context) (func(), error) { return database.JobLock(ctx, db, time.Hour, nil) }
-	go (&collector.Jobs{Store: store, Hub: hub, Log: log, Lock: jobLock,
+	go (&collector.Jobs{Store: store, Hub: hub, Log: log, Lock: jobLock, Version: version.Version,
 		Inactive: collector.InactiveConfig{Enabled: ip.Enabled, At: collector.Schedule{Loc: ipLoc, Hour: ipH, Minute: ipM}}}).Run(ctx)
 	da := cfg.Features.DailyAwards
 	daLoc, _ := da.Location(cfg.Timezone) // checked by config.Validate
@@ -600,6 +615,7 @@ type checkFeatures struct {
 	InactivePlayers     bool   `json:"inactive_players"`
 	InactiveTime        string `json:"inactive_players_time"`
 	InactiveTimezone    string `json:"inactive_players_timezone"`
+	UpdateCheck         bool   `json:"update_check"`
 }
 
 type checkDatabase struct {
@@ -685,12 +701,12 @@ func check(cfg config.Config, out io.Writer, rep *checkReport) error {
 	ip := cfg.Features.InactivePlayers
 	daLoc, _ := da.Location(cfg.Timezone) // checked by config.Validate
 	ipLoc, _ := ip.Location(cfg.Timezone)
-	fmt.Fprintf(out, "features:  rcon_status %v (every %v), log_address %v (every %v, http %v), log_secret %v, server_info %v (every %v), daily_awards %v (%s %s), cs2_hitgroups %v, inactive_players %v (%s %s, days: hlstats_Options MinActivity)\n",
+	fmt.Fprintf(out, "features:  rcon_status %v (every %v), log_address %v (every %v, http %v), log_secret %v, server_info %v (every %v), daily_awards %v (%s %s), cs2_hitgroups %v, inactive_players %v (%s %s, days: hlstats_Options MinActivity), update_check %v\n",
 		cfg.Features.RconStatus.Enabled, every, cfg.Features.LogAddress.Enabled, laEvery, cfg.Features.LogAddress.HTTP, cfg.Features.LogSecret.Enabled,
-		si.Enabled, siEvery, da.Enabled, da.Time, daLoc, cfg.Features.CS2Hitgroups.Enabled, ip.Enabled, ip.Time, ipLoc)
+		si.Enabled, siEvery, da.Enabled, da.Time, daLoc, cfg.Features.CS2Hitgroups.Enabled, ip.Enabled, ip.Time, ipLoc, cfg.Features.UpdateCheck.Enabled)
 	rep.Features = checkFeatures{cfg.Features.RconStatus.Enabled, every.String(), cfg.Features.LogAddress.Enabled, laEvery.String(),
 		cfg.Features.LogAddress.HTTP, cfg.Features.LogSecret.Enabled, si.Enabled, siEvery.String(), da.Enabled, da.Time, daLoc.String(),
-		cfg.Features.CS2Hitgroups.Enabled, ip.Enabled, ip.Time, ipLoc.String()}
+		cfg.Features.CS2Hitgroups.Enabled, ip.Enabled, ip.Time, ipLoc.String(), cfg.Features.UpdateCheck.Enabled}
 	if o := cfg.Features.LogSecret.ObsoleteWarning(); o != "" {
 		warn("features.log_secret: " + o)
 	}

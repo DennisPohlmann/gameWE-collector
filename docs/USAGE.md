@@ -187,7 +187,7 @@ This holds for `db migrate`, `db init`, `db grants`, `db seed`, `db purge`,
 `awards`, `serverinfo`, `logaddress -add`, `geoip-update`, `simulate` and
 the changing `game`, `server` and `option` commands. Commands that only read
 never ask: `check`, `status`, `config test`, `db status`, `version`,
-`reset -list`, `game|server|option list`, `option get`, `logaddress`
+`reset -list`, `check-update`, `game|server|option list`, `option get`, `logaddress`
 without `-add`, `db grants|seed|drop -print`. `gamewe rcon` does not ask
 either: the RCON command typed on its command line is the intent itself
 (as in the server console), and there is nothing to show beforehand. `run`
@@ -210,7 +210,17 @@ is the service and never asks; its automatic migration is
 | `gamewe awards [-date YYYY-MM-DD]` | decide the daily awards of a day (again), also with `features.daily_awards` off |
 | `gamewe inactive` | move the inactive players to `hlstats_PlayersInactive` now, also with `features.inactive_players` off |
 | `gamewe geoip-update` | download the DB-IP database now |
+| `gamewe check-update` | ask GitHub for the latest release now and report on stderr whether it is newer (with `-o json` also the document on stdout); exit code 1 when GitHub cannot be reached. Nothing is installed ([`features.update_check`](CONFIG.md#features)) |
 | `gamewe simulate` | replay a sample game into the database or to a running collector |
+
+**Update note.** When a newer collector release is out on GitHub, every
+command except `run`, `version` and `help` first prints one line on stderr,
+`gamewe: update available: 0.17.0 (running 0.16.0), https://github.com/...`,
+and then does its work as usual (stdout, exit code and `-o` output stay the
+same). `gamewe run` logs it as a warning at start and once a day, and writes
+its version to `hlstats_Options` (`gamewe_collector_version`) for the web
+admin. Nothing is updated automatically; see
+[`features.update_check`](CONFIG.md#features) to turn it off.
 
 ### Checking the config file
 

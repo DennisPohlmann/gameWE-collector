@@ -24,6 +24,9 @@ HLstatsX. The **collector** is its core: one static Go binary that
   enabled, the daily move of inactive players to `hlstats_PlayersInactive`;
   each of these jobs can also be run from the command line (`gamewe awards`,
   `gamewe inactive`, `gamewe reset`, `gamewe serverinfo`, ...).
+- tells you when a newer release is out (log at start and daily, a note on
+  stderr before the other commands, `gamewe check-update`); it never updates
+  itself ([`features.update_check`](docs/CONFIG.md#features)).
 
 The config file holds only the log inputs (UDP, HTTP) and the database connection.
 Game servers and all point and command settings come from the database, so

@@ -115,6 +115,8 @@ features:
     timezone: ""       # IANA time zone; empty: timezone below, else the server's
   cs2_hitgroups:       # Counter-Strike 2: hits per body part (head, neck, chest, ...) and damage
     enabled: true      # from the attacked lines (CS2 has no plugin that reports them)
+  update_check:        # ask GitHub for the latest release: run logs a newer one at start and
+    enabled: true      # daily, the other commands print a note on stderr first; never installs
 
 # The collector's time zone (IANA name, e.g. Europe/Berlin) for the daily
 # jobs above without a timezone of their own. Empty: the server's time zone

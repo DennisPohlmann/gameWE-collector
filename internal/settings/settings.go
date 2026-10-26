@@ -132,7 +132,7 @@ var WebKeys = []string{
 	"gamewe_voice_type", "gamewe_discord_guild", "gamewe_discord_invite",
 	"gamewe_ts_host", "gamewe_ts_port", "gamewe_ts_query_port", "gamewe_ts_query_user", "gamewe_ts_query_password",
 	"gamewe_ts_password", "gamewe_ts_name", "gamewe_ts_link", "gamewe_ts_display", "gamewe_ts_country",
-	"gamewe_ts_show_clients",
+	"gamewe_ts_show_clients", "gamewe_update_check",
 }
 
 var webKeys = func() map[string]bool {
@@ -146,11 +146,11 @@ var webKeys = func() map[string]bool {
 // otherKey reports gamewe_* keys that are not collector settings but are
 // expected in hlstats_Options: web settings, header link slots
 // (gamewe_link_<n>), web admin TOTP secrets (gamewe_totp_<hash>, pending
-// gamewe_totpp_<hash>), the collector's heartbeat and retired keys that the
+// gamewe_totpp_<hash>), the collector's heartbeat and version and retired keys that the
 // migrations delete.
 func otherKey(k string) bool {
 	switch k {
-	case "gamewe_heartbeat", // written by the collector
+	case "gamewe_heartbeat", "gamewe_collector_version", // written by the collector
 		"gamewe_daily_awards", // 1.4.x; now features.daily_awards in the config file
 		"gamewe_ignore_bots":  // reported above
 		return true

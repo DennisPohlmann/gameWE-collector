@@ -445,7 +445,10 @@ from the collector host with the sample game:
 
 ## E. Update
 
-Read the release's entry in [CHANGELOG.md](../CHANGELOG.md) first. An update
+Whether a newer release is out: `gamewe check-update`; `gamewe run` logs it at
+start and daily, the other commands print a note on stderr, and the web admin
+shows it on its overview (`features.update_check`, nothing is installed
+automatically). Read the release's entry in [CHANGELOG.md](../CHANGELOG.md) first. An update
 is: make a backup, replace the binary, start the collector. New tables,
 columns, indexes and reference data come with the binary; the collector
 migrates the database at start (`database.auto_migrate`). With

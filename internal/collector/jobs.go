@@ -24,6 +24,9 @@ type Jobs struct {
 	Log      *slog.Logger
 	Now      func() time.Time // tests
 	Inactive InactiveConfig
+	// Version is written to hlstats_Options with the first heartbeat
+	// (stats.VersionKey); empty: not written (tests).
+	Version string
 	// Lock takes the job lock of the database (database.JobLock) for a
 	// reset and a move of inactive players; nil: none (tests).
 	Lock func(ctx context.Context) (release func(), err error)
@@ -89,6 +92,11 @@ func (j *Jobs) Recover(ctx context.Context) error {
 func (j *Jobs) Poll(ctx context.Context) error {
 	now := j.now()
 	if now.Sub(j.lastBeat) >= stats.HeartbeatInterval {
+		if j.lastBeat.IsZero() && j.Version != "" {
+			if err := j.Store.SetVersion(ctx, j.Version); err != nil {
+				return fmt.Errorf("version: %w", err)
+			}
+		}
 		if err := j.Store.Heartbeat(ctx, now); err != nil {
 			return fmt.Errorf("heartbeat: %w", err)
 		}
