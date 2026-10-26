@@ -74,4 +74,10 @@ func TestApprove(t *testing.T) {
 	if interactive(r) {
 		t.Error("a pipe is no terminal")
 	}
+	if null, err := os.Open(os.DevNull); err == nil {
+		defer null.Close()
+		if interactive(null) { // stdin of cron and CI: a character device, no terminal
+			t.Error("/dev/null is no terminal")
+		}
+	}
 }

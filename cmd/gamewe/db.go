@@ -269,10 +269,7 @@ func presetOutput(args []string) {
 }
 
 // stdinIsTerminal reports whether stdin is a terminal (someone can answer).
-func stdinIsTerminal() bool {
-	fi, err := os.Stdin.Stat()
-	return err == nil && fi.Mode()&os.ModeCharDevice != 0
-}
+func stdinIsTerminal() bool { return isTerminal(os.Stdin) }
 
 // migrateFlags are the flags of gamewe db migrate.
 type migrateFlags struct {

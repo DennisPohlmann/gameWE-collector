@@ -44,7 +44,7 @@ geoip: $(GEOIP_DB)
 
 $(GEOIP_DB): build
 	install -d geoip-data
-	$(BIN) geoip-update -file $@
+	$(BIN) geoip-update --force -file $@
 	install -m 0644 packaging/geoip-NOTICE geoip-data/NOTICE
 
 package: build geoip

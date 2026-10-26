@@ -12,6 +12,13 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// isTerminal reports whether f is a terminal (not just a character device
+// such as /dev/null, which cron and CI give as stdin).
+func isTerminal(f *os.File) bool {
+	_, err := unix.IoctlGetTermios(int(f.Fd()), unix.TCGETS)
+	return err == nil
+}
+
 // lineTerminal makes Enter end the line on the terminal f while a question
 // waits. With icrnl off (stty -icrnl, left so by another program) or igncr
 // on, Enter sends CR: the terminal echoes ^M and, in canonical mode, never

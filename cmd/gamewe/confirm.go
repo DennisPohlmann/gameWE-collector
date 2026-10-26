@@ -42,8 +42,7 @@ func (c changeFlags) check() error {
 // no file, as in the tests, counts as one).
 func interactive(in io.Reader) bool {
 	if f, ok := in.(*os.File); ok {
-		fi, err := f.Stat()
-		return err == nil && fi.Mode()&os.ModeCharDevice != 0
+		return isTerminal(f)
 	}
 	return true
 }
