@@ -253,9 +253,17 @@ type (
 		Player      Player
 		Name, Value string
 	}
+	// PluginStarted is the start line of a gameWE plugin,
+	// `gameWE Plugin 0.2.0 (CounterStrikeSharp)`, logged when the plugin
+	// loads and at every map start.
+	PluginStarted struct {
+		Version  string
+		Platform string // CounterStrikeSharp, ...
+	}
 )
 
 func (Connected) event()       {}
+func (PluginStarted) event()   {}
 func (Entered) event()         {}
 func (Disconnected) event()    {}
 func (JoinedTeam) event()      {}
@@ -309,6 +317,7 @@ var (
 	reProp       = regexp.MustCompile(`\((\w+) "([^"]*)"\)`)
 	reMatchStart = regexp.MustCompile(`^World triggered "Match_Start" on "([^"]+)"`)
 	reMap        = regexp.MustCompile(`^(?:Loading|Started) map "([^"]+)"`)
+	rePlugin     = regexp.MustCompile(`^gameWE Plugin ([0-9A-Za-z.+-]{1,32}) \(([A-Za-z0-9 ]{1,32})\)$`)
 	reRequested  = regexp.MustCompile(`^"(?:([^"]*?)<(-?\d+)><([^<>]*)><([^<>]*)>|Server)" requested "([^"]*)" \(value "(\d+)"\)$`)
 	reLocated    = regexp.MustCompile(`^` + pref + ` located on "([^"]*)" \(position "(-?\d+) (-?\d+) (-?\d+)"\)` +
 		`(?: against ` + pref + ` \(victim_position "(-?\d+) (-?\d+) (-?\d+)"\))?$`)
@@ -395,6 +404,11 @@ func ParseLine(line string) (Event, bool) {
 	case strings.HasPrefix(line, "Loading map") || strings.HasPrefix(line, "Started map"):
 		if m := reMap.FindStringSubmatch(line); m != nil {
 			return MapStarted{Map: m[1]}, true
+		}
+		return nil, false
+	case strings.HasPrefix(line, "gameWE Plugin "):
+		if m := rePlugin.FindStringSubmatch(line); m != nil {
+			return PluginStarted{Version: m[1], Platform: m[2]}, true
 		}
 		return nil, false
 	case !strings.HasPrefix(line, `"`):

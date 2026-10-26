@@ -672,8 +672,8 @@ func (c Commands) hideState(srv *serverState, userID, h int) {
 }
 
 // prefix is the start of the plugin's reply commands: gamewe (or gameme)
-// for the SourceMod plugin, gamewe_amx (gameme_amx) for the AMX Mod X
-// plugin of GoldSrc servers.
+// for the SourceMod plugin and the CS2 (CounterStrikeSharp) plugin,
+// gamewe_amx (gameme_amx) for the AMX Mod X plugin of GoldSrc servers.
 func (c Commands) prefix(srv *serverState) string {
 	if srv.info.Engine == games.GoldSrc {
 		return c.set.Get().CommandPrefix + "_amx"
@@ -682,9 +682,10 @@ func (c Commands) prefix(srv *serverState) string {
 }
 
 func (c Commands) send(srv *serverState, cmd string) {
-	if srv.info.Engine == games.Source2 {
-		// CS2 has no gameWE plugin to show the reply: nothing to send.
-		c.log.Debug("Source 2 server (CS2) has no plugin for replies, reply dropped", "server", srv.info.Address)
+	if srv.info.Engine == games.Source2 && !srv.plugin {
+		// Without the gameWE CounterStrikeSharp plugin CS2 knows no
+		// gamewe_* commands: nothing to send.
+		c.log.Debug("Source 2 server (CS2) without the gameWE plugin, reply dropped", "server", srv.info.Address)
 		return
 	}
 	if srv.info.RconPassword == "" {

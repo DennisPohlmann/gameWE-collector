@@ -63,8 +63,9 @@ const maxHitWeapons = 64
 // attacked counts a hit of a Source 2 server for the attacker: the hit
 // group (hlstats_Players_Weapons head ... rightleg, neck) and the damage.
 // Hits and shots are not counted: CS2 logs no shots, so an accuracy would
-// be wrong. Other engines are skipped: there the plugin's weaponstats2
-// lines carry the hit groups.
+// be wrong (the CS2 plugin's weaponstats bring shots and hits). Other
+// engines are skipped: there the plugin's weaponstats2 lines carry the hit
+// groups.
 func (p *Processor) attacked(ctx context.Context, ev stats.Ev, e logparse.Attacked) error {
 	if !p.Source2Hits || p.srv.info.Engine != games.Source2 || e.Weapon == "" {
 		return nil
@@ -121,8 +122,9 @@ func hitWeapon(st *playerState, weapon string) *stats.WeaponStats {
 
 // source2Kill counts a kill of a Source 2 server per weapon
 // (hlstats_Players_Weapons kills, headshots, deaths), as the plugin's
-// weaponstats lines do on the other engines: for the killer the kill (or
-// team kill) and the headshot, for the victim a death by that weapon.
+// weaponstats lines do: for the killer the kill (or team kill) and the
+// headshot, for the victim a death by that weapon. With the CS2 plugin
+// these counts are dropped at the flush.
 func (p *Processor) source2Kill(k, v *playerState, weapon string, headshot, teamkill bool) {
 	if !p.Source2Hits || p.srv.info.Engine != games.Source2 || weapon == "" {
 		return
@@ -142,11 +144,33 @@ func (p *Processor) source2Kill(k, v *playerState, weapon string, headshot, team
 	}
 }
 
-// flushHits stores a player's counted hits.
+// pluginSeen marks a Source 2 server as running the gameWE plugin (start
+// line with its version, or "" for a weaponstats line).
+func (p *Processor) pluginSeen(version string) {
+	if p.srv.info.Engine != games.Source2 || p.srv.plugin {
+		return
+	}
+	p.srv.plugin = true
+	p.log.Info("CS2 server runs the gameWE plugin: replies on, damage, kills and deaths per weapon from its weaponstats",
+		"server", p.srv.info.Name, "version", version)
+}
+
+// flushHits stores a player's counted hits. With the gameWE plugin on the
+// server its weaponstats lines already carry the damage, kills, headshots
+// and deaths per weapon, so only the hit groups are stored here (else they
+// would count twice). The decision is made at the flush, so hits counted
+// before the plugin's first line of a round are not doubled either.
 func (p *Processor) flushHits(ctx context.Context, ev stats.Ev, st *playerState) error {
 	hits := st.hitStats
 	st.hitStats = nil
 	for weapon, w := range hits {
+		if p.srv.plugin {
+			w = &stats.WeaponStats{Head: w.Head, Neck: w.Neck, Chest: w.Chest, Stomach: w.Stomach,
+				LeftArm: w.LeftArm, RightArm: w.RightArm, LeftLeg: w.LeftLeg, RightLeg: w.RightLeg}
+			if *w == (stats.WeaponStats{}) {
+				continue
+			}
+		}
 		if err := p.store.AddWeaponStats(ctx, ev, st.live, weapon, *w); err != nil {
 			return err
 		}

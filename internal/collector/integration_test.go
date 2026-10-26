@@ -1510,3 +1510,53 @@ func TestIntegrationCS2(t *testing.T) {
 		t.Errorf("headshot frags with m4a1_silencer: %d, want 1", got)
 	}
 }
+
+// CS2 with the gameWE plugin: its weaponstats bring shots, hits, damage,
+// kills, headshots and deaths per weapon, the attacked lines only the hit
+// groups (nothing counted twice).
+func TestIntegrationCS2Plugin(t *testing.T) {
+	db := testDB(t)
+	if _, err := db.Exec(`INSERT INTO hlstats_Games (id, code, name, realgame) VALUES (3, 'cs2', 'Counter-Strike 2', 'cs2')`); err != nil {
+		t.Fatal(err)
+	}
+	addr := "198.51.100.9:27015"
+	insertServer(t, db, addr, "cs2")
+	set := settings.NewLive(settings.Defaults())
+	hub := NewHub(stats.NewStore(db, set), set, &recorder{}, strictLog(t))
+	hub.Source2Hits = true
+	if err := hub.Reload(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	a := `"Pat<2><[U:1:42]><%s>"`
+	b := `"Bob<3><[U:1:43]><%s>"`
+	f := func(p, team string) string { return fmt.Sprintf(p, team) }
+	ts := "10/26/2026 - 12:00:00.250 - "
+	lines := []string{
+		`gameWE Plugin 0.2.0 (CounterStrikeSharp)`,
+		`World triggered "Round_Start"`,
+		f(a, "") + ` connected, address "192.0.2.41:27005"`,
+		f(b, "") + ` connected, address "192.0.2.42:27005"`,
+		f(a, "Unassigned") + ` joined team "CT"`,
+		f(b, "Unassigned") + ` joined team "TERRORIST"`,
+		f(a, "CT") + ` [10 20 30] attacked ` + f(b, "TERRORIST") + ` [40 50 60] with "m4a1_silencer_off" (damage "27") (damage_armor "3") (health "73") (armor "97") (hitgroup "neck")`,
+		f(a, "CT") + ` [10 20 30] attacked ` + f(b, "TERRORIST") + ` [40 50 60] with "m4a1_silencer_off" (damage "73") (damage_armor "0") (health "0") (armor "97") (hitgroup "head")`,
+		f(a, "CT") + ` [10 20 30] killed ` + f(b, "TERRORIST") + ` [40 50 60] with "m4a1_silencer_off" (headshot)`,
+		f(b, "TERRORIST") + ` triggered "weaponstats" (weapon "m4a1_silencer") (shots "0") (hits "0") (kills "0") (headshots "0") (tks "0") (damage "0") (deaths "1")`,
+		f(a, "CT") + ` triggered "weaponstats" (weapon "m4a1_silencer") (shots "5") (hits "2") (kills "1") (headshots "1") (tks "0") (damage "100") (deaths "0")`,
+		`World triggered "Round_End"`,
+	}
+	var body []string
+	for _, l := range lines {
+		body = append(body, ts+l)
+	}
+	if n, err := hub.DispatchLines(netip.MustParseAddrPort(addr), body, time.Now().UTC()); err != nil || n != len(body) {
+		t.Fatalf("dispatch: %d %v", n, err)
+	}
+	hub.Close(context.Background())
+	m4 := `SELECT COALESCE(SUM(%s), 0) FROM hlstats_Players_Weapons w JOIN hlstats_Weapons x ON x.weaponId = w.weapon_id WHERE x.code = 'm4a1_silencer'`
+	for col, want := range map[string]int{"neck": 1, "head": 1, "damage": 100, "kills": 1, "headshots": 1, "deaths": 1, "shots": 5, "hits": 2} {
+		if got := count(t, db, fmt.Sprintf(m4, "w."+col)); got != want {
+			t.Errorf("m4a1_silencer %s: %d, want %d", col, got, want)
+		}
+	}
+}

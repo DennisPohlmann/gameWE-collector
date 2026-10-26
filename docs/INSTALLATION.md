@@ -429,9 +429,11 @@ rcon_password "change-me"                                // the same as in hlsta
 
 With a `listen.http.token` the URL is `http://203.0.113.5:41338/<token>/27015`.
 With the RCON password the collector registers this URL itself
-(`features.log_address.http`). There is no plugin for CS2: no in-game replies,
-and no weapon accuracy; hits per body part come from the game's own log
-([GAMES.md](GAMES.md#counter-strike-2)). `gamewe logaddress -server <id>`
+(`features.log_address.http`). Without the [gameWE CounterStrikeSharp plugin](https://github.com/DennisPohlmann/gameWE-plugin-counterstrikesharp)
+there are no in-game replies and no weapon accuracy; hits per body part come
+from the game's own log. With the plugin (and `-usercon` on the CS2 start
+line) the collector answers in-game commands and stores the plugin's weapon
+statistics ([GAMES.md](GAMES.md#counter-strike-2)). `gamewe logaddress -server <id>`
 shows whether the URL is registered (the token as `<token>`).
 
 Restrict the collector's ports (UDP 41337, TCP 41338 for CS2) with a firewall

@@ -208,7 +208,7 @@ What the collector reads on CS2, besides the CS:GO lines above:
 | Line | Stored |
 |------|--------|
 | `10/23/2026 - 12:00:00.250 - <event>` (HTTP), also with `L ` and the milliseconds over UDP | the event; milliseconds are ignored |
-| `"A<2><[U:1:42]><CT>" [x y z] attacked "V<3><[U:1:43]><TERRORIST>" [x y z] with "ak47" (damage "27") (damage_armor "3") (health "73") (armor "97") (hitgroup "neck")` | with `features.cs2_hitgroups`: damage and one hit of the area (`head`, `neck`, `chest`, `stomach`, `left arm`, ...) for A's weapon, written to `hlstats_Players_Weapons` at the end of the round and when A leaves. Hits on oneself are not counted, damage is capped at 1000 per hit. Shots and hits stay empty (no `weaponstats`), so CS2 has no accuracy. The kill lines add, per weapon, the killer's kill (or team kill) and headshot and the victim's death, like the plugin's `weaponstats` on the other engines. |
+| `"A<2><[U:1:42]><CT>" [x y z] attacked "V<3><[U:1:43]><TERRORIST>" [x y z] with "ak47" (damage "27") (damage_armor "3") (health "73") (armor "97") (hitgroup "neck")` | with `features.cs2_hitgroups`: damage and one hit of the area (`head`, `neck`, `chest`, `stomach`, `left arm`, ...) for A's weapon, written to `hlstats_Players_Weapons` at the end of the round and when A leaves. Hits on oneself are not counted, damage is capped at 1000 per hit. Without the plugin shots and hits stay empty (no `weaponstats`), so there is no accuracy, and the kill lines add, per weapon, the killer's kill (or team kill) and headshot and the victim's death, like the plugin's `weaponstats`. With the plugin only the areas are taken from here (see below). |
 | weapon names `usp_silencer_off`, `m4a1_silencer_off` (silencer removed) | counted as `usp_silencer`, `m4a1_silencer` |
 | `inferno` of a Counter-Terrorist (CS2 logs the fire of both fire grenades as `inferno`) | counted as `incgrenade` (the CT incendiary grenade); a Terrorist's stays `inferno` |
 | the bots `<BOT>`, SourceTV (`SourceTV<0><BOT><>`) and the demo recorder (`<UNKNOWN>`) | bots as on CS:GO; SourceTV and the demo recorder are not tracked |
@@ -216,7 +216,29 @@ What the collector reads on CS2, besides the CS:GO lines above:
 RCON `status` of CS2 shows no SteamIDs: its players are matched to the
 tracked players by userid (a player not seen in the log yet is skipped), the
 map comes from the `loaded spawngroup` line, and `BOT` rows count as bots.
-In-game commands (`!rank`, ...) are recorded as chat, but not answered.
+
+**With the [gameWE CounterStrikeSharp plugin](https://github.com/DennisPohlmann/gameWE-plugin-counterstrikesharp):** the collector knows a server runs the plugin from its
+start line `gameWE Plugin <version> (CounterStrikeSharp)` (sent when the plugin
+loads and at every map start) or from its first `weaponstats` line, and says
+so once in its log. From then on, until the collector stops:
+
+- in-game commands (`!rank`, ...) are answered with the plugin's server
+  commands over RCON (`gamewe_psay`, `gamewe_msay`, ...; CS2 needs
+  `-usercon` and the `rcon_password` of `hlstats_Servers`), as on the
+  SourceMod plugin;
+- the plugin's `weaponstats` bring shots, hits, damage, kills, headshots and
+  deaths per weapon; the `attacked` lines (`features.cs2_hitgroups`) then
+  only add the body parts, so nothing is counted twice;
+- the plugin's `triggered "headshot"` (rewarded once per kill, with the
+  kill line), `"mvp"`, `"domination"` and `"revenge"` and its `setup`
+  lines are read as on CS:GO; its roles (`changed role to`) are not stored,
+  the cs2 data has no player-model roles.
+
+Without the plugin, in-game commands are recorded as chat, but not answered.
+After a restart of the collector the plugin is known again with its next
+line; in the round of that restart, damage and kills of hits before the
+plugin's first line can be counted twice when no plugin line comes before
+the round ends.
 
 ## Left 4 Dead
 

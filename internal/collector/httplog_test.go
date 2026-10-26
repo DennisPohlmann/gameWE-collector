@@ -4,6 +4,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 
 	"gamewe-collector/internal/games"
 	"gamewe-collector/internal/logparse"
+	"gamewe-collector/internal/settings"
 	"gamewe-collector/internal/stats"
 )
 
@@ -201,5 +203,73 @@ func TestSource2SourceTV(t *testing.T) {
 	s1 := &serverState{info: stats.Server{Engine: games.Source}}
 	if s2.tracks(tv) || !s2.tracks(bot) || !s1.tracks(tv) {
 		t.Errorf("tracks: cs2 SourceTV %v, cs2 bot %v, css SourceTV %v", s2.tracks(tv), s2.tracks(bot), s1.tracks(tv))
+	}
+}
+
+// With the gameWE CS2 plugin its weaponstats carry damage, kills,
+// headshots, deaths, shots and hits per weapon; the attacked and kill lines
+// then only add the hit groups, so nothing is counted twice. That holds also
+// when the plugin's first line comes after the hits of the round.
+func TestSource2PluginWeaponStats(t *testing.T) {
+	a := `"Pat<2><[U:1:42]><%s>"`
+	b := `"Bob<3><[U:1:43]><%s>"`
+	f := func(p, team string) string { return fmt.Sprintf(p, team) }
+	start := `gameWE Plugin 0.2.0 (CounterStrikeSharp)`
+	hits := []string{
+		`World triggered "Round_Start"`,
+		f(a, "") + ` connected, address "198.51.100.41:27005"`,
+		f(b, "") + ` connected, address "198.51.100.42:27005"`,
+		f(a, "Unassigned") + ` joined team "CT"`,
+		f(b, "Unassigned") + ` joined team "TERRORIST"`,
+		f(a, "CT") + ` [10 20 30] attacked ` + f(b, "TERRORIST") + ` [40 50 60] with "m4a1_silencer_off" (damage "27") (damage_armor "3") (health "73") (armor "97") (hitgroup "neck")`,
+		f(a, "CT") + ` [10 20 30] attacked ` + f(b, "TERRORIST") + ` [40 50 60] with "m4a1_silencer_off" (damage "73") (damage_armor "0") (health "0") (armor "97") (hitgroup "head")`,
+		f(a, "CT") + ` [10 20 30] killed ` + f(b, "TERRORIST") + ` [40 50 60] with "m4a1_silencer_off" (headshot)`,
+	}
+	plugin := []string{
+		f(b, "TERRORIST") + ` triggered "weaponstats" (weapon "m4a1_silencer") (shots "0") (hits "0") (kills "0") (headshots "0") (tks "0") (damage "0") (deaths "1")`,
+		f(a, "CT") + ` triggered "weaponstats" (weapon "m4a1_silencer") (shots "5") (hits "2") (kills "1") (headshots "1") (tks "0") (damage "100") (deaths "0")`,
+	}
+	end := []string{`World triggered "Round_End"`}
+	cat := func(parts ...[]string) []string {
+		var out []string
+		for _, p := range parts {
+			out = append(out, p...)
+		}
+		return out
+	}
+	for name, tc := range map[string]struct {
+		lines []string
+		pat   stats.WeaponStats
+		bob   stats.WeaponStats
+	}{
+		"no plugin": {cat(hits, end),
+			stats.WeaponStats{Damage: 100, Kills: 1, Headshots: 1, Head: 1, Neck: 1}, stats.WeaponStats{Deaths: 1}},
+		"start line first": {cat([]string{start}, hits, plugin, end),
+			stats.WeaponStats{Shots: 5, Hits: 2, Damage: 100, Kills: 1, Headshots: 1, Head: 1, Neck: 1}, stats.WeaponStats{Deaths: 1}},
+		"weaponstats after the hits": {cat(hits, plugin, end),
+			stats.WeaponStats{Shots: 5, Hits: 2, Damage: 100, Kills: 1, Headshots: 1, Head: 1, Neck: 1}, stats.WeaponStats{Deaths: 1}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			st := newMemStore()
+			hub := NewHub(st, settings.NewLive(settings.Defaults()), &recorder{}, quiet)
+			hub.Source2Hits = true // before the server's worker starts
+			hub.SetServers(st.addServers([]string{"192.0.2.20:27015"}, map[string]string{"192.0.2.20:27015": "cs2"}))
+			var body []string
+			for _, l := range tc.lines {
+				body = append(body, "10/26/2026 - 21:00:00.250 - "+l)
+			}
+			if n, err := hub.DispatchLines(netip.MustParseAddrPort("192.0.2.20:27015"), body, time.Now().UTC()); err != nil || n != len(body) {
+				t.Fatalf("dispatch: %d %v", n, err)
+			}
+			hub.Close(context.Background())
+			st.mu.Lock()
+			defer st.mu.Unlock()
+			if got := st.weapons[[2]string{"0:21", "m4a1_silencer"}]; got != tc.pat {
+				t.Errorf("Pat m4a1_silencer: %+v, want %+v", got, tc.pat)
+			}
+			if got := st.weapons[[2]string{"1:21", "m4a1_silencer"}]; got != tc.bob {
+				t.Errorf("Bob m4a1_silencer: %+v, want %+v", got, tc.bob)
+			}
+		})
 	}
 }

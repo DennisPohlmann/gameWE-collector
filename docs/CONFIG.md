@@ -107,7 +107,7 @@ config file (changing them needs a restart); the old key `gamewe_daily_awards` o
 | `sourcebans.interval` | `30m` | how often the running bans are checked again, a duration (`15m`, `1h`) or seconds; at least `5m`. One Steam ID per second is looked up. |
 | `sourcebans.phrases` | empty | further parts of kick messages that mean a ban, case insensitive, 4 to 200 characters each (e.g. a ban plugin of your own that does not name the address). The lookup still decides. |
 | `sourcebans.allow_private` | `false` | allow a ban list on the LAN or localhost; off, only public addresses are contacted (checked when connecting) |
-| `cs2_hitgroups.enabled` | `true` | Counter-Strike 2: count hits per body part (`head`, `neck`, `chest`, `stomach`, arms, legs) and damage per weapon from the `attacked` lines and kills, headshots and deaths per weapon from the kill lines, stored in `hlstats_Players_Weapons` at the end of every round and when a player leaves. CS2 has no plugin that reports `weaponstats`, so shots and accuracy stay empty. The short form `cs2_hitgroups: true` / `false` works too. |
+| `cs2_hitgroups.enabled` | `true` | Counter-Strike 2: count hits per body part (`head`, `neck`, `chest`, `stomach`, arms, legs) and damage per weapon from the `attacked` lines and kills, headshots and deaths per weapon from the kill lines, stored in `hlstats_Players_Weapons` at the end of every round and when a player leaves. Without the gameWE CS2 plugin there are no `weaponstats`, so shots and accuracy stay empty; on a server with the plugin its `weaponstats` bring shots, hits, damage, kills, headshots and deaths, and the `attacked` lines only add the body parts (nothing counted twice). The short form `cs2_hitgroups: true` / `false` works too. |
 
 ### timezone
 

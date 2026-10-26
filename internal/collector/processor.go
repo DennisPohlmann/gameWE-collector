@@ -98,7 +98,7 @@ type Processor struct {
 	// replace it.
 	ServerStats func(srv stats.Server, timeout time.Duration) (ServerStats, error)
 	// Source2Hits counts the hit groups of the attacked lines of Source 2
-	// servers (features.cs2_hitgroups); CS2 has no plugin that reports them.
+	// servers (features.cs2_hitgroups); the CS2 plugin does not report them.
 	// Set before the first line.
 	Source2Hits bool
 	// Bans is told the disconnect reasons (features.sourcebans; nil: off).
@@ -177,6 +177,12 @@ type serverState struct {
 	// go into the frag of the kill line that follows.
 	pendingLoc *pendingLocation
 	upSince    time.Time // first line after a silence of LoadInterval (uptime without RCON)
+	// plugin: a Source 2 (CS2) server that runs the gameWE CounterStrikeSharp
+	// plugin, seen by its start line or its weaponstats lines. Its server
+	// commands get the replies, and its weaponstats carry the damage,
+	// kills, headshots and deaths per weapon (see flushHits). Kept until
+	// the collector stops.
+	plugin bool
 }
 
 // keyByUserID returns the key of the tracked human player with this
@@ -489,7 +495,13 @@ func (p *Processor) Handle(ctx context.Context, line string, now time.Time) erro
 			return err
 		}
 		return p.suicide(ctx, ev, st, e.Weapon)
+	case logparse.PluginStarted:
+		p.pluginSeen(e.Version)
+		return nil
 	case logparse.PlayerTriggered:
+		if isWeaponStats(e.Trigger) {
+			p.pluginSeen("")
+		}
 		return p.playerTrigger(ctx, ev, e)
 	case logparse.WorldDeath:
 		st, err := p.player(ctx, ev, e.Player)

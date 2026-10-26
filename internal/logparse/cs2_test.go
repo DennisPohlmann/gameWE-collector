@@ -42,3 +42,21 @@ func TestCS2Lines(t *testing.T) {
 		t.Errorf("team trigger %+v", e)
 	}
 }
+
+// The start line of the gameWE CounterStrikeSharp plugin. Only the exact
+// form counts; a line with more after it is not the plugin's.
+func TestPluginStarted(t *testing.T) {
+	e, ok := ParseLine(`10/26/2026 - 21:00:00.000 - gameWE Plugin 0.2.0 (CounterStrikeSharp)`)
+	if p, isP := e.(PluginStarted); !ok || !isP || p.Version != "0.2.0" || p.Platform != "CounterStrikeSharp" {
+		t.Errorf("start line: %+v %v", e, ok)
+	}
+	for _, line := range []string{
+		`10/26/2026 - 21:00:00.000 - gameWE Plugin 0.2.0 (CounterStrikeSharp) extra`,
+		`10/26/2026 - 21:00:00.000 - gameWE Plugin (CounterStrikeSharp)`,
+		`10/26/2026 - 21:00:00.000 - gameWE Plugin 0.2.0 ("x")`,
+	} {
+		if e, ok := ParseLine(line); ok {
+			t.Errorf("%q parsed as %+v", line, e)
+		}
+	}
+}

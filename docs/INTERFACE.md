@@ -36,8 +36,9 @@ Counter-Strike 2 posts its log over HTTP instead (`listen.http`): `POST
 `200` (also when a line was dropped, so that the server does not post it
 again), `403` for a sender that is not a Source 2 server of
 `hlstats_Servers`, `404` for a wrong path or token, `405` for another method
-and `413` for a body over `listen.http.max_body`. There is no gameWE plugin for
-CS2; its lines are the game's own ([GAMES.md](GAMES.md#counter-strike-2)).
+and `413` for a body over `listen.http.max_body`. The gameWE CounterStrikeSharp
+plugin posts its lines to the same URL; the other lines are the game's own
+([GAMES.md](GAMES.md#counter-strike-2)).
 
 The gameWE plugin adds these lines:
 
@@ -51,6 +52,12 @@ collector rewards one `headshot` action per kill, not two), position lines
 (`located on "kill" (position "x y z") against ... (victim_position "x y z")`,
 stored in `hlstats_Events_Locations`), player models (`changed role to "gign"`),
 `triggered "mvp"` / `"clantag"` and the queries of other plugins (see below).
+The CS2 (CounterStrikeSharp) plugin sends `weaponstats` (no `weaponstats2`),
+`headshot`, `mvp`, `domination`, `revenge`, roles, `setup` and `requested`
+lines, and when it loads and at every map start
+`gameWE Plugin <version> (CounterStrikeSharp)`: with that line or its first
+`weaponstats` the collector sends the replies to that CS2 server
+(see [GAMES.md](GAMES.md#counter-strike-2)).
 
 Client settings the plugin logs (`setup` lines):
 

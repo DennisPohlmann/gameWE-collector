@@ -252,7 +252,7 @@ func parseSize(v string) (int64, error) {
 type Features struct {
 	RconStatus RconStatus `yaml:"rcon_status"` // poll every server's "status" over RCON
 	// CS2Hitgroups counts the hit groups of Counter-Strike 2's attacked
-	// lines (CS2 has no plugin that reports them).
+	// lines (the gameWE CS2 plugin does not report them).
 	CS2Hitgroups Toggle      `yaml:"cs2_hitgroups"`
 	LogAddress   LogAddress  `yaml:"log_address"`  // register the collector with logaddress_add
 	LogSecret    LogSecret   `yaml:"log_secret"`   // check sv_logsecret of the log packets

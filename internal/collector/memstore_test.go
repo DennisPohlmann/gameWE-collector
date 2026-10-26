@@ -428,6 +428,11 @@ func (m *memStore) AddWeaponStats(_ context.Context, _ stats.Ev, p stats.Live, w
 	t.Shots += w.Shots
 	t.Damage += w.Damage
 	t.Hits += w.Hits
+	t.Kills += w.Kills
+	t.Headshots += w.Headshots
+	t.Deaths += w.Deaths
+	t.Head += w.Head
+	t.Neck += w.Neck
 	t.Chest += w.Chest
 	t.LeftArm += w.LeftArm
 	m.weapons[k] = t

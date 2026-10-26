@@ -13,7 +13,7 @@ type Engine int
 const (
 	Source  Engine = iota // Source 1: TCP RCON, SourceMod plugin (gamewe_psay, ...)
 	GoldSrc               // Half-Life 1: UDP challenge RCON, AMX Mod X plugin (gamewe_amx_psay, ...)
-	Source2               // Source 2 (CS2): logs over HTTP (logaddress_add_http), TCP RCON, no plugin
+	Source2               // Source 2 (CS2): logs over HTTP (logaddress_add_http), TCP RCON, optional CounterStrikeSharp plugin (gamewe_psay, ...)
 )
 
 func (e Engine) String() string {

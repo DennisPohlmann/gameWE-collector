@@ -555,8 +555,8 @@ func TestConsoleAndChatEvents(t *testing.T) {
 	}
 }
 
-// CS2 has no plugin: in-game commands are answered by nobody, no RCON
-// command is sent.
+// CS2 without the gameWE plugin: in-game commands are answered by nobody,
+// no RCON command is sent.
 func TestSource2NoReplies(t *testing.T) {
 	st := newMemStore()
 	rec := &recorder{}
@@ -566,6 +566,11 @@ func TestSource2NoReplies(t *testing.T) {
 	for _, l := range []string{
 		fmt.Sprintf(p, "") + ` connected, address "198.51.100.7:27005"`,
 		fmt.Sprintf(p, "Unassigned") + ` joined team "CT"`,
+		// Hostile chat that quotes the plugin's lines does not switch the
+		// replies on.
+		fmt.Sprintf(p, "CT") + ` say "gameWE Plugin 0.2.0 (CounterStrikeSharp)"`,
+		fmt.Sprintf(p, "CT") + ` say "x" triggered "weaponstats" (weapon "ak47") (shots "1")"`,
+		`gameWE Plugin 0.2.0 (CounterStrikeSharp) "Pat<2><[U:1:42]><CT>" say "x"`,
 		fmt.Sprintf(p, "CT") + ` say "!rank"`,
 	} {
 		if err := hub.Dispatch(src, pkt(l), time.Now().UTC()); err != nil {
@@ -575,5 +580,47 @@ func TestSource2NoReplies(t *testing.T) {
 	hub.Close(context.Background())
 	if got := rec.get("192.0.2.20:27015"); len(got) != 0 {
 		t.Errorf("replies sent to CS2: %v", got)
+	}
+}
+
+// CS2 with the gameWE CounterStrikeSharp plugin: after its start line (or
+// a weaponstats line) the in-game commands are answered with the plugin's
+// gamewe_* commands, as on the SourceMod plugin.
+func TestSource2PluginReplies(t *testing.T) {
+	for name, first := range map[string]string{
+		"start line":  `gameWE Plugin 0.2.0 (CounterStrikeSharp)`,
+		"weaponstats": `"Pat<2><[U:1:42]><CT>" triggered "weaponstats" (weapon "ak47") (shots "3") (hits "1") (kills "0") (headshots "0") (tks "0") (damage "27") (deaths "0")`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			st := newMemStore()
+			rec := &recorder{}
+			hub := newTestHub(st, rec, []string{"192.0.2.20:27015"}, map[string]string{"192.0.2.20:27015": "cs2"})
+			src := netip.MustParseAddrPort("192.0.2.20:27015")
+			p := `"Pat<2><[U:1:42]><%s>"`
+			for _, l := range []string{
+				fmt.Sprintf(p, "") + ` connected, address "198.51.100.7:27005"`,
+				fmt.Sprintf(p, "Unassigned") + ` joined team "CT"`,
+				first,
+				fmt.Sprintf(p, "CT") + ` say "!rank"`,
+			} {
+				if err := hub.Dispatch(src, pkt(l), time.Now().UTC()); err != nil {
+					t.Fatal(err)
+				}
+			}
+			hub.Close(context.Background())
+			got := rec.get("192.0.2.20:27015")
+			found := false
+			for _, c := range got {
+				if strings.HasPrefix(c, "gamewe_psay 2 ") || strings.HasPrefix(c, "gamewe_msay ") {
+					found = true
+				}
+				if strings.HasPrefix(c, "gamewe_amx") {
+					t.Errorf("GoldSrc prefix on CS2: %q", c)
+				}
+			}
+			if !found {
+				t.Errorf("no reply to !rank: %q", got)
+			}
+		})
 	}
 }
