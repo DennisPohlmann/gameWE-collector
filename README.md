@@ -19,11 +19,13 @@ HLstatsX. The **collector** is its core: one static Go binary that
   through the gameWE SourceMod plugin (AMX Mod X plugin on GoldSrc), opens
   the web frontend's pages in the in-game browser and can announce points of
   kills and actions,
-- runs daily awards, ranking resets queued by the web admin, GeoIP locations
+- runs daily awards, ranking resets queued by the web admin, scheduled
+  ranking resets (daily to yearly) that keep the best three of every period
+  in a hall of fame, GeoIP locations
   (DB-IP database included), the RCON status of every server and, if
   enabled, the daily move of inactive players to `hlstats_PlayersInactive`;
   each of these jobs can also be run from the command line (`gamewe awards`,
-  `gamewe inactive`, `gamewe reset`, `gamewe serverinfo`, ...).
+  `gamewe inactive`, `gamewe reset`, `gamewe halloffame`, `gamewe serverinfo`, ...).
 - tells you when a newer release is out (log at start and daily, a note on
   stderr before the other commands, `gamewe check-update`); it never updates
   itself ([`features.update_check`](docs/CONFIG.md#features)).

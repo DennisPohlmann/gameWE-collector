@@ -105,7 +105,8 @@ config file (changing them needs a restart); the old key `gamewe_daily_awards` o
 
 `timezone: ""` (top level): the collector's time zone, an IANA name such as
 `Europe/Berlin`, for the daily jobs (`features.daily_awards`,
-`features.inactive_players`) that have no `timezone` of their own. Empty (the
+`features.inactive_players`) that have no `timezone` of their own and for
+the periods of the scheduled ranking resets ([USAGE.md](USAGE.md#scheduled-resets-and-the-hall-of-fame)). Empty (the
 default): the server's time zone (`TZ`, `/etc/localtime`; in the container
 image UTC unless `TZ` is set). The order is: the job's `timezone`, then
 this one, then the server's. An unknown name is a config error:
@@ -312,6 +313,10 @@ seed only adds missing keys and never changes values that are already set.
 | `gamewe_player_reset_cooldown` | `24` | hours before a player may reset the own stats again (from `hlstats_Players_Resets`); 0 = no wait |
 | `gamewe_console_events` | `0` | 1 = after every kill the killer and the victim, after every action with points the player, get the points in the console (`gamewe_console_event`; players turn it off with `!gamewe_display 0`). One RCON command per player and event |
 | `gamewe_global_chat` | `0` | 1 = player actions with points, player-vs-player actions and team wins are announced in chat (`gamewe_chat_event`; players turn it off with `!gamewe_chat 0`). One RCON command per event and language |
+| `gamewe_reset_schedule_<game>` | – | scheduled reset of the ranking `<game>` with the hall of fame ([USAGE.md](USAGE.md#scheduled-resets-and-the-hall-of-fame)): `day`, `week`, `month`, `quarter`, `year`, or a number and one of them (`2 month`); empty or `off` = none. Set by `gamewe halloffame schedule` or the web admin |
+| `gamewe_reset_mode_<game>` | `player-stats` | the mode of that reset: `player-stats`, `all-stats` or `all` |
+| `gamewe_reset_last_<game>` | – | **written by the collector**: the start (Unix time) of the period now running; a reset is due when a newer period has begun |
+| `gamewe_hof_<game>` | – | web: `1` = show the page "Hall of Fame" of the ranking, `0` = hide it; missing = shown when the ranking has a schedule or entries |
 | `gamewe_heartbeat` | – | **written by the collector** (Unix time, every 60 s), not a setting: the web and `gamewe reset` see from it whether a collector runs |
 | `gamewe_collector_version` | – | **written by the collector** at start (its version, e.g. `0.17.0`), not a setting: the web admin compares it with the latest release |
 

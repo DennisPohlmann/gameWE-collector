@@ -37,7 +37,11 @@ func TestWebKeysNotReported(t *testing.T) {
 		"gamewe_link_12": "",
 		"gamewe_totp_8c6976e5b5410415bde908bd4dee15df":  "secret",
 		"gamewe_totpp_c2fca2aa3a976ccd7b980318e0416b0d": "secret",
-		"gamewe_heartbeat": "1792889000",
+		"gamewe_heartbeat":          "1792889000",
+		"gamewe_reset_schedule_css": "2 month",
+		"gamewe_reset_mode_css":     "player-stats",
+		"gamewe_reset_last_css":     "1791504000",
+		"gamewe_hof_tf2_x":          "1",
 	}
 	for _, k := range WebKeys {
 		opts[k] = "x"
@@ -45,7 +49,7 @@ func TestWebKeysNotReported(t *testing.T) {
 	if _, warn := FromOptions(opts); len(warn) != 0 {
 		t.Errorf("web keys reported: %q", warn)
 	}
-	for _, k := range []string{"gamewe_link_", "gamewe_link_x", "gamewe_totp_", "gamewe_totp_abc", "gamewe_ts_hots", "gamewe_kill_point"} {
+	for _, k := range []string{"gamewe_link_", "gamewe_link_x", "gamewe_totp_", "gamewe_totp_abc", "gamewe_ts_hots", "gamewe_kill_point", "gamewe_hof_", "gamewe_reset_mode_CSS"} {
 		if _, warn := FromOptions(map[string]string{k: "1"}); len(warn) != 1 {
 			t.Errorf("%s: warnings %q, want one", k, warn)
 		}

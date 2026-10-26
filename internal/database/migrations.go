@@ -113,6 +113,11 @@ var Migrations = []Migration{
 		Seed:          true,
 		RankingAwards: []string{"mvp", "teamkills"},
 	},
+	{
+		Version: 12, Name: "hall-of-fame",
+		Desc: "table hlstats_gamewe_hall_of_fame: the best three players of each period of a scheduled ranking reset (readable by gamewe_web)",
+		Sync: true,
+	},
 }
 
 // Latest is the newest schema version this collector knows.

@@ -96,6 +96,12 @@ type Config struct {
 	Timezone string `yaml:"timezone"`
 }
 
+// Location is the collector's time zone (Timezone, else the server's),
+// e.g. for the scheduled ranking resets.
+func (c Config) Location() (*time.Location, error) {
+	return zone("", c.Timezone)
+}
+
 // zone resolves the time zone of a daily job: its own, else the
 // collector's, else the server's local zone.
 func zone(job, global string) (*time.Location, error) {

@@ -40,6 +40,7 @@ GRANT SELECT ON hlstats_Events_Suicides TO gamewe_web;
 GRANT SELECT ON hlstats_Events_TeamBonuses TO gamewe_web;
 GRANT SELECT ON hlstats_Events_Teamkills TO gamewe_web;
 GRANT SELECT ON hlstats_Games TO gamewe_web;
+GRANT SELECT ON hlstats_gamewe_hall_of_fame TO gamewe_web;
 GRANT SELECT ON hlstats_gamewe_jobs TO gamewe_web;
 GRANT SELECT ON hlstats_HostGroups TO gamewe_web;
 GRANT SELECT ON hlstats_Livestats TO gamewe_web;

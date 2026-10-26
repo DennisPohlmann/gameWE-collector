@@ -189,6 +189,7 @@ What it does:
 | 7 | `cs2` | Counter-Strike 2: column `neck` (smallint unsigned, default 0) after `head` in `hlstats_Players_Weapons` and `hlstats_Players_Weapons_History_Months` (readable by `gamewe_web` like the whole table); the reference data of the game `cs2` (game, teams, actions, weapons, awards, ranks, ribbons; `INSERT IGNORE`, existing rows are kept) |
 | 8 | `czero` | Counter-Strike: Condition Zero: the reference data of the game `czero`, a copy of the cstrike definitions (game, teams, actions, weapons, awards, ranks, ribbons, ribbon classes; `INSERT IGNORE`, existing rows are kept); no structure change |
 | 11 | `hlstatsx-awards` | the HLstatsX:CE awards `mvp` (css, CE's `round_mvp`) and `teamkills` (every team game: not valve, hl2mp, fof) with one ribbon each (CE's `mostkills`, `suicide`, `headshot` are not added: `most_kills`, `most_suicides`, `most_headshots` cover them); rankings (games whose `realgame` is another game, e.g. css1 of css) get them from their template where they lack an award or ribbon of that code; existing rows are kept; no structure change |
+| 12 | `hall-of-fame` | table `hlstats_gamewe_hall_of_fame`: the best three players of each period of a scheduled ranking reset ([USAGE.md](USAGE.md#scheduled-resets-and-the-hall-of-fame)); `gamewe_web` may read it |
 
 The SQL files of older packages (`/opt/gamewe/collector/doc/schema/hlstatsx.sql`,
 `init/01_schema.sql`, `02_seed.sql`, `03_grants.sql` and the PostgreSQL

@@ -6,6 +6,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
+	"strings"
 	"time"
 
 	"gamewe-collector/internal/stats"
@@ -30,8 +32,12 @@ type Jobs struct {
 	// Lock takes the job lock of the database (database.JobLock) for a
 	// reset and a move of inactive players; nil: none (tests).
 	Lock func(ctx context.Context) (release func(), err error)
+	// Zone is the time zone of the scheduled ranking resets (the
+	// collector's timezone); nil: the server's.
+	Zone *time.Location
 
 	lastBeat     time.Time
+	lastSchedule time.Time
 	lastPrune    time.Time
 	lastInactive time.Time
 }
@@ -108,6 +114,12 @@ func (j *Jobs) Poll(ctx context.Context) error {
 		}
 		j.lastPrune = now
 	}
+	if now.Sub(j.lastSchedule) >= time.Minute {
+		j.lastSchedule = now
+		if err := j.QueueScheduled(ctx, now); err != nil && ctx.Err() == nil {
+			j.Log.Error("jobs: scheduled ranking resets", "err", err)
+		}
+	}
 	if j.inactiveDue(now) {
 		if err := j.MoveInactive(ctx, now); err != nil && ctx.Err() == nil {
 			j.Log.Error("jobs: moving inactive players failed", "err", err)
@@ -176,6 +188,56 @@ func (j *Jobs) inactiveDue(now time.Time) bool {
 	return true
 }
 
+func (j *Jobs) zone() *time.Location {
+	if j.Zone != nil {
+		return j.Zone
+	}
+	return time.Local
+}
+
+// QueueScheduled queues a scheduled reset for every ranking whose period
+// ended (unless one is queued or running for it already). A schedule
+// without a last reset gets the current period as its first one.
+func (j *Jobs) QueueScheduled(ctx context.Context, now time.Time) error {
+	rankings, bad, err := j.Store.ScheduledRankings(ctx)
+	if err != nil {
+		return err
+	}
+	for _, e := range bad {
+		j.Log.Warn("jobs: broken reset schedule, skipped", "err", e)
+	}
+	var open []stats.Job
+	for _, st := range []string{stats.JobPending, stats.JobRunning} {
+		jobs, err := j.Store.JobsByStatus(ctx, st)
+		if err != nil {
+			return err
+		}
+		open = append(open, jobs...)
+	}
+	for _, r := range rankings {
+		due, err := j.Store.Due(ctx, r, now, j.zone())
+		if err != nil {
+			return fmt.Errorf("%s: %w", r.Game, err)
+		}
+		if due.Started {
+			if _, err := j.Store.ScheduledReset(ctx, r, now, j.zone()); err != nil {
+				return fmt.Errorf("%s: %w", r.Game, err)
+			}
+			j.Log.Info("jobs: reset schedule started", "game", r.Game, "every", r.Schedule.String(), "next", due.Next.Format(time.DateTime))
+			continue
+		}
+		if !due.Due || slices.ContainsFunc(open, func(o stats.Job) bool { return o.Game == r.Game }) {
+			continue
+		}
+		id, err := j.Store.AddJob(ctx, stats.JobScheduledReset, r.Game, r.Mode, "schedule", now)
+		if err != nil {
+			return err
+		}
+		j.Log.Info("jobs: scheduled ranking reset queued", "job", id, "game", r.Game, "period", due.From.Format(time.DateOnly)+" - "+due.To.Format(time.DateOnly))
+	}
+	return nil
+}
+
 // lock takes the job lock (a no-op without Lock).
 func (j *Jobs) lock(ctx context.Context) (func(), error) {
 	if j.Lock == nil {
@@ -230,6 +292,22 @@ func (j *Jobs) do(ctx context.Context, job stats.Job) {
 		j.finish(ctx, job, stats.JobDone, res)
 		return
 	}
+	if job.Type == stats.JobScheduledReset {
+		res, err := j.scheduledReset(ctx, job.Game)
+		if err != nil {
+			j.Log.Error("jobs: scheduled ranking reset failed", "job", job.ID, "game", job.Game, "err", err)
+			msg := err.Error()
+			if len(res.Tables) > 0 {
+				msg += "; done before: " + stats.FormatCounts(res.Tables)
+			}
+			j.finish(ctx, job, stats.JobFailed, msg)
+			return
+		}
+		text := ScheduledText(res)
+		j.Log.Info("jobs: scheduled ranking reset", "job", job.ID, "game", job.Game, "result", text)
+		j.finish(ctx, job, stats.JobDone, text)
+		return
+	}
 	if job.Type != stats.JobReset {
 		j.finish(ctx, job, stats.JobFailed, fmt.Sprintf("unknown job type %q", job.Type))
 		return
@@ -248,8 +326,50 @@ func (j *Jobs) do(ctx context.Context, job stats.Job) {
 	j.finish(ctx, job, stats.JobDone, stats.FormatCounts(res))
 }
 
+// ScheduledText is the result of a scheduled reset for the job row and
+// the CLI.
+func ScheduledText(r stats.ScheduledResult) string {
+	switch {
+	case r.Started:
+		return "schedule started: the first period ends " + r.Next.Format(time.DateTime)
+	case !r.Due:
+		return "not due: the period ends " + r.Next.Format(time.DateTime)
+	}
+	names := make([]string, len(r.Top))
+	for i, e := range r.Top {
+		names[i] = fmt.Sprintf("%d. %s", e.Place, e.Name)
+	}
+	top := "nobody played"
+	if len(names) > 0 {
+		top = strings.Join(names, ", ")
+	}
+	return fmt.Sprintf("period %s - %s, hall of fame: %s; reset: %s", r.From.Format(time.DateOnly), r.To.AddDate(0, 0, -1).Format(time.DateOnly), top, stats.FormatCounts(r.Tables))
+}
+
+// scheduledReset does the due scheduled reset of game with its servers
+// paused, under the job lock.
+func (j *Jobs) scheduledReset(ctx context.Context, game string) (stats.ScheduledResult, error) {
+	r, err := j.Store.ScheduledRanking(ctx, game)
+	if err != nil {
+		return stats.ScheduledResult{}, err
+	}
+	var res stats.ScheduledResult
+	_, err = j.paused(ctx, game, r.Mode, func() ([]stats.TableCount, error) {
+		var err error
+		res, err = j.Store.ScheduledReset(ctx, r, j.now(), j.zone())
+		return res.Tables, err
+	})
+	return res, err
+}
+
 // reset pauses the servers of game, resets the ranking and lets them go on.
 func (j *Jobs) reset(ctx context.Context, game, mode string) ([]stats.TableCount, error) {
+	return j.paused(ctx, game, mode, func() ([]stats.TableCount, error) { return j.Store.Reset(ctx, game, mode) })
+}
+
+// paused runs do under the job lock while the servers of game are paused,
+// and clears their live view afterwards.
+func (j *Jobs) paused(ctx context.Context, game, mode string, do func() ([]stats.TableCount, error)) ([]stats.TableCount, error) {
 	mode, err := stats.ResetMode(mode)
 	if err != nil {
 		return nil, err
@@ -281,7 +401,7 @@ func (j *Jobs) reset(ctx context.Context, game, mode string) ([]stats.TableCount
 			}
 		}()
 	}
-	return j.Store.Reset(ctx, game, mode)
+	return do()
 }
 
 func (j *Jobs) finish(ctx context.Context, job stats.Job, status, result string) {

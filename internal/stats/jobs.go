@@ -20,10 +20,12 @@ const (
 )
 
 // Job types: a ranking reset (game and mode), the move of inactive players
-// (features.inactive_players; no game, no mode).
+// (features.inactive_players; no game, no mode), the scheduled reset of a
+// ranking (game; hall of fame first, mode from its schedule).
 const (
-	JobReset    = "reset"
-	JobInactive = "inactive"
+	JobReset          = "reset"
+	JobInactive       = "inactive"
+	JobScheduledReset = "scheduled-reset"
 )
 
 // Job is a row of hlstats_gamewe_jobs.
@@ -153,6 +155,11 @@ func (s *Store) Heartbeat(ctx context.Context, at time.Time) error {
 // gamewe_collector_version.
 func (s *Store) SetVersion(ctx context.Context, v string) error {
 	return s.setOption(ctx, VersionKey, v)
+}
+
+// SetOption writes one hlstats_Options row (see setOption).
+func (s *Store) SetOption(ctx context.Context, key, v string) error {
+	return s.setOption(ctx, key, v)
 }
 
 // setOption updates or inserts one hlstats_Options row. An update that

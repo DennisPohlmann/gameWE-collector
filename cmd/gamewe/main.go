@@ -100,6 +100,11 @@ Usage:
                                    statistics too; all: players deleted too); queued for
                                    the running collector if there is one
   gamewe reset -list               the latest queued jobs (resets, inactive players)
+  gamewe halloffame [list] [GAME] | schedule GAME [EVERY] [-mode MODE] | run GAME
+                  [--dry-run|-n] [--force|-f]
+                                   scheduled ranking resets (every N days, weeks, months or
+                                   years) that keep the best three in the hall of fame: list
+                                   the entries, show or set a schedule, do a due reset now
   gamewe geoip-update [-file FILE] [--dry-run|-n] [--force|-f]
                                    download DB-IP City Lite now (default
                                    /var/lib/gamewe/collector/dbip-city-lite.mmdb); the
@@ -180,6 +185,8 @@ func main() {
 		err = resetCmd(args)
 	case "inactive":
 		err = inactiveCmd(args)
+	case "halloffame":
+		err = hallCmd(args)
 	case "serverinfo":
 		err = serverInfoCmd(args)
 	case "db":
@@ -452,7 +459,8 @@ func runCmd(args []string) error {
 	ipLoc, _ := ip.Location(cfg.Timezone) // checked by config.Validate
 	ipH, ipM, _ := ip.At()
 	jobLock := func(ctx context.Context) (func(), error) { return database.JobLock(ctx, db, time.Hour, nil) }
-	go (&collector.Jobs{Store: store, Hub: hub, Log: log, Lock: jobLock, Version: version.Version,
+	zoneLoc, _ := cfg.Location() // checked by config.Validate
+	go (&collector.Jobs{Store: store, Hub: hub, Log: log, Lock: jobLock, Version: version.Version, Zone: zoneLoc,
 		Inactive: collector.InactiveConfig{Enabled: ip.Enabled, At: collector.Schedule{Loc: ipLoc, Hour: ipH, Minute: ipM}}}).Run(ctx)
 	da := cfg.Features.DailyAwards
 	daLoc, _ := da.Location(cfg.Timezone) // checked by config.Validate

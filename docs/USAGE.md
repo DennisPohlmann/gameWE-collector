@@ -447,6 +447,7 @@ asks first, `--dry-run` shows what it would do, `--force` does not ask):
 | daily awards (`features.daily_awards`), with the cleanup of ping samples older than 90 days | daily at `time` | `gamewe awards [-date YYYY-MM-DD] [-game CODE] [-tz ZONE]` (default: yesterday; the ping cleanup only without `-game`) |
 | move inactive players (`features.inactive_players`) | daily at `time` | `gamewe inactive` |
 | ranking reset queued by the web admin | every 10 s | `gamewe reset GAME -mode ... --force` ([below](#resetting-a-ranking)) |
+| scheduled ranking reset with the hall of fame, when a period of a ranking's schedule has ended | checked every minute | `gamewe halloffame run GAME` ([below](#scheduled-resets-and-the-hall-of-fame)) |
 | delete finished jobs older than 30 days | hourly | part of `gamewe db purge -older-than DAYS` |
 | server info `A2S_INFO` (`features.server_info`) | every 5 min | `gamewe serverinfo [-server ...]` |
 | log address (`features.log_address`) | every minute | `gamewe logaddress -add` |
@@ -458,7 +459,7 @@ status (`gamewe status` only shows it), `hlstats_server_load` every 10
 minutes, ending idle visits, the heartbeat, reloading servers and settings.
 `gamewe db purge` and `gamewe db optimize` exist only on the command line.
 
-**One job at a time.** A ranking reset, the move of inactive players and the
+**One job at a time.** A ranking reset (also a scheduled one), the move of inactive players and the
 daily awards take the same lock in the database (`GET_LOCK` on MariaDB /
 MySQL, `pg_advisory_lock` on PostgreSQL), in the collector and in the
 commands; a command waits for a job in progress up to `-wait` (default 10
@@ -482,7 +483,10 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin
 # inactive players at 01:00 (with features.inactive_players.enabled: false)
 0 1 * * * gamewe /opt/gamewe/collector/bin/gamewe inactive --force -config /etc/gamewe/collector/config.yaml 2>&1 | systemd-cat -t gamewe-inactive
 # reset the ranking css on the 1st of every month at 05:00, the players stay
+# (without a hall of fame; for one use `gamewe halloffame schedule css month`)
 0 5 1 * * gamewe /opt/gamewe/collector/bin/gamewe reset css -mode player-stats --force -config /etc/gamewe/collector/config.yaml 2>&1 | systemd-cat -t gamewe-reset
+# the scheduled reset of css (hall of fame) if no collector runs at midnight
+5 0 * * * gamewe /opt/gamewe/collector/bin/gamewe halloffame run css --force -config /etc/gamewe/collector/config.yaml 2>&1 | systemd-cat -t gamewe-halloffame
 # events older than 180 days and old jobs, every Sunday at 04:00
 0 4 * * 0 gamewe /opt/gamewe/collector/bin/gamewe db purge -older-than 180 --force -config /etc/gamewe/collector/config.yaml 2>&1 | systemd-cat -t gamewe-purge
 ```
@@ -603,6 +607,56 @@ forgets their players in memory, resets, clears the live view and goes on;
 `gamewe reset` waits for the result. Without one it runs directly (then no
 collector may run: it keeps player ids in memory). A reset can be run again
 if it was interrupted.
+
+### Scheduled resets and the hall of fame
+
+A ranking can be reset on a schedule: every day, week, month, quarter or
+year, or every N of them (every 2 months, every 3 days; at most 120). When a
+period ends, the collector first stores the best three players of the period
+in `hlstats_gamewe_hall_of_fame` and then resets the ranking. The web shows
+them on the page "Hall of Fame" of the ranking, with stars for every place
+(gold, silver, bronze) on the page and in the player profiles. The entries
+stay; every period adds three rows.
+
+```bash
+gamewe halloffame schedule css                      # the schedule of css, the period now running and the next reset
+gamewe halloffame schedule css month                # monthly; also: day, week, quarter, year, "2 month", "3 day"
+gamewe halloffame schedule css "2 month" -mode all-stats   # every two months, players and server statistics
+gamewe halloffame schedule css off                  # no more scheduled resets (the entries stay)
+gamewe halloffame run css -dry-run                  # the period that has ended, its best three and the rows the reset clears
+gamewe halloffame run css                           # do it now (also from cron, see above)
+gamewe halloffame                                   # all entries, newest period first; `gamewe halloffame css` for one ranking
+```
+
+- **The periods** follow the calendar in the collector's `timezone`
+  ([CONFIG.md](CONFIG.md#timezone)): a day starts at midnight, a week on
+  Monday, a month on the 1st, a quarter on January, April, July and October
+  1st, a year on January 1st. Every N of them is counted from fixed dates, so
+  every 2 months always ends with even months (Jan–Feb, Mar–Apr, ...), every
+  2 weeks on the same Mondays, no matter when the schedule was set.
+- **A new schedule** starts with the period now running: the first reset is
+  at its end, the statistics before count for that period.
+- **The best three** have the most points (skill), then the most kills. Only
+  players with a kill or a death count; hidden players (`hideranking`, also
+  hidden by an admin) and bots do not. A row keeps the values of the player
+  at the end of the period: name, flag, points, kills, deaths, headshots,
+  shots and hits, best kill streak, connection time, favourite weapon and the
+  rank (`hlstats_Definition_Ranks_Ribbons`, by kills). A player hidden later
+  stays in the table but the web does not show the place.
+- **The mode** (`-mode`, default `player-stats`) is that of `gamewe reset`
+  ([above](#resetting-a-ranking)).
+- **The collector** checks the schedules every minute and queues the reset as
+  a job (`requested_by` = `schedule`, `gamewe reset -list` shows it); a
+  collector that was stopped over the end of a period does it at its next
+  start, once, for the period that ended last (several missed periods are
+  one reset, the best three then stand for all of them). Without a running
+  collector `gamewe halloffame run` does it.
+- **Where it is stored:** `hlstats_Options` (`gamewe_reset_schedule_<game>`,
+  `gamewe_reset_mode_<game>`, `gamewe_reset_last_<game>`;
+  [CONFIG.md](CONFIG.md#settings-in-hlstats_options)), set by `gamewe
+  halloffame schedule` or the web admin. `gamewe_hof_<game>` turns the web
+  page on (`1`) or off (`0`); without it the page is shown when the ranking
+  has a schedule or entries.
 
 Codes are 1-10 characters `a-z 0-9 _`. `-rcon-password PW` works too but is
 visible in the process list; `-rcon-password-file -` reads it from stdin. The

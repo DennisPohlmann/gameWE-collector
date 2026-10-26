@@ -946,6 +946,34 @@ CREATE TABLE `hlstats_Weapons` (
   UNIQUE KEY `game` (`game`,`code`),
   KEY `code` (`code`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE `hlstats_gamewe_hall_of_fame` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `game` varchar(32) NOT NULL DEFAULT '',
+  `unit` varchar(8) NOT NULL DEFAULT 'month',
+  `every` smallint(5) unsigned NOT NULL DEFAULT 1,
+  `period_start` date NOT NULL,
+  `period_end` date NOT NULL,
+  `reset_at` int(10) unsigned NOT NULL DEFAULT 0,
+  `players` int(10) unsigned NOT NULL DEFAULT 0,
+  `place` tinyint(3) unsigned NOT NULL DEFAULT 0,
+  `player_id` int(10) unsigned NOT NULL DEFAULT 0,
+  `name` varchar(64) NOT NULL DEFAULT '',
+  `flag` varchar(16) NOT NULL DEFAULT '',
+  `country` varchar(64) NOT NULL DEFAULT '',
+  `skill` int(11) NOT NULL DEFAULT 0,
+  `kills` int(10) unsigned NOT NULL DEFAULT 0,
+  `deaths` int(10) unsigned NOT NULL DEFAULT 0,
+  `headshots` int(10) unsigned NOT NULL DEFAULT 0,
+  `shots` int(10) unsigned NOT NULL DEFAULT 0,
+  `hits` int(10) unsigned NOT NULL DEFAULT 0,
+  `kill_streak` int(10) unsigned NOT NULL DEFAULT 0,
+  `connection_time` int(10) unsigned NOT NULL DEFAULT 0,
+  `fav_weapon` varchar(64) NOT NULL DEFAULT '',
+  `rank_name` varchar(128) NOT NULL DEFAULT '',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `slot` (`game`,`period_start`,`place`),
+  KEY `player` (`player_id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_gamewe_jobs` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
   `job_type` varchar(32) NOT NULL DEFAULT 'reset',

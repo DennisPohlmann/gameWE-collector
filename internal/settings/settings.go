@@ -146,8 +146,10 @@ var webKeys = func() map[string]bool {
 // otherKey reports gamewe_* keys that are not collector settings but are
 // expected in hlstats_Options: web settings, header link slots
 // (gamewe_link_<n>), web admin TOTP secrets (gamewe_totp_<hash>, pending
-// gamewe_totpp_<hash>), the collector's heartbeat and version and retired keys that the
-// migrations delete.
+// gamewe_totpp_<hash>), the scheduled ranking resets and hall of fame per
+// game (gamewe_reset_schedule_<game>, gamewe_reset_mode_<game>,
+// gamewe_reset_last_<game>, gamewe_hof_<game>), the collector's heartbeat and
+// version and retired keys that the migrations delete.
 func otherKey(k string) bool {
 	switch k {
 	case "gamewe_heartbeat", "gamewe_collector_version", // written by the collector
@@ -160,6 +162,11 @@ func otherKey(k string) bool {
 	}
 	if n, ok := strings.CutPrefix(k, "gamewe_link_"); ok {
 		return n != "" && strings.Trim(n, "0123456789") == ""
+	}
+	for _, p := range []string{"gamewe_reset_schedule_", "gamewe_reset_mode_", "gamewe_reset_last_", "gamewe_hof_"} {
+		if g, ok := strings.CutPrefix(k, p); ok {
+			return g != "" && strings.Trim(g, "abcdefghijklmnopqrstuvwxyz0123456789_") == ""
+		}
 	}
 	for _, p := range []string{"gamewe_totp_", "gamewe_totpp_"} {
 		if h, ok := strings.CutPrefix(k, p); ok {
