@@ -624,6 +624,7 @@ type checkDatabase struct {
 	Host    string `json:"host"`
 	Port    int    `json:"port"`
 	Name    string `json:"name"`
+	Prefix  string `json:"table_prefix"`
 	TLSMode string `json:"tls_mode"`
 	Server  string `json:"server,omitempty"` // version of the database server
 	TLS     string `json:"tls,omitempty"`
@@ -710,8 +711,12 @@ func check(cfg config.Config, out io.Writer, rep *checkReport) error {
 	if o := cfg.Features.LogSecret.ObsoleteWarning(); o != "" {
 		warn("features.log_secret: " + o)
 	}
-	fmt.Fprintf(out, "database:  %s %s@%s:%d/%s\n", d.Type, d.User, d.Host, d.Port, d.Name)
-	rep.Database = checkDatabase{Type: d.Type, User: d.User, Host: d.Host, Port: d.Port, Name: d.Name, TLSMode: d.TLS.Mode}
+	tables := ""
+	if pfx := tablePrefix(d); !pfx.Default() {
+		tables = ", tables " + pfx.String() + "_*"
+	}
+	fmt.Fprintf(out, "database:  %s %s@%s:%d/%s%s\n", d.Type, d.User, d.Host, d.Port, d.Name, tables)
+	rep.Database = checkDatabase{Type: d.Type, User: d.User, Host: d.Host, Port: d.Port, Name: d.Name, Prefix: tablePrefix(d).String(), TLSMode: d.TLS.Mode}
 
 	db, err := database.Open(d)
 	if err != nil {

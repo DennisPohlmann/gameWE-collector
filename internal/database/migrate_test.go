@@ -157,7 +157,7 @@ func TestRightsErrorText(t *testing.T) {
 		!strings.Contains(s, "GRANT ...") || !strings.Contains(s, "gamewe db migrate again") {
 		t.Error(s)
 	}
-	fix := pgFix(`ga"me`, "stats")
+	fix := pgFix(`ga"me`, "stats", "")
 	if !strings.Contains(fix, `\c "stats"`) || !strings.Contains(fix, `TO "ga""me";`) || !strings.Contains(fix, `'ga"me'`) {
 		t.Error(fix)
 	}

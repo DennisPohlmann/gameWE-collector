@@ -119,9 +119,9 @@ func resetRun(pos []string, path, mode string, dry, yes, list bool, wait time.Du
 	w := tabwriter.NewWriter(out, 0, 2, 2, ' ', tabwriter.AlignRight)
 	fmt.Fprintf(out, "reset %s, mode %s: rows per table\n", game, mode)
 	for _, c := range counts {
-		fmt.Fprintf(w, "%d\t  %s\t\n", c.Rows, c.Table)
+		fmt.Fprintf(w, "%d\t  %s\t\n", c.Rows, db.Prefix.Table(c.Table))
 		if r != nil {
-			r.Tables = append(r.Tables, tableDoc{c.Table, c.Rows})
+			r.Tables = append(r.Tables, tableDoc{db.Prefix.Table(c.Table), c.Rows})
 		}
 	}
 	w.Flush()

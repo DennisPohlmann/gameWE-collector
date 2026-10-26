@@ -82,6 +82,13 @@ the audit summary of `security-privacy-audit`.
 - Every SQL statement uses placeholders (`?`, rebound for Postgres in
   `internal/database/rebind.go`). Table/column names in `fmt.Sprintf` SQL
   only from constants or a fixed allowlist, never from log or RCON data.
+- Code, schema files and tests always name the tables `hlstats_*` and
+  `gamewe_schema_migrations`. With `database.table_prefix` the connection
+  rewrites these identifiers (`internal/database/prefix.go`, not inside
+  string literals); names read from the catalog go through
+  `Prefix.Logical`, names passed as data (information_schema arguments,
+  LIKE patterns, lock names, output) through `Prefix.Table`. The prefix is
+  validated (`config.CheckTablePrefix`) and never comes from log data.
 - Log packets are accepted only from addresses in `hlstats_Servers` and,
   with `features.log_secret` true (default), only with the server's
   `hlstats_Servers.log_secret` when one is stored

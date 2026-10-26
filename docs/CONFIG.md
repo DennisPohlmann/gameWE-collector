@@ -129,6 +129,7 @@ The RCON load data of `hlstats_server_load` (CPU, FPS, uptime) are switched with
 | `host` | – | host name or IP of the database server |
 | `port` | `3306` / `5432` | default by `type`: 3306 for MariaDB / MySQL, 5432 for PostgreSQL |
 | `user`, `name` | – | database user and database name |
+| `table_prefix` | `hlstats` | prefix of the table names, as `DB_PREFIX` of HLstatsX:CE: `hlstats` gives `hlstats_Players`, `gw` gives `gw_Players` (`gw_` is the same as `gw`). A letter, then letters, digits and `_`, at most 16 characters; not `gamewe` and not starting with `hlstats_`. The web frontend needs the same value (`DB_TABLE_PREFIX`). See [DATABASE.md](DATABASE.md#table-prefix) |
 | `password` | – | password, or: |
 | `password_file` | – | file containing the password (one of the two) |
 | `max_open_conns` | `8` | connection pool size, shared by all game servers; the collector uses one connection more for its collector lock (see [DATABASE.md](DATABASE.md#schema-versions-and-upgrades)) |

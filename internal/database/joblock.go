@@ -22,7 +22,7 @@ func JobLock(ctx context.Context, db *DB, wait time.Duration, waiting func()) (r
 	if err != nil {
 		return nil, err
 	}
-	unlock, err := namedLock(ctx, conn, db.Postgres(), jobLockPrefix, jobLockKey, wait, waiting)
+	unlock, err := namedLock(ctx, conn, db.Postgres(), db.Prefix.lockName(jobLockPrefix), db.Prefix.lockKey(jobLockKey), wait, waiting)
 	if err != nil {
 		conn.Close()
 		if errors.Is(err, errLockBusy) {

@@ -331,7 +331,7 @@ func (s *Store) hasColumn(ctx context.Context, table, column string) (bool, erro
 		schema = "current_schema()"
 	}
 	err := s.queryRow(ctx, `SELECT COUNT(*) FROM information_schema.columns
-		WHERE table_schema = `+schema+` AND LOWER(table_name) = LOWER(?) AND LOWER(column_name) = LOWER(?)`, table, column).Scan(&n)
+		WHERE table_schema = `+schema+` AND LOWER(table_name) = LOWER(?) AND LOWER(column_name) = LOWER(?)`, s.db.Prefix.Table(table), column).Scan(&n)
 	return n > 0, err
 }
 

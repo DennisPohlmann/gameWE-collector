@@ -351,3 +351,22 @@ func TestListenInputs(t *testing.T) {
 		}
 	}
 }
+
+func TestTablePrefix(t *testing.T) {
+	cfg, err := Parse([]byte(minimal))
+	if err != nil || cfg.Database.TablePrefix != DefaultTablePrefix {
+		t.Fatalf("default prefix %q, %v", cfg.Database.TablePrefix, err)
+	}
+	for in, want := range map[string]string{"gw": "gw", "gw_": "gw", "Stats2": "Stats2", "my_stats_": "my_stats", `""`: DefaultTablePrefix, "hlstats_": DefaultTablePrefix} {
+		cfg, err := Parse([]byte(strings.Replace(minimal, "database:\n", "database:\n  table_prefix: "+in+"\n", 1)))
+		if err != nil || cfg.Database.TablePrefix != want {
+			t.Errorf("table_prefix %s: %q, %v; want %q", in, cfg.Database.TablePrefix, err, want)
+		}
+	}
+	for _, in := range []string{"2gw", "g-w", "g w", "gw__", "hlstats_ce", "HLSTATS_x", "gamewe", "abcdefghijklmnopq", "ä"} {
+		_, err := Parse([]byte(strings.Replace(minimal, "database:\n", "database:\n  table_prefix: \""+in+"\"\n", 1)))
+		if err == nil || !strings.Contains(err.Error(), "database.table_prefix") {
+			t.Errorf("table_prefix %q accepted (%v)", in, err)
+		}
+	}
+}

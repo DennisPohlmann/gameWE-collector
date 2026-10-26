@@ -60,7 +60,8 @@ const dbUsage = `usage:
         prints the SQL, to run it as a database admin. Afterwards db init
         (or the next start) creates them again
   gamewe db convert -from CE [-config FILE] [-source-timezone ZONE]
-                    [-mojibake auto|repair|keep] [--dry-run|-n] [--force|-f]
+                    [-source-prefix PREFIX] [-mojibake auto|repair|keep]
+                    [--dry-run|-n] [--force|-f]
         copy an HLstatsX:CE database (only read) into this new gameWE
         database: shows the plan (source, target, time zone, character
         sets, rows per table) and asks [y/N] unless --force; --dry-run only
@@ -69,7 +70,9 @@ const dbUsage = `usage:
         GAMEWE_FROM_PASSWORD). -source-timezone: the zone in which CE wrote
         eventTime, default server (the CE server's), e.g. Europe/Berlin;
         -mojibake: UTF-8 stored twice (MÃ¼ller), auto repairs it in latin1
-        tables. MariaDB / MySQL only; docs/MIGRATION-HLSTATSX.md
+        tables; -source-prefix: DB_PREFIX of CE, default hlstats (CE and
+        gameWE may share one database when the prefixes differ). MariaDB /
+        MySQL only; docs/MIGRATION-HLSTATSX.md
 Every db command that changes something shows the plan and asks [y/N] (reset
 and drop: type the database name); --dry-run (-n) only shows it, --force
 (-f; older names -yes, -y) does not ask; without a terminal and without
@@ -613,7 +616,7 @@ func dbGrantsCmd(args []string, out io.Writer, r *result) error {
 		return err
 	}
 	if print {
-		return printSQL(out, r, schema.Grants(cfg.Database.Type))
+		return printSQL(out, r, tablePrefix(cfg.Database).Script(schema.Grants(cfg.Database.Type)))
 	}
 	fmt.Fprintf(out, "grant the web users (gamewe_web, gamewe_web_admin) their table rights in the database %s again (the SQL: %s -print)\n", cfg.Database.Name, dbCommand("grants"))
 	if cf.dryRun {
@@ -630,7 +633,7 @@ func dbGrantsCmd(args []string, out io.Writer, r *result) error {
 		return err
 	}
 	defer db.Close()
-	warn := database.RunGrants(ctx, db, cfg.Database.Type)
+	warn := database.RunGrants(ctx, db, cfg.Database.Type, db.Prefix)
 	for _, w := range warn {
 		fmt.Fprintf(out, "failed:    %s\n", w)
 	}
@@ -655,7 +658,7 @@ func dbSeedCmd(args []string, out io.Writer, r *result) error {
 		return err
 	}
 	if print {
-		return printSQL(out, r, schema.Seed(cfg.Database.Type))
+		return printSQL(out, r, tablePrefix(cfg.Database).Script(schema.Seed(cfg.Database.Type)))
 	}
 	fmt.Fprintf(out, "add the missing reference data (games, teams, actions, weapons, awards, ranks, options) to the database %s; existing rows stay (the SQL: %s -print)\n", cfg.Database.Name, dbCommand("seed"))
 	if cf.dryRun {
@@ -677,6 +680,12 @@ func dbSeedCmd(args []string, out io.Writer, r *result) error {
 	}
 	fmt.Fprintln(out, "missing reference data added")
 	return nil
+}
+
+// tablePrefix is the table prefix of d (database.table_prefix), for SQL
+// that is printed instead of sent.
+func tablePrefix(d config.Database) database.Prefix {
+	return database.Prefix(config.NormalizeTablePrefix(d.TablePrefix))
 }
 
 // printSQL writes the SQL of -print, or puts it into the document.

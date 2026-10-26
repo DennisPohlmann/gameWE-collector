@@ -36,6 +36,48 @@ const (
 	Postgres = "postgres"
 )
 
+// DefaultTablePrefix is the prefix of the table names (hlstats_Players),
+// as DB_PREFIX of HLstatsX:CE.
+const DefaultTablePrefix = "hlstats"
+
+// MaxTablePrefix is the longest table prefix: the longest index name of
+// the schema must stay within PostgreSQL's 63 characters.
+const MaxTablePrefix = 16
+
+// NormalizeTablePrefix returns the table prefix without one trailing "_"
+// (hlstats_ and hlstats are the same) and the default for "".
+func NormalizeTablePrefix(s string) string {
+	s = strings.TrimSuffix(strings.TrimSpace(s), "_")
+	if s == "" {
+		return DefaultTablePrefix
+	}
+	return s
+}
+
+// CheckTablePrefix checks a normalized table prefix: a letter, then
+// letters, digits and "_", at most MaxTablePrefix characters. It may not
+// start with hlstats_ (the names of the code are rewritten by prefix,
+// internal/database/prefix.go) nor be gamewe.
+func CheckTablePrefix(p string) error {
+	if p == "" || len(p) > MaxTablePrefix {
+		return fmt.Errorf("%q: want 1 to %d characters", p, MaxTablePrefix)
+	}
+	for i, c := range p {
+		letter := c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
+		if !letter && (i == 0 || c != '_' && (c < '0' || c > '9')) {
+			return fmt.Errorf("%q: only letters, digits and _, starting with a letter", p)
+		}
+	}
+	if strings.HasSuffix(p, "_") {
+		return fmt.Errorf("%q: may end with one _ only", p)
+	}
+	l := strings.ToLower(p)
+	if strings.HasPrefix(l, DefaultTablePrefix+"_") || l == "gamewe" {
+		return fmt.Errorf("%q: may not start with %s_ or be gamewe", p, DefaultTablePrefix)
+	}
+	return nil
+}
+
 // TLS modes for the database connection.
 const (
 	TLSDisable    = "disable"
@@ -499,13 +541,16 @@ func (l Listen) UDP() string {
 // Database is the connection to the HLstatsX database: MariaDB / MySQL or
 // PostgreSQL.
 type Database struct {
-	Type           string `yaml:"type"`
-	Host           string `yaml:"host"`
-	Port           int    `yaml:"port"`
-	User           string `yaml:"user"`
-	Password       string `yaml:"password"`
-	PasswordFile   string `yaml:"password_file"`
-	Name           string `yaml:"name"`
+	Type         string `yaml:"type"`
+	Host         string `yaml:"host"`
+	Port         int    `yaml:"port"`
+	User         string `yaml:"user"`
+	Password     string `yaml:"password"`
+	PasswordFile string `yaml:"password_file"`
+	Name         string `yaml:"name"`
+	// TablePrefix is the prefix of the table names: <prefix>_Players
+	// (default hlstats, as DB_PREFIX of HLstatsX:CE; NormalizeTablePrefix).
+	TablePrefix    string `yaml:"table_prefix"`
 	MaxOpenConns   int    `yaml:"max_open_conns"`
 	ConnectTimeout int    `yaml:"connect_timeout"`
 	TLS            TLS    `yaml:"tls"`
@@ -530,6 +575,7 @@ func Defaults() Config {
 		HTTP: ListenHTTP{Address: "0.0.0.0", Port: DefaultHTTPPort, MaxBody: "128KiB", ReadTimeout: "10s",
 			MaxConnections: 64, MaxConnectionsPerIP: 8}}, Database: Database{
 		Type:           MySQL,
+		TablePrefix:    DefaultTablePrefix,
 		MaxOpenConns:   8,
 		ConnectTimeout: 10,
 		TLS:            TLS{Mode: TLSDisable},
@@ -654,6 +700,7 @@ func (cfg *Config) finish() []Problem {
 		cfg.Listen.PublicAddress = u.PublicAddress
 	}
 	d := &cfg.Database
+	d.TablePrefix = NormalizeTablePrefix(d.TablePrefix)
 	switch strings.ToLower(strings.TrimSpace(d.Type)) {
 	case "mariadb", "mysql":
 		d.Type = MySQL
@@ -789,6 +836,9 @@ func (c Config) Problems() []Problem {
 		if f.v == "" {
 			add("database."+f.key, "required (database: host, user and name are required)")
 		}
+	}
+	if err := CheckTablePrefix(d.TablePrefix); err != nil {
+		add("database.table_prefix", "%v", err)
 	}
 	if d.Port < 1 || d.Port > 65535 {
 		add("database.port", "%d out of range (1 to 65535)", d.Port)

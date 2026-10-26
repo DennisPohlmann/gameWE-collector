@@ -42,6 +42,7 @@ func initDB(t *testing.T, typ, user, password string) *DB {
 	cfg.Port, _ = strconv.Atoi(m[2])
 	cfg.User, cfg.Password = user, password
 	cfg.TLS.Mode = config.TLSDisable
+	cfg.TablePrefix = config.NormalizeTablePrefix(os.Getenv("GAMEWE_TEST_DB_PREFIX")) // e.g. gw: the tables gw_*
 	db, err := Open(cfg)
 	if err != nil {
 		t.Fatal(err)

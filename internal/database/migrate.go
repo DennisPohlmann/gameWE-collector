@@ -54,6 +54,7 @@ type Step struct {
 	stmts []string
 	rec   *Migration // kind record
 	note  string     // kind record
+	pfx   Prefix     // kind grants
 }
 
 type stepKind int
@@ -113,33 +114,37 @@ func (c catalog) rowsOf(table string) int64 {
 	return -1
 }
 
-func readCatalog(ctx context.Context, q querier, postgres bool) (catalog, error) {
+// readCatalog reads what the database has. Table names (and PostgreSQL's
+// index names) are the code's names (Prefix.Logical); the tables of another
+// prefix are left out.
+func readCatalog(ctx context.Context, q querier, postgres bool, p Prefix) (catalog, error) {
 	c := catalog{tables: map[string]bool{}, columns: map[string]map[string]bool{}, indexes: map[string]map[string]bool{}, rows: map[string]int64{}}
 	type query struct {
-		sql string
-		add func(a, b string)
+		sql   string
+		add   func(a, b string)
+		index bool // b is an index name
 	}
 	queries := []query{
 		{`SELECT TABLE_NAME, '' FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE'`,
-			func(t, _ string) { c.tables[t] = true }},
+			func(t, _ string) { c.tables[t] = true }, false},
 		{`SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()`,
-			func(t, col string) { set(c.columns, t)[col] = true }},
+			func(t, col string) { set(c.columns, t)[col] = true }, false},
 		{`SELECT DISTINCT TABLE_NAME, INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE()`,
-			func(t, ix string) { set(c.indexes, t)[ix] = true }},
+			func(t, ix string) { set(c.indexes, t)[ix] = true }, true},
 		{`SELECT TABLE_NAME, COALESCE(TABLE_ROWS, -1) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE'`,
-			func(t, n string) { c.rows[t] = atoi64(n) }},
+			func(t, n string) { c.rows[t] = atoi64(n) }, false},
 	}
 	if postgres {
 		queries = []query{
 			{`SELECT table_name, '' FROM information_schema.tables WHERE table_schema = current_schema() AND table_type = 'BASE TABLE'`,
-				func(t, _ string) { c.tables[t] = true }},
+				func(t, _ string) { c.tables[t] = true }, false},
 			{`SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = current_schema()`,
-				func(t, col string) { set(c.columns, t)[col] = true }},
+				func(t, col string) { set(c.columns, t)[col] = true }, false},
 			{`SELECT tablename, indexname FROM pg_indexes WHERE schemaname = current_schema()`,
-				func(t, ix string) { set(c.indexes, t)[ix] = true }},
+				func(t, ix string) { set(c.indexes, t)[ix] = true }, true},
 			{`SELECT c.relname, CAST(c.reltuples AS bigint) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
 				WHERE n.nspname = current_schema() AND c.relkind IN ('r', 'p')`,
-				func(t, n string) { c.rows[t] = atoi64(n) }},
+				func(t, n string) { c.rows[t] = atoi64(n) }, false},
 		}
 	}
 	for _, qu := range queries {
@@ -153,7 +158,15 @@ func readCatalog(ctx context.Context, q querier, postgres bool) (catalog, error)
 				rows.Close()
 				return c, fmt.Errorf("schema check: %w", err)
 			}
-			qu.add(strings.ToLower(a), strings.ToLower(b))
+			t, ok := p.Logical(strings.ToLower(a))
+			if !ok {
+				continue
+			}
+			b = strings.ToLower(b)
+			if qu.index {
+				b, _ = p.Logical(b)
+			}
+			qu.add(strings.ToLower(t), b)
 		}
 		rows.Close()
 		if err := rows.Err(); err != nil {
@@ -215,16 +228,16 @@ func isCE(cat catalog) bool {
 // PlanMigrations compares the database with this collector's schema and
 // returns what `gamewe db migrate` would do. It only reads.
 func PlanMigrations(ctx context.Context, db *DB) (*Plan, error) {
-	return plan(ctx, db.DB, db.Type)
+	return plan(ctx, db.DB, db.Type, db.Prefix)
 }
 
-func plan(ctx context.Context, q querier, dialect string) (*Plan, error) {
+func plan(ctx context.Context, q querier, dialect string, pfx Prefix) (*Plan, error) {
 	pg := dialect == schema.Postgres
 	tables, err := schema.Tables(dialect)
 	if err != nil {
 		return nil, err
 	}
-	cat, err := readCatalog(ctx, q, pg)
+	cat, err := readCatalog(ctx, q, pg, pfx)
 	if err != nil {
 		return nil, err
 	}
@@ -273,7 +286,7 @@ func plan(ctx context.Context, q querier, dialect string) (*Plan, error) {
 			p.Pending = append(p.Pending, m)
 		}
 	}
-	p.Missing = missing(tables, cat, pg)
+	p.Missing = withPrefix(missing(tables, cat, pg), pfx)
 
 	if !p.Versions {
 		p.Steps = append(p.Steps, Step{Name: "setup", What: "create the table " + MigrationsTable + " (schema versions)", kind: stepVersion})
@@ -285,8 +298,8 @@ func plan(ctx context.Context, q querier, dialect string) (*Plan, error) {
 		for _, m := range p.Pending {
 			p.Steps = append(p.Steps, Step{Version: m.Version, Name: m.Name, What: "record version " + fmt.Sprint(m.Version) + " (part of the new schema)", kind: stepRecord, rec: &m, note: "new database"})
 		}
-		p.Steps = append(p.Steps, grantsStep())
-		return p, nil
+		p.Steps = append(p.Steps, grantsStep(pfx))
+		return p.named(pfx), nil
 	}
 
 	synced := false
@@ -326,15 +339,25 @@ func plan(ctx context.Context, q querier, dialect string) (*Plan, error) {
 	}
 	for _, s := range p.Steps {
 		if s.kind == stepExec || s.kind == stepScript {
-			p.Steps = append(p.Steps, grantsStep())
+			p.Steps = append(p.Steps, grantsStep(pfx))
 			break
 		}
 	}
-	return p, nil
+	return p.named(pfx), nil
 }
 
-func grantsStep() Step {
-	return Step{Name: "rights", What: "grant the web users their rights on the tables (internal/schema grants.sql)", kind: stepGrants}
+// named puts the database's table names (prefix) into the texts of the
+// steps; the statements are rewritten by the connection.
+func (p *Plan) named(pfx Prefix) *Plan {
+	for i, s := range p.Steps {
+		p.Steps[i].What = pfx.Script(s.What)
+		p.Steps[i].Table = pfx.Table(s.Table)
+	}
+	return p
+}
+
+func grantsStep(pfx Prefix) Step {
+	return Step{Name: "rights", What: "grant the web users their rights on the tables (internal/schema grants.sql)", kind: stepGrants, pfx: pfx}
 }
 
 // missing lists what the database lacks of the schema: whole tables, or the
@@ -546,7 +569,7 @@ func Migrate(ctx context.Context, db *DB, opt MigrateOptions) (*MigrateResult, e
 		return nil, Explain(err)
 	}
 	defer conn.Close()
-	unlock, err := migrateLock(ctx, conn, db.Postgres(), opt.LockWait, opt.Waiting)
+	unlock, err := migrateLock(ctx, conn, db.Postgres(), db.Prefix, opt.LockWait, opt.Waiting)
 	if err != nil {
 		return nil, err
 	}
@@ -554,14 +577,14 @@ func Migrate(ctx context.Context, db *DB, opt MigrateOptions) (*MigrateResult, e
 	// No collector may write while the tables change; holding its lock
 	// also keeps one from starting meanwhile (it migrates first and waits
 	// for the migration lock).
-	got, err := tryRunLock(ctx, conn, db.Postgres())
+	got, err := tryRunLock(ctx, conn, db.Postgres(), db.Prefix)
 	if err != nil {
 		return nil, fmt.Errorf("collector lock: %w", err)
 	}
 	if !got {
 		return nil, ErrCollectorRunning
 	}
-	defer releaseRunLock(conn, db.Postgres())
+	defer releaseRunLock(conn, db.Postgres(), db.Prefix)
 	setLock := `SET SESSION lock_wait_timeout = ` + fmt.Sprint(max(1, int(opt.LockTimeout.Seconds())))
 	if db.Postgres() {
 		setLock = fmt.Sprintf(`SET lock_timeout = '%dms'`, max(1, opt.LockTimeout.Milliseconds()))
@@ -583,7 +606,7 @@ func Migrate(ctx context.Context, db *DB, opt MigrateOptions) (*MigrateResult, e
 		}
 	}
 
-	p, err := plan(ctx, conn, db.Type)
+	p, err := plan(ctx, conn, db.Type, db.Prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -591,7 +614,7 @@ func Migrate(ctx context.Context, db *DB, opt MigrateOptions) (*MigrateResult, e
 	if p.UpToDate() {
 		return res, nil
 	}
-	if err := checkRights(ctx, conn, db.Postgres(), p); err != nil {
+	if err := checkRights(ctx, conn, db.Postgres(), db.Prefix, p); err != nil {
 		return res, err
 	}
 	var tx bool // PostgreSQL: each migration in one transaction
@@ -651,7 +674,7 @@ func Migrate(ctx context.Context, db *DB, opt MigrateOptions) (*MigrateResult, e
 			case isLockTimeout(err):
 				err = fmt.Errorf("%w (waited %s)", ErrTableLocked, opt.LockTimeout)
 			default:
-				err = rightsHint(ctx, conn, db.Postgres(), err)
+				err = rightsHint(ctx, conn, db.Postgres(), db.Prefix, err)
 			}
 			return res, fmt.Errorf("step %d (%s: %s): %w", i+1, label, s.What, err)
 		}
@@ -709,11 +732,11 @@ func killQuery(db *DB, id int64) bool {
 }
 
 // releaseRunLock gives the collector lock back that Migrate held.
-func releaseRunLock(conn *sql.Conn, postgres bool) {
+func releaseRunLock(conn *sql.Conn, postgres bool, p Prefix) {
 	if postgres {
-		conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock($1)`, int64(runLockKey))
+		conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock($1)`, p.lockKey(runLockKey))
 	} else {
-		conn.ExecContext(context.Background(), `SELECT RELEASE_LOCK(LEFT(CONCAT(?, DATABASE()), 64))`, runLockPrefix)
+		conn.ExecContext(context.Background(), `SELECT RELEASE_LOCK(LEFT(CONCAT(?, DATABASE()), 64))`, p.lockName(runLockPrefix))
 	}
 }
 
@@ -747,7 +770,7 @@ func runStep(ctx context.Context, conn *sql.Conn, dialect string, s Step) ([]str
 	case stepScript:
 		return nil, runScript(ctx, conn, dialect, s.stmts[0])
 	case stepGrants:
-		return RunGrants(ctx, conn, dialect), nil
+		return RunGrants(ctx, conn, dialect, s.pfx), nil
 	}
 	return nil, fmt.Errorf("unknown step %d", s.kind)
 }
@@ -792,9 +815,9 @@ func runScript(ctx context.Context, q querier, dialect, script string) error {
 // and the rest is skipped. The block for the optional user gamewe_admin
 // reads mysql.user, which the collector user may not: its failure is not
 // reported.
-func RunGrants(ctx context.Context, q querier, dialect string) []string {
+func RunGrants(ctx context.Context, q querier, dialect string, pfx Prefix) []string {
 	var warn []string
-	for _, st := range schema.Split(dialect, schema.Grants(dialect)) {
+	for _, st := range schema.Split(dialect, pfx.Script(schema.Grants(dialect))) {
 		var err error
 		if st.GExec {
 			err = runScript(ctx, q, dialect, st.SQL+` \gexec`)
@@ -854,8 +877,8 @@ const (
 )
 
 // migrateLock takes the migration lock on conn, waiting up to wait.
-func migrateLock(ctx context.Context, conn *sql.Conn, postgres bool, wait time.Duration, waiting func()) (func(), error) {
-	release, err := namedLock(ctx, conn, postgres, migrateLockPrefix, migrateLockKey, wait, waiting)
+func migrateLock(ctx context.Context, conn *sql.Conn, postgres bool, p Prefix, wait time.Duration, waiting func()) (func(), error) {
+	release, err := namedLock(ctx, conn, postgres, p.lockName(migrateLockPrefix), p.lockKey(migrateLockKey), wait, waiting)
 	if errors.Is(err, errLockBusy) {
 		return nil, fmt.Errorf("another gamewe db migrate has been running on this database for more than %s", wait)
 	}
@@ -943,23 +966,23 @@ func isDenied(err error) bool {
 }
 
 // rightsHint turns a privilege error into a RightsError.
-func rightsHint(ctx context.Context, conn *sql.Conn, postgres bool, err error) error {
+func rightsHint(ctx context.Context, conn *sql.Conn, postgres bool, pfx Prefix, err error) error {
 	if !isDenied(err) {
 		return err
 	}
-	if re := rightsError(ctx, conn, postgres, err.Error()); re != nil {
+	if re := rightsError(ctx, conn, postgres, pfx, err.Error()); re != nil {
 		return re
 	}
 	return err
 }
 
-func rightsError(ctx context.Context, conn *sql.Conn, postgres bool, reason string) *RightsError {
+func rightsError(ctx context.Context, conn *sql.Conn, postgres bool, pfx Prefix, reason string) *RightsError {
 	if postgres {
 		var user, dbname string
 		if conn.QueryRowContext(ctx, `SELECT current_user, current_database()`).Scan(&user, &dbname) != nil {
 			return nil
 		}
-		return &RightsError{User: user, Reason: reason, Fix: pgFix(user, dbname)}
+		return &RightsError{User: user, Reason: reason, Fix: pgFix(user, dbname, pfx)}
 	}
 	var cu, dbname string
 	if conn.QueryRowContext(ctx, `SELECT CURRENT_USER(), DATABASE()`).Scan(&cu, &dbname) != nil {
@@ -978,30 +1001,30 @@ func rightsError(ctx context.Context, conn *sql.Conn, postgres bool, reason stri
 
 // pgFix is what a PostgreSQL superuser runs: the collector role may create
 // tables and owns the existing ones (only the owner may alter a table).
-func pgFix(user, dbname string) string {
+func pgFix(user, dbname string, pfx Prefix) string {
 	qi := func(s string) string { return `"` + strings.ReplaceAll(s, `"`, `""`) + `"` }
 	ql := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
 	return fmt.Sprintf(`  \c %s
   GRANT USAGE, CREATE ON SCHEMA public TO %s;
   DO $$ DECLARE t record; BEGIN
-    FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND (tablename LIKE 'hlstats\_%%' OR tablename = %s) LOOP
+    FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND (tablename LIKE %s OR tablename = %s) LOOP
       EXECUTE format('ALTER TABLE public.%%I OWNER TO %%I', t.tablename, %s);
     END LOOP;
-  END $$;`, qi(dbname), qi(user), ql(MigrationsTable), ql(user))
+  END $$;`, qi(dbname), qi(user), ql(pfx.like()), ql(pfx.Table(MigrationsTable)), ql(user))
 }
 
 // checkRights tests, before the first change, that the user may create and
 // alter tables: on MySQL by creating and altering the version table
 // (which the plan creates anyway), on PostgreSQL by the schema right and
 // the owners of the tables.
-func checkRights(ctx context.Context, conn *sql.Conn, postgres bool, p *Plan) error {
+func checkRights(ctx context.Context, conn *sql.Conn, postgres bool, pfx Prefix, p *Plan) error {
 	if postgres {
-		reason, err := pgRights(ctx, conn)
+		reason, err := pgRights(ctx, conn, pfx)
 		if err != nil {
 			return err
 		}
 		if reason != "" {
-			if re := rightsError(ctx, conn, true, reason); re != nil {
+			if re := rightsError(ctx, conn, true, pfx, reason); re != nil {
 				return re
 			}
 			return errors.New(reason)
@@ -1011,14 +1034,14 @@ func checkRights(ctx context.Context, conn *sql.Conn, postgres bool, p *Plan) er
 	for _, q := range []string{versionTableSQL(p.Dialect),
 		"ALTER TABLE `" + MigrationsTable + "` COMMENT = 'gameWE schema versions (gamewe db migrate)'"} {
 		if _, err := conn.ExecContext(ctx, q); err != nil {
-			return rightsHint(ctx, conn, false, err)
+			return rightsHint(ctx, conn, false, pfx, err)
 		}
 	}
 	return nil
 }
 
 // pgRights returns why the current role cannot migrate ("" if it can).
-func pgRights(ctx context.Context, q querier) (string, error) {
+func pgRights(ctx context.Context, q querier, pfx Prefix) (string, error) {
 	var create bool
 	if err := q.QueryRowContext(ctx, `SELECT has_schema_privilege(current_schema(), 'CREATE')`).Scan(&create); err != nil {
 		return "", fmt.Errorf("rights check: %w", err)
@@ -1026,8 +1049,8 @@ func pgRights(ctx context.Context, q querier) (string, error) {
 	var foreign int
 	var example sql.NullString
 	err := q.QueryRowContext(ctx, `SELECT COUNT(*), MIN(tablename) FROM pg_tables
-		WHERE schemaname = current_schema() AND (tablename LIKE 'hlstats\_%' OR tablename = $1)
-		AND NOT pg_has_role(current_user, tableowner, 'MEMBER')`, MigrationsTable).Scan(&foreign, &example)
+		WHERE schemaname = current_schema() AND (tablename LIKE $1 OR tablename = $2)
+		AND NOT pg_has_role(current_user, tableowner, 'MEMBER')`, pfx.like(), pfx.Table(MigrationsTable)).Scan(&foreign, &example)
 	if err != nil {
 		return "", fmt.Errorf("rights check: %w", err)
 	}
@@ -1054,11 +1077,11 @@ func PostgresRights(ctx context.Context, db *DB) (string, error) {
 		return "", err
 	}
 	defer conn.Close()
-	reason, err := pgRights(ctx, conn)
+	reason, err := pgRights(ctx, conn, db.Prefix)
 	if err != nil || reason == "" {
 		return "", err
 	}
-	if re := rightsError(ctx, conn, true, reason); re != nil {
+	if re := rightsError(ctx, conn, true, db.Prefix, reason); re != nil {
 		return re.Error(), nil
 	}
 	return reason, nil

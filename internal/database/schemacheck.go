@@ -15,16 +15,30 @@ type Requirement struct {
 	Table  string
 	Column string // "" for an index or a whole table
 	Index  string // MySQL key name; PostgreSQL: <table>_<name> in lower case
+
+	pfx Prefix // String names the tables as the database does
 }
 
 func (r Requirement) String() string {
+	t := r.pfx.Table(r.Table)
 	switch {
 	case r.Column != "":
-		return fmt.Sprintf("schema incomplete: missing column %s.%s", r.Table, r.Column)
+		return fmt.Sprintf("schema incomplete: missing column %s.%s", t, r.Column)
 	case r.Index != "":
-		return fmt.Sprintf("schema incomplete: missing index %s on %s", r.Index, r.Table)
+		return fmt.Sprintf("schema incomplete: missing index %s on %s", r.pfx.Table(r.Index), t)
 	}
-	return fmt.Sprintf("schema incomplete: missing table %s", r.Table)
+	return fmt.Sprintf("schema incomplete: missing table %s", t)
+}
+
+// withPrefix sets the prefix String names the tables with (only another
+// than the default, so that the values stay comparable).
+func withPrefix(reqs []Requirement, p Prefix) []Requirement {
+	if !p.Default() {
+		for i := range reqs {
+			reqs[i].pfx = p
+		}
+	}
+	return reqs
 }
 
 // SchemaHint is what to do about a database with an incomplete or old
@@ -38,9 +52,9 @@ func MissingSchema(ctx context.Context, db *DB) ([]Requirement, error) {
 	if err != nil {
 		return nil, err
 	}
-	cat, err := readCatalog(ctx, db.DB, db.Postgres())
+	cat, err := readCatalog(ctx, db.DB, db.Postgres(), db.Prefix)
 	if err != nil {
 		return nil, err
 	}
-	return missing(tables, cat, db.Postgres()), nil
+	return withPrefix(missing(tables, cat, db.Postgres()), db.Prefix), nil
 }

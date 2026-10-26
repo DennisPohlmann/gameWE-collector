@@ -64,15 +64,16 @@ func connect(d config.Database, extra time.Duration) (context.Context, func(), *
 	return ctx, func() { db.Close(); done() }, db, nil
 }
 
-// printRows writes the rows per table (and puts them into the document).
-func (c dbIO) printRows(rows []database.TableRows) int64 {
+// printRows writes the rows per table (and puts them into the document),
+// with the table names of the database (prefix).
+func (c dbIO) printRows(rows []database.TableRows, pfx database.Prefix) int64 {
 	w := tabwriter.NewWriter(c.out, 0, 2, 2, ' ', tabwriter.AlignRight)
 	var total int64
 	for _, r := range rows {
-		fmt.Fprintf(w, "%d\t  %s\t\n", r.Rows, r.Table)
+		fmt.Fprintf(w, "%d\t  %s\t\n", r.Rows, pfx.Table(r.Table))
 		total += r.Rows
 		if c.res != nil {
-			c.res.Tables = append(c.res.Tables, tableDoc{r.Table, r.Rows})
+			c.res.Tables = append(c.res.Tables, tableDoc{pfx.Table(r.Table), r.Rows})
 		}
 	}
 	w.Flush()
@@ -134,7 +135,7 @@ func dbDropCmd(args []string, c dbIO) error {
 		if err != nil {
 			return err
 		}
-		return printSQL(c.out, c.res, q)
+		return printSQL(c.out, c.res, tablePrefix(cfg.Database).Script(q))
 	}
 	ctx, done, db, err := connect(cfg.Database, 5*time.Minute)
 	if err != nil {
@@ -158,7 +159,7 @@ func dbDrop(ctx context.Context, db *database.DB, d config.Database, yes, dry bo
 		return err
 	}
 	fmt.Fprintf(c.out, "drop %d tables of the database %s (rows per table):\n", len(own), d.Name)
-	total := c.printRows(rows)
+	total := c.printRows(rows, db.Prefix)
 	if len(other) > 0 {
 		fmt.Fprintf(c.out, "not dropped (not part of the gameWE schema): %s\n", strings.Join(other, ", "))
 	}
@@ -242,7 +243,7 @@ func dbReset(ctx context.Context, db *database.DB, d config.Database, yes, dry b
 		return err
 	}
 	fmt.Fprintf(c.out, "reset the database %s: empty all %d tables (rows per table), then load the reference data again:\n", d.Name, len(data))
-	total := c.printRows(rows)
+	total := c.printRows(rows, db.Prefix)
 	fmt.Fprintln(c.out, "Everything goes: players, statistics, events, awards, clans, game servers, settings (hlstats_Options), admin logins (hlstats_Users)\n"+
 		"and own games or changed definitions. The tables and the schema versions stay. Only one ranking: gamewe reset GAME -mode all.")
 	if dry {
@@ -333,9 +334,9 @@ func dbPurge(ctx context.Context, db *database.DB, d config.Database, days int, 
 		rows = append(rows, database.TableRows{Table: "hlstats_gamewe_jobs", Rows: n})
 	}
 	fmt.Fprintf(c.out, "events before %s (older than %d days), rows per table:\n", before.UTC().Format("2006-01-02 15:04 UTC"), days)
-	total := c.printRows(rows)
+	total := c.printRows(rows, db.Prefix)
 	if jobs {
-		fmt.Fprintf(c.out, "hlstats_gamewe_jobs: the finished jobs older than %d days (as the collector does every hour).\n", int(stats.JobKeep.Hours()/24))
+		fmt.Fprintf(c.out, db.Prefix.Table("hlstats_gamewe_jobs")+": the finished jobs older than %d days (as the collector does every hour).\n", int(stats.JobKeep.Hours()/24))
 	}
 	fmt.Fprintln(c.out, "Players, their totals, rankings, awards and the history per day stay; the event lists of the web pages lose these rows.")
 	if dry || total == 0 {
@@ -409,7 +410,7 @@ func dbOptimizeCmd(args []string, c dbIO) error {
 	}
 	if cf.dryRun {
 		for _, t := range own {
-			fmt.Fprintf(c.out, "  %s\n", t)
+			fmt.Fprintf(c.out, "  %s\n", db.Prefix.Table(t))
 		}
 		fmt.Fprintln(c.out, "dry run: nothing changed")
 		return nil
@@ -418,7 +419,7 @@ func dbOptimizeCmd(args []string, c dbIO) error {
 		return err
 	}
 	start := time.Now()
-	err = database.Optimize(ctx, db, own, func(t string) { fmt.Fprintf(c.out, "optimize %s\n", t) })
+	err = database.Optimize(ctx, db, own, func(t string) { fmt.Fprintf(c.out, "optimize %s\n", db.Prefix.Table(t)) })
 	if err != nil {
 		return err
 	}

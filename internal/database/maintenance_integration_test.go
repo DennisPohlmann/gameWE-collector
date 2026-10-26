@@ -137,7 +137,7 @@ func TestMigrateDropKeepsOtherTables(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, other, err := OwnTables(ctx, db)
-	if err != nil || len(other) != 1 || !strings.EqualFold(other[0], "hlstats_heatmap_config") {
+	if err != nil || len(other) != 1 || !strings.EqualFold(other[0], db.Prefix.Table("hlstats_heatmap_config")) {
 		t.Fatalf("other %v %v", other, err)
 	}
 	q, _ := DropSQL(db.Type)

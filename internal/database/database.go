@@ -10,6 +10,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"net"
@@ -37,10 +38,13 @@ var Tables = []string{
 	"hlstats_Players_Locations", "hlstats_server_load",
 }
 
-// DB is a connection pool together with its SQL dialect.
+// DB is a connection pool together with its SQL dialect and table prefix.
 type DB struct {
 	*sql.DB
 	Type string // config.MySQL or config.Postgres
+	// Prefix of the table names; the pool rewrites hlstats_ in every
+	// statement to it (prefix.go).
+	Prefix Prefix
 }
 
 // Postgres reports whether the database is PostgreSQL.
@@ -60,22 +64,30 @@ func Open(cfg config.Database) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	var db *sql.DB
+	var conn driver.Connector
 	if cfg.Type == config.Postgres {
-		db, err = openPostgres(cfg, tlsConf)
+		conn, err = openPostgres(cfg, tlsConf)
 	} else {
-		db, err = openMySQL(cfg, tlsConf)
+		conn, err = openMySQL(cfg, tlsConf)
 	}
 	if err != nil {
 		return nil, err
 	}
+	p := Prefix(config.NormalizeTablePrefix(cfg.TablePrefix))
+	if err := config.CheckTablePrefix(string(p)); err != nil {
+		return nil, fmt.Errorf("table prefix %w", err)
+	}
+	if !p.Default() {
+		conn = prefixConnector{Connector: conn, p: p}
+	}
+	db := sql.OpenDB(conn)
 	db.SetMaxOpenConns(cfg.MaxOpenConns)
 	db.SetMaxIdleConns(cfg.MaxOpenConns)
 	db.SetConnMaxIdleTime(5 * time.Minute)
-	return &DB{DB: db, Type: cfg.Type}, nil
+	return &DB{DB: db, Type: cfg.Type, Prefix: p}, nil
 }
 
-func openMySQL(cfg config.Database, tlsConf *tls.Config) (*sql.DB, error) {
+func openMySQL(cfg config.Database, tlsConf *tls.Config) (driver.Connector, error) {
 	mc := mysql.NewConfig()
 	mc.User = cfg.User
 	mc.Passwd = cfg.Password
@@ -101,10 +113,10 @@ func openMySQL(cfg config.Database, tlsConf *tls.Config) (*sql.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("mysql config: %w", err)
 	}
-	return sql.OpenDB(conn), nil
+	return conn, nil
 }
 
-func openPostgres(cfg config.Database, tlsConf *tls.Config) (*sql.DB, error) {
+func openPostgres(cfg config.Database, tlsConf *tls.Config) (driver.Connector, error) {
 	u := &url.URL{
 		Scheme: "postgres",
 		User:   url.UserPassword(cfg.User, cfg.Password),
@@ -126,7 +138,7 @@ func openPostgres(cfg config.Database, tlsConf *tls.Config) (*sql.DB, error) {
 	cc.RuntimeParams["timezone"] = "UTC"
 	cc.TLSConfig = tlsConf
 	cc.Fallbacks = nil
-	return stdlib.OpenDB(*cc), nil
+	return stdlib.GetConnector(*cc), nil
 }
 
 // Info describes the live connection, as reported by the server.
@@ -172,7 +184,7 @@ func CheckTables(ctx context.Context, db *DB) error {
 	for _, t := range Tables {
 		var n int
 		if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+t+" WHERE 1 = 0").Scan(&n); err != nil {
-			return fmt.Errorf("table %s: %w (is this the gameWE database? %s)", t, err, SchemaHint)
+			return fmt.Errorf("table %s: %w (is this the gameWE database? %s)", db.Prefix.Table(t), err, SchemaHint)
 		}
 	}
 	return nil

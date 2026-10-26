@@ -60,6 +60,7 @@ database:
   user: %s
   password_file: %s
   name: %s
+  table_prefix: %s
   auto_migrate: %v
   tls:
     mode: disable
@@ -71,7 +72,7 @@ features:
   log_address: false
   daily_awards:
     enabled: false
-`, port, d.Type, d.Host, d.Port, d.User, pwFile, d.Name, d.AutoMigrate, filepath.Join(t.TempDir(), "none.mmdb"))
+`, port, d.Type, d.Host, d.Port, d.User, pwFile, d.Name, d.TablePrefix, d.AutoMigrate, filepath.Join(t.TempDir(), "none.mmdb"))
 	p := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(p, []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
@@ -492,6 +493,7 @@ func TestMigrateDBCommands(t *testing.T) {
 	d := database.TestConfig(name, "gamewe", database.TestPassword("gamewe"))
 	d.AutoMigrate = false
 	cfg := writeConfig(t, d)
+	frags := tablePrefix(d).Table("hlstats_Events_Frags")
 
 	out, code := gw(t, bin, "db", "init", "-config", cfg)
 	expect(t, out, code, 1, "create all", "no interactive confirmation possible", "--force") // no terminal
@@ -516,7 +518,7 @@ func TestMigrateDBCommands(t *testing.T) {
 	sql(`INSERT INTO hlstats_Events_Frags (timestamp_id, killerId, victimId) VALUES (?, 1, 2)`, time.Now().Unix())
 	out, code = gw(t, bin, "db", "purge", "-older-than", "30d", "-dry-run", "-config", cfg)
 	expect(t, out, code, 0, "dry run: nothing changed")
-	oneFrag(t, out)
+	oneFrag(t, out, frags)
 	out, code = gw(t, bin, "db", "purge", "-older-than", "30d", "-config", cfg)
 	expect(t, out, code, 1, "no interactive confirmation possible", "--force")
 	out, code = gw(t, bin, "db", "purge", "-older-than", "30d", "-yes", "-config", cfg) // the older name of --force
@@ -524,9 +526,9 @@ func TestMigrateDBCommands(t *testing.T) {
 	out, code = gw(t, bin, "db", "optimize", "-config", cfg)
 	expect(t, out, code, 1, "no interactive confirmation possible")
 	out, code = gw(t, bin, "db", "optimize", "--dry-run", "-config", cfg)
-	expect(t, out, code, 0, "hlstats_Events_Frags", "dry run: nothing changed")
+	expect(t, out, code, 0, frags, "dry run: nothing changed")
 	out, code = gw(t, bin, "db", "optimize", "--force", "-config", cfg)
-	expect(t, out, code, 0, "optimize hlstats_Events_Frags", "tables optimized")
+	expect(t, out, code, 0, "optimize "+frags, "tables optimized")
 	out, code = gw(t, bin, "db", "grants", "-config", cfg)
 	expect(t, out, code, 1, "no interactive confirmation possible")
 	out, code = gw(t, bin, "db", "grants", "-n", "-config", cfg)
@@ -540,7 +542,7 @@ func TestMigrateDBCommands(t *testing.T) {
 
 	out, code = gw(t, bin, "db", "reset", "-dry-run", "-config", cfg)
 	expect(t, out, code, 0, "dry run: nothing changed")
-	oneFrag(t, out)
+	oneFrag(t, out, frags)
 	out, code = gw(t, bin, "db", "reset", "-config", cfg)
 	expect(t, out, code, 1, "Make a backup before resetting", "no interactive confirmation possible")
 	sql(`UPDATE hlstats_Options SET value = ? WHERE keyname = 'gamewe_heartbeat'`, fmt.Sprint(time.Now().Unix()))
@@ -569,7 +571,7 @@ func TestMigrateDBCommands(t *testing.T) {
 	}
 
 	out, code = gw(t, bin, "db", "drop", "-print", "-config", cfg)
-	expect(t, out, code, 0, "DROP TABLE IF EXISTS ", "hlstats_Events_Frags", database.MigrationsTable)
+	expect(t, out, code, 0, "DROP TABLE IF EXISTS ", frags, tablePrefix(d).Table(database.MigrationsTable))
 	drop := out
 	out, code = gw(t, bin, "db", "drop", "-dry-run", "-config", cfg)
 	expect(t, out, code, 0, "drop ", "tables of the database "+name, "dry run: nothing changed")
@@ -592,10 +594,11 @@ func TestMigrateDBCommands(t *testing.T) {
 	runStarts(t, bin, cfg)
 }
 
-// oneFrag checks the row count line of hlstats_Events_Frags.
-func oneFrag(t *testing.T, out string) {
+// oneFrag checks the row count line of hlstats_Events_Frags (frags: its
+// name with the prefix).
+func oneFrag(t *testing.T, out, frags string) {
 	t.Helper()
-	if !regexp.MustCompile(`(?m)^\s*1\s+hlstats_Events_Frags$`).MatchString(out) {
-		t.Errorf("no line with 1 row of hlstats_Events_Frags")
+	if !regexp.MustCompile(`(?m)^\s*1\s+` + regexp.QuoteMeta(frags) + `$`).MatchString(out) {
+		t.Errorf("no line with 1 row of %s", frags)
 	}
 }

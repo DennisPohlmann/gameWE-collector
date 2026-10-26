@@ -80,8 +80,8 @@ func sourceConfig(d config.Database, from string, getenv func(string) string) (c
 
 // convertFlags are the flags of gamewe db convert.
 type convertFlags struct {
-	config, from, zone, mojibake string
-	yes, dryRun                  bool
+	config, from, zone, mojibake, sourcePrefix string
+	yes, dryRun                                bool
 }
 
 func parseConvertFlags(args []string) (convertFlags, error) {
@@ -91,6 +91,7 @@ func parseConvertFlags(args []string) (convertFlags, error) {
 	fs.StringVar(&f.config, "config", config.DefaultPath, "path to the YAML config file")
 	fs.StringVar(&f.from, "from", "", "the HLstatsX:CE database: NAME on the gameWE database server, or mysql://[user@]host[:port]/NAME (password in "+fromPasswordEnv+")")
 	fs.StringVar(&f.zone, "source-timezone", convert.ZoneServer, "time zone in which CE wrote eventTime: server (the CE server's), an IANA name such as Europe/Berlin, UTC or +01:00")
+	fs.StringVar(&f.sourcePrefix, "source-prefix", config.DefaultTablePrefix, "the table prefix of the CE database (DB_PREFIX of CE: <prefix>_Players)")
 	fs.StringVar(&f.mojibake, "mojibake", convert.MojibakeAuto, "double-encoded UTF-8 (MÃ¼ller): auto (repair in latin1 tables), repair (in all tables) or keep")
 	var c changeFlags
 	c.add(fs, "only print the plan")
@@ -130,6 +131,10 @@ func dbConvertCmd(args []string, c dbIO) error {
 	srcCfg, err := sourceConfig(cfg.Database, f.from, os.Getenv)
 	if err != nil {
 		return exitError{2, err.Error()}
+	}
+	srcCfg.TablePrefix = config.NormalizeTablePrefix(f.sourcePrefix)
+	if err := config.CheckTablePrefix(srcCfg.TablePrefix); err != nil {
+		return exitError{2, "-source-prefix " + err.Error()}
 	}
 	ctx, done, dst, err := connect(cfg.Database, 48*time.Hour)
 	if err != nil {

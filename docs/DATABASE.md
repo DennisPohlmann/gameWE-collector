@@ -17,7 +17,9 @@ the init script (database, users, rights). Emptying, dropping and cleaning up
 the database: [Maintenance](#maintenance-gamewe-db).
 
 What the collector writes into which table and column is described in
-[DB-SEMANTICS.md](DB-SEMANTICS.md).
+[DB-SEMANTICS.md](DB-SEMANTICS.md). The documentation names the tables
+`hlstats_*`; with another [table prefix](#table-prefix) read your prefix
+instead.
 
 Tested with every release: MariaDB 11.4 and 12.3, PostgreSQL 17 and 18. MySQL
 8 is not supported (the schema and the rights use MariaDB syntax). How the
@@ -197,6 +199,41 @@ For developers: a new column, index or table goes into
 `internal/schema/mysql/schema.sql` (then `make schema`), plus a new entry in
 `internal/database/migrations.go` (`Sync: true`); a new table also needs its
 grant decision in `grants.sql`. Released migrations are never changed.
+
+## Table prefix
+
+The tables are called `hlstats_Players`, `hlstats_Servers`, ... by default.
+A database that was created with another prefix (HLstatsX:CE `DB_PREFIX`,
+or several installations in one database) is used with
+`database.table_prefix` ([CONFIG.md](CONFIG.md#database)) in the collector
+and `DB_TABLE_PREFIX` in the web frontend, both set to the same value:
+
+```yaml
+database:
+  name: stats
+  table_prefix: gw   # tables gw_Players, gw_Servers, ... (gw_ is the same)
+```
+
+- Everything uses the prefix: `gamewe run`, `gamewe db migrate`, `init`,
+  `status`, `grants`, `seed`, `purge`, `optimize`, `reset`, `drop` (their
+  `-print` SQL too) and the jobs (`gamewe reset`, `inactive`, `awards`).
+  The table of the schema versions is `<prefix>_gamewe_schema_migrations`
+  (without a prefix: `gamewe_schema_migrations`, as before).
+- Tables of another prefix in the same database are never read, changed or
+  dropped. Each prefix has its own collector lock and job lock, so two
+  collectors with different prefixes can run on one database.
+- The prefix is the same for every table. It cannot be changed on a running
+  installation by changing the setting: rename the tables first (stop the
+  collector, `RENAME TABLE hlstats_Players TO gw_Players, ...` and
+  `gamewe_schema_migrations` to `gw_gamewe_schema_migrations`).
+- `gamewe check` shows a prefix other than `hlstats` in its `database:` line
+  and always as `database.table_prefix` in `-o json|yaml`.
+- An HLstatsX:CE database with its own `DB_PREFIX` is converted with
+  `gamewe db convert -source-prefix PREFIX`
+  ([MIGRATION-HLSTATSX.md](MIGRATION-HLSTATSX.md#3-convert)); CE and gameWE
+  may then share one database.
+- The web users' rights (`gamewe db grants`) are granted on the tables of
+  the prefix.
 
 ## Maintenance (gamewe db)
 

@@ -62,6 +62,7 @@ database:
   password: "change-me"
   # password_file: /etc/gamewe/collector/db-password   # alternative to password
   name: gamewe
+  # table_prefix: hlstats  # tables <prefix>_Players (DB_PREFIX of HLstatsX:CE); the web needs the same
   max_open_conns: 8
   connect_timeout: 10     # seconds
   tls:

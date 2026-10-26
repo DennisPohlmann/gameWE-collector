@@ -282,7 +282,7 @@ func TestMigrateHLstatsX(t *testing.T) {
 			if name2 != "Bravo ä" {
 				t.Errorf("player name %q", name2)
 			}
-			cat, _ := readCatalog(ctx, db, false)
+			cat, _ := readCatalog(ctx, db, false, db.Prefix)
 			if cat.hasIndex("hlstats_Events_Frags", "killerId") || !cat.hasIndex("hlstats_Events_Frags", "killer_time") {
 				t.Errorf("frags indexes %v", cat.indexes["hlstats_events_frags"])
 			}
@@ -357,7 +357,7 @@ func TestMigrateOldGameWE(t *testing.T) {
 			if err := db.QueryRow(`SELECT COUNT(*) FROM hlstats_Players WHERE playerId = 4711 AND skill = 1234`).Scan(&n); err != nil || n != 1 {
 				t.Errorf("player row: %d, %v", n, err)
 			}
-			cat, _ := readCatalog(ctx, db, db.Postgres())
+			cat, _ := readCatalog(ctx, db, db.Postgres(), db.Prefix)
 			if cat.hasIndex("hlstats_Events_Frags", indexName(db.Postgres(), "hlstats_Events_Frags", "killerId")) {
 				t.Error("killerId is still there")
 			}
@@ -406,7 +406,7 @@ func TestMigrateLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	unlock, err := migrateLock(ctx, conn, db.Postgres(), time.Second, nil)
+	unlock, err := migrateLock(ctx, conn, db.Postgres(), db.Prefix, time.Second, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -332,6 +332,7 @@ gamewe db reset                  # empty every table, reference data again: as n
 gamewe db drop                   # drop all gameWE tables (-print: the SQL for a database admin; MariaDB needs DROP)
 gamewe db convert -from hlstatsx -n   # HLstatsX:CE -> this new gameWE database: the plan only (MIGRATION-HLSTATSX.md)
 gamewe db convert -from hlstatsx -source-timezone Europe/Berlin   # plan, then "Convert now? [y/N]" (--force)
+gamewe db convert -from stats -source-prefix ce -n   # CE with DB_PREFIX ce (DATABASE.md, "Table prefix")
 ```
 
 `migrate`, `convert`, `reset` and `drop` refuse while a collector runs on the database,

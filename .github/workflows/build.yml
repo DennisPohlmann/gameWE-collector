@@ -137,6 +137,34 @@ jobs:
           GAMEWE_TEST_DB_TYPE: postgres
           GAMEWE_TEST_DB_PORT: 5432
         run: go test -count=1 -race -p 1 -tags integration ./internal/collector/ ./internal/admin/
+      # database.table_prefix: the gw_ tables beside the hlstats_ ones of the
+      # same databases; the rows of the hlstats_ tables must stay as they are.
+      - name: table prefix gw (MariaDB and PostgreSQL)
+        env:
+          GAMEWE_TEST_DB_PREFIX: gw
+          GAMEWE_TEST_INIT_MYSQL: 127.0.0.1:3306/gamewe_init
+          GAMEWE_TEST_INIT_PG: 127.0.0.1:5432/gamewe_init
+          GAMEWE_TEST_WEB_PASSWORD: webpw
+          GAMEWE_TEST_WEB_ADMIN_PASSWORD: admpw
+          GAMEWE_TEST_MIGRATE_HOST: 127.0.0.1
+        run: |
+          rows() { for t in mariadb postgres; do "$RUNNER_TEMP/gamewe" db reset -n -o json -config "$RUNNER_TEMP/gamewe-$t.yaml"; done; }
+          before=$(rows)
+          for db in gamewe gamewe_init; do
+            for t in mariadb postgres; do
+              sed 's/^database:$/database:\n  table_prefix: gw/' "$RUNNER_TEMP/$db-$t.yaml" > "$RUNNER_TEMP/gw-$db-$t.yaml"
+              "$RUNNER_TEMP/gamewe" db migrate -f -config "$RUNNER_TEMP/gw-$db-$t.yaml"
+              "$RUNNER_TEMP/gamewe" db migrate -n -config "$RUNNER_TEMP/gw-$db-$t.yaml"
+            done
+          done
+          go test -count=1 -tags integration -run Init ./internal/database/
+          for t in mysql:3306:root:root postgres:5432:postgres:postgres; do
+            IFS=: read -r typ port admin pw <<< "$t"
+            GAMEWE_TEST_DB_TYPE=$typ GAMEWE_TEST_DB_PORT=$port go test -count=1 -p 1 -tags integration ./internal/collector/ ./internal/admin/
+            GAMEWE_TEST_MIGRATE_TYPE=$typ GAMEWE_TEST_MIGRATE_PORT=$port GAMEWE_TEST_MIGRATE_ADMIN_USER=$admin GAMEWE_TEST_MIGRATE_ADMIN_PASSWORD=$pw \
+              go test -count=1 -p 1 -tags integration -run Migrate ./internal/database/ ./cmd/gamewe/
+          done
+          [ "$before" = "$(rows)" ] || { echo "the rows of the hlstats_ tables changed"; exit 1; }
 
   release:
     needs: [test, integration]

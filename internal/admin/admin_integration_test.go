@@ -34,6 +34,7 @@ func testDB(t *testing.T) *database.DB {
 	}
 	cfg.User, cfg.Password, cfg.Name = os.Getenv("GAMEWE_TEST_DB_USER"), os.Getenv("GAMEWE_TEST_DB_PASSWORD"), os.Getenv("GAMEWE_TEST_DB_NAME")
 	cfg.TLS.Mode = config.TLSDisable
+	cfg.TablePrefix = config.NormalizeTablePrefix(os.Getenv("GAMEWE_TEST_DB_PREFIX")) // e.g. gw: the tables gw_*
 	db, err := database.Open(cfg)
 	if err != nil {
 		t.Fatal(err)

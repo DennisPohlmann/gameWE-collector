@@ -55,6 +55,7 @@ func TestConfig(name, user, password string) config.Database {
 	cfg.Port, _ = strconv.Atoi(os.Getenv("GAMEWE_TEST_MIGRATE_PORT"))
 	cfg.Name, cfg.User, cfg.Password = name, user, password
 	cfg.TLS.Mode = config.TLSDisable
+	cfg.TablePrefix = config.NormalizeTablePrefix(os.Getenv("GAMEWE_TEST_DB_PREFIX")) // e.g. gw: the tables gw_*
 	cfg.MaxOpenConns = 4
 	return cfg
 }

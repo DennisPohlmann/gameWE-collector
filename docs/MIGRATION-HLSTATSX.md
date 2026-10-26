@@ -108,6 +108,12 @@ with the collector's user) or `mysql://user@host:port/name` for another
 server or user; its password goes into `GAMEWE_FROM_PASSWORD`, never on the
 command line. TLS and timeouts are those of `database.*`.
 
+`-source-prefix` is the `DB_PREFIX` of CE when it is not `hlstats` (CE's
+tables are then `<prefix>_Players`, ...). The gameWE tables get
+`database.table_prefix` of the config ([DATABASE.md](DATABASE.md#table-prefix)).
+With different prefixes CE and gameWE may be in the same database:
+`-from` then names that database.
+
 The plan shows (example with test data, shortened):
 
 ```

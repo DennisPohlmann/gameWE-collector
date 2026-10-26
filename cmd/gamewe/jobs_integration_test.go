@@ -161,7 +161,7 @@ func TestMigrateJobCommands(t *testing.T) {
 	// db purge also deletes the finished jobs older than 30 days.
 	sql(`UPDATE hlstats_gamewe_jobs SET requested_at = ?`, time.Now().Add(-31*24*time.Hour).Unix())
 	out, code = gw(t, bin, "db", "purge", "-older-than", "7", "-dry-run", "-config", cfg)
-	expect(t, out, code, 0, "hlstats_gamewe_jobs", "dry run: nothing changed")
+	expect(t, out, code, 0, tablePrefix(d).Table("hlstats_gamewe_jobs"), "dry run: nothing changed")
 	out, code = gw(t, bin, "db", "purge", "-older-than", "7", "-yes", "-config", cfg)
 	expect(t, out, code, 0, "done: 1 rows deleted")
 	if n := num(`SELECT COUNT(*) FROM hlstats_gamewe_jobs`); n != 0 {

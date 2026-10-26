@@ -168,7 +168,7 @@ func Inspect(ctx context.Context, src, dst *database.DB, opt Options) (*Plan, er
 	if err := dst.QueryRowContext(ctx, `SELECT DATABASE(), @@hostname, @@port`).Scan(&dName, &dHost, &dPort); err != nil {
 		return nil, fmt.Errorf("gameWE database: %w", database.Explain(err))
 	}
-	if strings.EqualFold(p.SourceName, dName) && sHost == dHost && sPort == dPort {
+	if strings.EqualFold(p.SourceName, dName) && sHost == dHost && sPort == dPort && strings.EqualFold(src.Prefix.String(), dst.Prefix.String()) {
 		return nil, ErrSameDB
 	}
 	var tz, sys string
@@ -186,14 +186,15 @@ func Inspect(ctx context.Context, src, dst *database.DB, opt Options) (*Plan, er
 	if err != nil {
 		return nil, fmt.Errorf("source tables: %w", err)
 	}
-	tables := map[string]string{} // lower -> name
+	tables := map[string]string{} // lower -> name, both as hlstats_ (src.Prefix: -source-prefix)
 	for rows.Next() {
 		var t, coll string
 		if err := rows.Scan(&t, &coll); err != nil {
 			rows.Close()
 			return nil, err
 		}
-		if !strings.HasPrefix(strings.ToLower(t), "hlstats_") {
+		t, ok := src.Prefix.Logical(t)
+		if !ok || !strings.HasPrefix(strings.ToLower(t), "hlstats_") {
 			continue
 		}
 		tables[strings.ToLower(t)] = t
@@ -215,6 +216,10 @@ func Inspect(ctx context.Context, src, dst *database.DB, opt Options) (*Plan, er
 		if err := rows.Scan(&t, &c); err != nil {
 			rows.Close()
 			return nil, err
+		}
+		t, ok := src.Prefix.Logical(t)
+		if !ok {
+			continue
 		}
 		t = strings.ToLower(t)
 		if p.cols[t] == nil {
@@ -331,7 +336,7 @@ func Inspect(ctx context.Context, src, dst *database.DB, opt Options) (*Plan, er
 		if err != nil {
 			return nil, err
 		}
-		p.Steps = append(p.Steps, StepInfo{Name: s.name, Source: s.from, Target: s.table, Rows: n, Note: s.note})
+		p.Steps = append(p.Steps, StepInfo{Name: s.name, Source: src.Prefix.Script(s.from), Target: dst.Prefix.Script(s.table), Rows: n, Note: s.note})
 	}
 	for _, sk := range notConverted {
 		name, ok := tables[strings.ToLower(sk.Table)]
@@ -342,7 +347,7 @@ func Inspect(ctx context.Context, src, dst *database.DB, opt Options) (*Plan, er
 		if err != nil {
 			return nil, err
 		}
-		p.Skipped = append(p.Skipped, SkippedTable{Table: name, Rows: n, Why: sk.Why})
+		p.Skipped = append(p.Skipped, SkippedTable{Table: src.Prefix.Table(name), Rows: n, Why: sk.Why})
 	}
 	return p, nil
 }
@@ -433,7 +438,7 @@ func Run(ctx context.Context, src, dst *database.DB, p *Plan, opt Options) (*Res
 		}
 	}
 	for i, s := range steps {
-		fmt.Fprintf(opt.Out, "[%d/%d] %s: %s -> %s\n", i+1, len(steps), s.name, s.from, s.table)
+		fmt.Fprintf(opt.Out, "[%d/%d] %s: %s -> %s\n", i+1, len(steps), s.name, src.Prefix.Script(s.from), dst.Prefix.Script(s.table))
 		t0 := time.Now()
 		before, err := c.count(ctx, s.table)
 		if err != nil {

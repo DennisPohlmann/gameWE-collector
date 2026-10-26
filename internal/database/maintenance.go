@@ -27,14 +27,14 @@ type TableRows struct {
 
 // OwnTables returns the tables of this collector's schema that exist in the
 // database, in schema order, followed by MigrationsTable if it exists, and
-// the other hlstats_* tables (of an older HLstatsX), which the maintenance
-// commands leave alone.
+// the other hlstats_* tables (of an older HLstatsX; named as in the
+// database, with the prefix), which the maintenance commands leave alone.
 func OwnTables(ctx context.Context, db *DB) (own, other []string, err error) {
 	tables, err := schema.Tables(db.Type)
 	if err != nil {
 		return nil, nil, err
 	}
-	cat, err := readCatalog(ctx, db.DB, db.Postgres())
+	cat, err := readCatalog(ctx, db.DB, db.Postgres(), db.Prefix)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -50,7 +50,7 @@ func OwnTables(ctx context.Context, db *DB) (own, other []string, err error) {
 	}
 	for t := range cat.tables {
 		if strings.HasPrefix(t, "hlstats_") && !known[t] {
-			other = append(other, t)
+			other = append(other, db.Prefix.Table(t))
 		}
 	}
 	slices.Sort(other)
@@ -174,7 +174,7 @@ func ResetData(ctx context.Context, db *DB) error {
 		}
 	}
 	if err != nil {
-		return rightsHint(ctx, conn, db.Postgres(), err)
+		return rightsHint(ctx, conn, db.Postgres(), db.Prefix, err)
 	}
 	return runScript(ctx, conn, db.Type, schema.Seed(db.Type))
 }
@@ -210,7 +210,7 @@ func Purge(ctx context.Context, db *DB, before time.Time, dry bool) ([]TableRows
 	if err != nil {
 		return nil, err
 	}
-	cat, err := readCatalog(ctx, db.DB, db.Postgres())
+	cat, err := readCatalog(ctx, db.DB, db.Postgres(), db.Prefix)
 	if err != nil {
 		return nil, err
 	}

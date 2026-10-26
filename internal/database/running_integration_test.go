@@ -97,9 +97,9 @@ func TestMigrateCollectorLock(t *testing.T) {
 		kill = `SELECT 'SELECT pg_terminate_backend(' || pid || ')' FROM pg_locks WHERE locktype = 'advisory' AND granted AND objid::bigint = $1`
 	}
 	var q string
-	arg := any(runLockPrefix)
+	arg := any(db.Prefix.lockName(runLockPrefix))
 	if admin.Postgres() {
-		arg = int64(runLockKey & 0xffffffff)
+		arg = db.Prefix.lockKey(runLockKey) & 0xffffffff
 	}
 	if err := admin.QueryRow(kill, arg).Scan(&q); err != nil {
 		t.Fatal(err)
