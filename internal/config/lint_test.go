@@ -3,6 +3,7 @@
 package config
 
 import (
+	"errors"
 	"net"
 	"net/netip"
 	"os"
@@ -76,6 +77,8 @@ func TestLint(t *testing.T) {
 		{name: "empty", in: "", want: []wantFinding{{SevError, "", "empty"}}},
 		{name: "no mapping", in: "- a\n", want: []wantFinding{{SevError, "", "want a mapping"}}},
 		{name: "misspelled key", in: lintBase + "  pasword: x\n", want: []wantFinding{{SevError, "database.pasword", `did you mean "password"`}}},
+		{name: "key set twice", in: lintBase + "features:\n  rcon_status:\n    enabled: true\n  rcon_status:\n    enabled: false\n",
+			want: []wantFinding{{SevError, "features.rcon_status", "set twice, first in line 7"}}},
 		{name: "misspelled section", in: lintBase + "listn:\n  port: 1\n", want: []wantFinding{{SevError, "listn", `did you mean "listen"`}}},
 		{name: "unknown key, list of known keys", in: lintBase + "features:\n  rcon_status:\n    frequency: 5s\n",
 			want: []wantFinding{{SevError, "features.rcon_status.frequency", "known here: enabled, interval"}}},
@@ -290,5 +293,55 @@ func TestSuggest(t *testing.T) {
 		if got := suggest(in, []string{"password", "port"}); got != want {
 			t.Errorf("suggest(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// A key set twice is one error; the rest of the file is still checked
+// (no follow-up errors from a half-decoded file).
+func TestLintDuplicateOnlyError(t *testing.T) {
+	stubInterfaces(t)
+	r := Lint([]byte(lintBase+"listen:\n  udp:\n    port: 41337\nlisten:\n  udp:\n    port: 41338\n"), LintOptions{})
+	if r.Errors() != 1 || !(wantFinding{SevError, "listen", "set twice, first in line 6"}).in(r.Findings) {
+		t.Fatalf("findings = %+v", r.Findings)
+	}
+	if r.Config.Listen.Port != 41337 {
+		t.Errorf("port = %d, want the first one, 41337", r.Config.Listen.Port)
+	}
+}
+
+// Load (gamewe run, check, ...) reports every error of the file with its
+// line, as gamewe config test, not only the first one.
+func TestLoadListsAllErrors(t *testing.T) {
+	stubInterfaces(t)
+	p := filepath.Join(t.TempDir(), "config.yaml")
+	in := lintBase + "foo: 1\nlisten:\n  udp:\n    port: 99999\nfeatures:\n  update_check: maybe\n  server_info:\n    interval: 5s\n"
+	if err := os.WriteFile(p, []byte(in), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(p)
+	var fe *FileError
+	if !errors.As(err, &fe) {
+		t.Fatalf("err = %v, want a *FileError", err)
+	}
+	msg := err.Error()
+	for _, want := range []string{"4 errors", "line 6: foo: unknown key", "line 9: listen.udp.port: 99999 out of range",
+		`line 11: features.update_check: want true or false, not "maybe"`, "line 13: features.server_info.interval"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("error lacks %q:\n%s", want, msg)
+		}
+	}
+	if strings.Contains(msg, "unmarshal") || strings.Contains(msg, "config.Config") {
+		t.Errorf("error shows the raw YAML decoder message:\n%s", msg)
+	}
+}
+
+// A valid file loads as before.
+func TestLoadValid(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(p, []byte(lintBase), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(p); err != nil {
+		t.Fatal(err)
 	}
 }

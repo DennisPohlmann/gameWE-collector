@@ -657,13 +657,61 @@ func Defaults() Config {
 		SourceBans:      SourceBans{Enabled: true, Interval: "30m"}}}
 }
 
-// Load reads, decodes and validates the YAML file at path.
+// Load reads, decodes and validates the YAML file at path. When the file
+// is invalid, the error lists every error Lint finds in it (with its line),
+// as gamewe config test does, not only the first one Parse stops at.
 func Load(path string) (Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return Config{}, err
 	}
-	return Parse(data)
+	cfg, err := Parse(data)
+	if err != nil {
+		if fe := fileErrors(data); fe != nil {
+			return Config{}, fe
+		}
+	}
+	return cfg, err
+}
+
+// FileError is an invalid config file: the errors of Lint, by line.
+type FileError struct {
+	Findings []Finding
+}
+
+func (e *FileError) Error() string {
+	var b strings.Builder
+	if len(e.Findings) == 1 {
+		b.WriteString("1 error")
+	} else {
+		fmt.Fprintf(&b, "%d errors", len(e.Findings))
+	}
+	b.WriteString(" (gamewe config test also shows the warnings):")
+	for _, f := range e.Findings {
+		b.WriteString("\n  ")
+		if f.Line > 0 {
+			fmt.Fprintf(&b, "line %d: ", f.Line)
+		}
+		if f.Key != "" {
+			b.WriteString(f.Key + ": ")
+		}
+		b.WriteString(f.Msg)
+	}
+	return b.String()
+}
+
+// fileErrors lints data and returns its errors, nil if Lint finds none.
+func fileErrors(data []byte) *FileError {
+	var errs []Finding
+	for _, f := range Lint(data, LintOptions{}).Findings {
+		if f.Severity == SevError {
+			errs = append(errs, f)
+		}
+	}
+	if len(errs) == 0 {
+		return nil
+	}
+	return &FileError{Findings: errs}
 }
 
 // legacy names top-level keys of an old config format, which now live elsewhere.

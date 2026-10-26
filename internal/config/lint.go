@@ -290,12 +290,21 @@ func (l *linter) walk(n *yaml.Node, t reflect.Type, path string, drop map[string
 		fields[name] = f.Type
 	}
 	kept := n.Content[:0:0]
+	seen := map[string]int{} // key -> line, in this mapping
 	for i := 0; i+1 < len(n.Content); i += 2 {
 		k, v := n.Content[i], n.Content[i+1]
 		p := k.Value
 		if path != "" {
 			p = path + "." + k.Value
 		}
+		if first, ok := seen[k.Value]; ok {
+			// Left out, so the rest decodes and is checked; the
+			// decoder would stop at it.
+			l.findings = append(l.findings, Finding{Severity: SevError, Key: p, Line: k.Line,
+				Msg: fmt.Sprintf("set twice, first in line %d: keep one of them", first)})
+			continue
+		}
+		seen[k.Value] = k.Line
 		l.lines[p] = k.Line
 		l.set[p] = true
 		l.valueLines[k.Line] = p

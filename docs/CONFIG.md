@@ -24,7 +24,10 @@ Unknown keys are an error. Keys of an older format (`servers`, `stats`,
 went. The file contains the database password, so keep it at `640 root:gamewe`.
 `gamewe config test` (also `gamewe -t`) checks the file without starting
 anything and lists every error and warning with its line
-([USAGE.md](USAGE.md#checking-the-config-file)).
+([USAGE.md](USAGE.md#checking-the-config-file)). `gamewe run` and every
+other command that reads the file stop on an invalid one and list all its
+errors the same way, each with its line (`gamewe run` exits with 78).
+A key set twice in the same section is an error too.
 
 ### listen
 
