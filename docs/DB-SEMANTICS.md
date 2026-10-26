@@ -41,8 +41,9 @@ variant are listed in [PostgreSQL](#postgresql) at the end.
   by the ranking's bot switch for its existing bots; 2 = banned, set by
   the collector for VAC-ban disconnects and permanent bans
   (`Banid: ... banned "permanently"`), and with `features.sourcebans` while a
-  SourceBans ban runs (`hlstats_Players_Bans`; set to 2 only from 0, and back
-  to 0 when that ban ends, unless another running ban or a VAC kick holds it);
+  SourceBans ban runs, and while a VAC record of the VAC block runs
+  (`hlstats_Players_Bans`; set to 2 only from 0, and back to 0 when that ban
+  ends, unless another running ban or a VAC kick holds it);
   3 = hidden by the player with
   `!hideranking` (HLstatsX used 3 for "inactive", which gameWE
   does not set). The player switches only between 0 and 3; 1 and 2 are never
@@ -124,7 +125,7 @@ database without the column the collector writes the events without it
 | `hlstats_Players` | every player event | created per game with `skill` = start_points; `clan` = `hlstats_Clans.clanId` when the name has a clan tag matching `hlstats_ClanTags` (set on first sight and rename; a name without tag leaves the clan as it is); `hideranking` = 2 for banned players; `kills`, `deaths`, `suicides`, `headshots`, `death_headshots`, `team_kills`, `team_killed`, `skill`, `last_skill_change`, `kill_streak` / `death_streak` (best streak, current streak tracked in memory), `hpk` = headshots/kills, `kpd` = kills/deaths, `death_hpk`, `shots`, `hits` (weaponstats), `wins`, `losses`, `rounds`, `connection_time` (seconds, added on disconnect), `last_event` (Unix time of the player's latest event, connect, visit start or end) |
 | `hlstats_PlayersInactive` | daily with `features.inactive_players` (off by default); a known player returns | the same columns as `hlstats_Players`. Once a day at `features.inactive_players.time` the rows of players whose `last_event` is older than `MinActivity` days (`hlstats_Options`, default 28) and who have no `hlstats_Livestats` row (bots included) are moved here unchanged, 500 per batch; nothing else of the player is deleted (`hlstats_PlayerUniqueIds`, `_Players_Data`, `_PlayerNames`, events and history stay). When the player is seen again (first log line, RCON status) the row is moved back to `hlstats_Players` unchanged, also when the move happened while the player was being looked up (the visit start checks it). If a player is in both tables (a crash between the steps), the row in `hlstats_Players` counts and the copy is removed at the next move. Readers of a player by id look in both tables; rankings, totals and `hlstats_Servers.players` count only `hlstats_Players`. |
 | `hlstats_PlayerUniqueIds` | new player | (`playerId`, `uniqueId`, `game`) |
-| `hlstats_Players_Bans` | `features.sourcebans`: a player kicked with SourceBans' ban message who has a running ban on the list; every `features.sourcebans.interval` | one row per ban and player (unique: `player_id`, `ban_type`, `banned_at`): `game`, `unique_id`, `ban_type` (`sourcebans`), `reason` (from the list, at most 255 characters), `length_minutes` (0: permanent or unknown), `banned_at` (Unix time from the list, else the time of the first record), `ends_at` (0: permanent or unknown), `active` (1 while the ban runs), `hid` (1: this ban set `hideranking` 2), `checked_at`, `ended_at`. A running ban of the player is updated instead of adding a second row. It ends (`active` 0, `ended_at`) when `ends_at` has passed or the list no longer shows it as running; then the player gets `hideranking` 0 back if `hid` is 1, no other running ban has `hid` 1 and `hideranking` is still 2. A VAC kick sets `hid` 0 on the player's running bans. Rows are never deleted except by `gamewe reset -mode all` of the game. Readable by `gamewe_web` (the bans page). |
+| `hlstats_Players_Bans` | `features.sourcebans`: a player kicked with SourceBans' ban message who has a running ban on the list; every `features.sourcebans.interval` | one row per ban and player (unique: `player_id`, `ban_type`, `banned_at`): `game`, `unique_id`, `ban_type` (`sourcebans`, or `vac` for the VAC block), `reason` (from the list, at most 255 characters), `length_minutes` (0: permanent or unknown), `banned_at` (Unix time from the list, else the time of the first record), `ends_at` (0: permanent or unknown), `active` (1 while the ban runs), `hid` (1: this ban set `hideranking` 2), `checked_at`, `ended_at`. A running ban of the player is updated instead of adding a second row. It ends (`active` 0, `ended_at`) when `ends_at` has passed or the list no longer shows it as running; then the player gets `hideranking` 0 back if `hid` is 1, no other running ban has `hid` 1 and `hideranking` is still 2. A VAC kick sets `hid` 0 on the player's running bans. Rows are never deleted except by `gamewe reset -mode all` of the game. Readable by `gamewe_web` (the bans page). |
 | `hlstats_Players_Data` | new player, connect, rename | `first_connect`, `last_connect` (Unix time), `total_connects`, `lastName` (the name shown in game) |
 | `hlstats_PlayerNames` | first seen on a server, rename, kills, disconnect | per (player, name): `numuses` + 1 per visit, `lastuse` (UTC datetime), `connection_time`, `kills`, `deaths`, `suicides`, `headshots`, `shots`, `hits` |
 | `hlstats_Players_History` | every scoring event, round end, disconnect | one row per (player, UTC day, game): `kills`, `deaths`, `suicides`, `headshots`, `team_kills`, `shots`, `hits`, `connection_time`, `rounds`, `wins`, `losses` added; `kill_streak`, `death_streak` = best of the day; `skill` = latest; `skill_change` = sum |
@@ -148,6 +149,35 @@ database without the column the collector writes the events without it
 | `hlstats_Events_Latency` | RCON status | one ping sample per human player and minute online, if the ping is above 0 (no bots, no samples of 0 such as LAN): `timestamp_id`, `game_id`, `server_id`, `map` (`hlstats_Maps.id`), `playerId`, `ping` (ms). Each sample also updates the player's running average `hlstats_Players_Data.average_ping` / `average_ping_count` (the count stops at 65535). Samples older than 90 days are deleted by the daily awards run. |
 | `hlstats_Events_Locations` | plugin location lines (`located on "kill"` / `"suicide"`), with `gamewe_store_locations` = 1 | one row per position: `day` = days since 1970-01-01 (UTC), `map` = `hlstats_Maps.id` (0 if unknown), `type` 1 = where a killer stood, 2 = where a player died (killed or suicide), `playerId`, `loc_1` = x, `loc_2` = y (map units, rounded) |
 | `hlstats_Events_Chat` | chat, with `gamewe_store_chat` = 1 (the default); readable by `gamewe_web_admin` only | `server_id`, `message_mode` 1 = say, 2 = say_team, `message` (commands such as `!rank` included) |
+
+## VAC block
+
+Per ranking, `hlstats_Options` `gamewe_block_vac_<game>` = 1 (web admin or
+`gamewe game set CODE -block-vac=true`; missing or 0: off, read every
+minute) keeps players with a VAC ban on record out. Off, nothing below
+happens and no request is made.
+
+- **Connect:** every `connected` line of a player (not a bot, a Steam
+  account) of such a ranking is checked in the background: the player is
+  registered as usual first. A running `vac` record of the player kicks at
+  once; otherwise the Steam Web API is asked (`ISteamUser/GetPlayerBans`,
+  key `hlstats_Options` `gamewe_steam_api_key` from the web admin, 8 s; the
+  answer, with and without a ban, is kept 24 hours in memory; at most 256
+  checks wait, more are dropped). `VACBanned` or `NumberOfVACBans` > 0 is a
+  VAC ban on record (game bans and community bans are not).
+- **VAC ban on record:** a row in `hlstats_Players_Bans` (`ban_type` `vac`,
+  `reason` `VAC ban on record (N)`, no length or end; `banned_at` the first
+  record), `hideranking` 0 → 2 as for SourceBans bans, and the kick
+  `kickid <userid> "VAC ban on record"` (GoldSrc: `kick #<userid> "..."`)
+  over RCON. A server without `rcon_password` gets no kick; the record is
+  stored anyway.
+- **Fail open:** without a valid key, with an API error or timeout the
+  player is not checked and plays as usual (logged as a warning).
+- **End:** when a ranking switches `gamewe_block_vac_<game>` off, its running `vac`
+  records end at once and the players are back in the ranking (rules of
+  `hlstats_Players_Bans` above). Once a day the running records are asked
+  again (100 players per request): a player Steam no longer shows with a
+  VAC ban gets the record ended too.
 
 ## RCON status
 

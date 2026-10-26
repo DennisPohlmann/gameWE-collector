@@ -100,6 +100,18 @@ permanent, running, expired, lifted). The running bans are read again the
 same way every `features.sourcebans.interval`. Nothing is sent to the game
 server; SourceBans itself kicks the player.
 
+**Steam Web API (VAC block).** For the rankings with
+`gamewe_block_vac_<game>` = 1 the collector asks
+`GET https://api.steampowered.com/ISteamUser/GetPlayerBans/v1/?key=<key>&steamids=<SteamID64,...>`
+(user agent `gameWE collector`, 8 s, at most 1 MiB, redirects not followed;
+key: `hlstats_Options` `gamewe_steam_api_key`, never logged; errors are
+logged without the address). It is asked for a connecting player whose
+answer is not cached (24 hours), and once a day for up to 100 recorded
+players per request. A player with a VAC ban on record is kicked over RCON:
+`kickid <userid> "VAC ban on record"` (Source, Source 2) or
+`kick #<userid> "VAC ban on record"` (GoldSrc); see DB-SEMANTICS.md, "VAC
+block".
+
 Replies are console commands that the collector sends over **Source RCON** (TCP,
 to the server's `address` and `port` with `rcon_password` from `hlstats_Servers`).
 The plugin offers them. The collector uses the `gamewe_` prefix, which the gameWE

@@ -3,9 +3,13 @@
 package settings
 
 import (
+	"bytes"
+	"fmt"
+	"log/slog"
 	"os"
 	"reflect"
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -100,5 +104,46 @@ func TestSeedMatchesDefaults(t *testing.T) {
 	s, warn := FromOptions(opts)
 	if len(warn) != 0 || !reflect.DeepEqual(s, Defaults()) {
 		t.Errorf("seed differs from defaults: %+v %q", s, warn)
+	}
+}
+
+// The Steam Web API key is read but never printed: not by fmt, slog or
+// `gamewe option list` (not in Keys), and an invalid one is not repeated.
+func TestSteamAPIKey(t *testing.T) {
+	const key = "0123456789abcdef0123456789ABCDEF" // not a real key
+	s, warn := FromOptions(map[string]string{"gamewe_steam_api_key": " " + key + " "})
+	if string(s.SteamAPIKey) != key || len(warn) != 0 {
+		t.Fatalf("key %q, warnings %v", s.SteamAPIKey, warn)
+	}
+	var buf bytes.Buffer
+	slog.New(slog.NewTextHandler(&buf, nil)).Info("x", "settings", s, "key", s.SteamAPIKey)
+	for _, out := range []string{fmt.Sprintf("%v %+v %#v %s", s, s, s, s.SteamAPIKey), buf.String()} {
+		if strings.Contains(out, key) {
+			t.Errorf("key printed: %s", out)
+		}
+	}
+	for _, k := range Keys() {
+		if k.Name == "gamewe_steam_api_key" {
+			t.Error("the key is listed in Keys")
+		}
+	}
+	s, warn = FromOptions(map[string]string{"gamewe_steam_api_key": "secret-but-wrong"})
+	if s.SteamAPIKey != "" || len(warn) != 0 {
+		t.Errorf("invalid key: %q %v", s.SteamAPIKey, warn)
+	}
+}
+
+// gamewe_block_vac_<game>: off without a key and for 0/off/empty, no
+// warning for the per-ranking key.
+func TestBlockVAC(t *testing.T) {
+	s, warn := FromOptions(map[string]string{"gamewe_block_vac_css": "1", "gamewe_block_vac_tf": "off", "gamewe_block_vac_dod": ""})
+	if len(warn) != 0 || !s.BlockVAC("css") || s.BlockVAC("tf") || s.BlockVAC("dod") || s.BlockVAC("cstrike") {
+		t.Errorf("%v %v", s.VACBlocked, warn)
+	}
+	if g := s.VACBlockGames(); len(g) != 1 || !g["css"] {
+		t.Errorf("games %v", g)
+	}
+	if BlockVACKey("css") != "gamewe_block_vac_css" {
+		t.Error(BlockVACKey("css"))
 	}
 }

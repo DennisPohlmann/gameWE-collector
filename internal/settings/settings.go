@@ -8,6 +8,7 @@ package settings
 
 import (
 	"fmt"
+	"log/slog"
 	"sort"
 	"strconv"
 	"strings"
@@ -49,6 +50,8 @@ type Settings struct {
 	BotsRanked    map[string]bool // gamewe_rank_bots_<game>
 	BotsPoints    map[string]bool // gamewe_bot_points_<game>
 	BotsKills     map[string]bool // gamewe_bot_kills_<game>
+	VACBlocked    map[string]bool // gamewe_block_vac_<game> (BlockVAC; a ranking without a key: off)
+	SteamAPIKey   Secret          // gamewe_steam_api_key (web admin, Settings → Steam; never logged)
 	GeoIPDB       string          // gamewe_geoip_db (path of a MaxMind-format city database)
 	SourceBansURL string          // gamewe_sourcebans_url (public ban list, shared with the web)
 	ServerLoad    bool            // gamewe_server_load
@@ -97,6 +100,47 @@ func (s Settings) BotPoints(game string) bool { return on(s.BotsPoints, game) }
 // headshots (kill ranking, K/D, the kill-based ranks) in a ranking; the
 // kill itself is always stored. Default true.
 func (s Settings) BotKills(game string) bool { return on(s.BotsKills, game) }
+
+// BlockVACKey is the option key of a ranking's VAC block.
+func BlockVACKey(game string) string { return "gamewe_block_vac_" + game }
+
+// BlockVAC reports whether a ranking keeps players with a VAC ban on record
+// out (kicked at connect, recorded as banned). Default false.
+func (s Settings) BlockVAC(game string) bool { return s.VACBlocked[game] }
+
+// VACBlockGames returns the rankings with the VAC block on.
+func (s Settings) VACBlockGames() map[string]bool {
+	m := map[string]bool{}
+	for g, on := range s.VACBlocked {
+		if on {
+			m[g] = true
+		}
+	}
+	return m
+}
+
+// Secret is a value that must never reach a log, an error or the output:
+// fmt and slog print it as "[hidden]" (empty: "").
+type Secret string
+
+func (s Secret) String() string {
+	if s == "" {
+		return ""
+	}
+	return "[hidden]"
+}
+
+// GoString hides the value from %#v too.
+func (s Secret) GoString() string { return strconv.Quote(s.String()) }
+
+// LogValue hides the value from slog.
+func (s Secret) LogValue() slog.Value { return slog.StringValue(s.String()) }
+
+// SteamKey reports whether v looks like a Steam Web API key (32 hex
+// characters).
+func SteamKey(v string) bool {
+	return len(v) == 32 && strings.Trim(strings.ToUpper(v), "0123456789ABCDEF") == ""
+}
 
 func on(m map[string]bool, game string) bool {
 	v, ok := m[game]
@@ -183,7 +227,8 @@ func gameCode(g string) bool {
 // gamewe_totpp_<hash>), the scheduled ranking resets and hall of fame per
 // game (gamewe_reset_schedule_<game>, gamewe_reset_mode_<game>,
 // gamewe_reset_last_<game>, gamewe_hof_<game>), the bot settings per game
-// (gamewe_rank_bots_<game>, gamewe_bot_points_<game>, gamewe_bot_kills_<game>), the collector's heartbeat and
+// (gamewe_rank_bots_<game>, gamewe_bot_points_<game>, gamewe_bot_kills_<game>), the VAC block per game
+// (gamewe_block_vac_<game>), the collector's heartbeat and
 // version and retired keys that the migrations delete.
 func otherKey(k string) bool {
 	switch k {
@@ -200,7 +245,7 @@ func otherKey(k string) bool {
 	if n, ok := strings.CutPrefix(k, "gamewe_link_"); ok {
 		return n != "" && strings.Trim(n, "0123456789") == ""
 	}
-	for _, p := range []string{"gamewe_reset_schedule_", "gamewe_reset_mode_", "gamewe_reset_last_", "gamewe_hof_", "gamewe_rank_bots_", "gamewe_bot_points_", "gamewe_bot_kills_"} {
+	for _, p := range []string{"gamewe_reset_schedule_", "gamewe_reset_mode_", "gamewe_reset_last_", "gamewe_hof_", "gamewe_rank_bots_", "gamewe_bot_points_", "gamewe_bot_kills_", "gamewe_block_vac_"} {
 		if g, ok := strings.CutPrefix(k, p); ok {
 			return gameCode(g)
 		}
@@ -258,7 +303,8 @@ func FromOptions(opts map[string]string) (Settings, []string) {
 	num("gamewe_idle_timeout", &s.IdleTimeout, 0)
 	flag("gamewe_raw_messages", &s.RawMessages)
 	flag("gamewe_store_locations", &s.StoreLocations)
-	// The bot settings of each ranking (keys sorted: stable warnings).
+	// The bot settings and the VAC block of each ranking (keys sorted:
+	// stable warnings).
 	var keys []string
 	for k := range opts {
 		keys = append(keys, k)
@@ -268,12 +314,14 @@ func FromOptions(opts map[string]string) (Settings, []string) {
 		for _, f := range []struct {
 			prefix string
 			dst    *map[string]bool
-		}{{"gamewe_rank_bots_", &s.BotsRanked}, {"gamewe_bot_points_", &s.BotsPoints}, {"gamewe_bot_kills_", &s.BotsKills}} {
+			def    bool
+		}{{"gamewe_rank_bots_", &s.BotsRanked, true}, {"gamewe_bot_points_", &s.BotsPoints, true}, {"gamewe_bot_kills_", &s.BotsKills, true},
+			{"gamewe_block_vac_", &s.VACBlocked, false}} {
 			g, ok := strings.CutPrefix(k, f.prefix)
 			if !ok || !gameCode(g) {
 				continue
 			}
-			v := true
+			v := f.def
 			flag(k, &v)
 			if *f.dst == nil {
 				*f.dst = map[string]bool{}
@@ -299,6 +347,11 @@ func FromOptions(opts map[string]string) (Settings, []string) {
 	}
 	if v, ok := opts["gamewe_sourcebans_url"]; ok {
 		s.SourceBansURL = strings.TrimSpace(v)
+	}
+	// The web admin checks the key; an invalid one is not used (the VAC
+	// block reports a missing key).
+	if v := strings.TrimSpace(opts["gamewe_steam_api_key"]); SteamKey(v) {
+		s.SteamAPIKey = Secret(v)
 	}
 	if v, ok := opts["gamewe_command_prefix"]; ok {
 		switch p := strings.ToLower(strings.TrimSpace(v)); p {

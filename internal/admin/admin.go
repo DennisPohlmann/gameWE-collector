@@ -86,12 +86,14 @@ type Game struct {
 	Engine  string `json:"engine"`
 	Hidden  bool   `json:"hidden"`
 	// The ranking's bot settings (settings.RankBots, settings.BotPoints).
-	RankBots  bool   `json:"rank_bots"`
-	BotPoints bool   `json:"bot_points"`
-	BotKills  bool   `json:"bot_kills"`
-	Servers   int    `json:"servers"`
-	Players   int    `json:"players"`
-	Name      string `json:"name"`
+	RankBots  bool `json:"rank_bots"`
+	BotPoints bool `json:"bot_points"`
+	BotKills  bool `json:"bot_kills"`
+	// BlockVAC: players with a VAC ban on record are kicked (settings.BlockVAC).
+	BlockVAC bool   `json:"block_vac"`
+	Servers  int    `json:"servers"`
+	Players  int    `json:"players"`
+	Name     string `json:"name"`
 }
 
 // realgameCol is the column expression of hlstats_Games.realgame: the
@@ -136,13 +138,14 @@ func (a *Admin) ListGames(ctx context.Context) error {
 		return err
 	}
 	w := tabwriter.NewWriter(a.Out, 0, 2, 2, ' ', 0)
-	fmt.Fprintln(w, "CODE\tREALGAME\tENGINE\tHIDDEN\tBOTS\tSERVERS\tPLAYERS\tNAME")
+	fmt.Fprintln(w, "CODE\tREALGAME\tENGINE\tHIDDEN\tBOTS\tVAC\tSERVERS\tPLAYERS\tNAME")
 	for _, g := range list {
 		rg := g.Realgame
 		if g.Guessed {
 			rg += "?"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%d\t%d\t%s\n", g.Code, rg, g.Engine, map[bool]string{true: "yes"}[g.Hidden], botsText(g), g.Servers, g.Players, g.Name)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\t%s\n", g.Code, rg, g.Engine, map[bool]string{true: "yes"}[g.Hidden], botsText(g),
+			map[bool]string{true: "blocked", false: "-"}[g.BlockVAC], g.Servers, g.Players, g.Name)
 	}
 	return w.Flush()
 }
@@ -187,6 +190,7 @@ func (a *Admin) Games(ctx context.Context) ([]Game, error) {
 		_, engine, warn := games.Resolve(g.Realgame, g.Code)
 		g.Engine, g.Guessed, g.Hidden = engine.String(), warn != "", hidden == "1"
 		g.RankBots, g.BotPoints, g.BotKills = set.RankBots(g.Code), set.BotPoints(g.Code), set.BotKills(g.Code)
+		g.BlockVAC = set.BlockVAC(g.Code)
 		list = append(list, g)
 	}
 	return list, rows.Err()
@@ -310,11 +314,13 @@ type GameFields struct {
 	// Bot settings of the ranking (hlstats_Options gamewe_rank_bots_<game>,
 	// gamewe_bot_points_<game>, gamewe_bot_kills_<game>).
 	RankBots, BotPoints, BotKills *bool
+	// BlockVAC is the ranking's VAC block (gamewe_block_vac_<game>).
+	BlockVAC *bool
 }
 
 // SetGame changes the given fields of a game.
 func (a *Admin) SetGame(ctx context.Context, code string, f GameFields) error {
-	if f.Name == nil && f.Realgame == nil && f.Order == nil && f.Hidden == nil && f.RankBots == nil && f.BotPoints == nil && f.BotKills == nil {
+	if f.Name == nil && f.Realgame == nil && f.Order == nil && f.Hidden == nil && f.RankBots == nil && f.BotPoints == nil && f.BotKills == nil && f.BlockVAC == nil {
 		return errors.New("nothing to change")
 	}
 	g, err := a.game(ctx, code)
@@ -394,7 +400,7 @@ func (a *Admin) SetGame(ctx context.Context, code string, f GameFields) error {
 	return nil
 }
 
-// botChange is a changed bot setting of a ranking.
+// botChange is a changed bot setting or VAC block of a ranking.
 type botChange struct {
 	key  string
 	on   bool
@@ -403,7 +409,7 @@ type botChange struct {
 
 // botChanges returns the bot settings of f that differ from the stored ones.
 func (a *Admin) botChanges(ctx context.Context, game string, f GameFields) ([]botChange, error) {
-	if f.RankBots == nil && f.BotPoints == nil && f.BotKills == nil {
+	if f.RankBots == nil && f.BotPoints == nil && f.BotKills == nil && f.BlockVAC == nil {
 		return nil, nil
 	}
 	opts, err := a.options(ctx)
@@ -421,10 +427,15 @@ func (a *Admin) botChanges(ctx context.Context, game string, f GameFields) ([]bo
 	if f.BotKills != nil && *f.BotKills != set.BotKills(game) {
 		out = append(out, botChange{settings.BotKillsKey(game), *f.BotKills, map[bool]string{true: "kills of bots count as kills", false: "kills of bots do not count as kills"}[*f.BotKills]})
 	}
+	if f.BlockVAC != nil && *f.BlockVAC != set.BlockVAC(game) {
+		out = append(out, botChange{settings.BlockVACKey(game), *f.BlockVAC, map[bool]string{true: "players with a VAC ban on record blocked", false: "VAC block off"}[*f.BlockVAC]})
+	}
 	return out, nil
 }
 
-// setBotOption stores a bot setting of a ranking. Turning the ranking of
+// setBotOption stores a bot setting or the VAC block of a ranking (the
+// running collector ends the ranking's VAC records when the block goes
+// off). Turning the ranking of
 // bots on or off also shows or hides the ranking's existing bots
 // (hideranking 0 <-> 1; banned or self-hidden bots keep their value).
 func (a *Admin) setBotOption(ctx context.Context, game string, b botChange) error {

@@ -22,6 +22,7 @@ const adminUsage = `usage:
   gamewe game add CODE NAME [-template CODE] [-realgame GAME] [-hidden]
   gamewe game set CODE [-name NAME] [-realgame GAME] [-order N] [-hidden=true|false]
                   [-rank-bots=true|false] [-bot-points=true|false] [-bot-kills=true|false]
+                  [-block-vac=true|false]
   gamewe game hide|show CODE
   gamewe game delete CODE                 (only a game without servers and players, not a default game)
   gamewe server list
@@ -83,6 +84,7 @@ func adminCmd(kind string, args []string) error {
 	rankBots := fs.Bool("rank-bots", true, "game set: bots of the ranking are ranked like players (false: hidden; also changes its existing bots)")
 	botPoints := fs.Bool("bot-points", true, "game set: kills with bots change skill in the ranking")
 	botKills := fs.Bool("bot-kills", true, "game set: kills of bots count in the killer's kills (kill ranking, K/D, ranks)")
+	blockVAC := fs.Bool("block-vac", false, "game set: kick players with a VAC ban on record at connect and keep them out of the ranking (needs the Steam Web API key of the web admin)")
 	var game, name, rcon, rconFile, public, logSecret optional
 	fs.Var(&game, "game", "hlstats_Games code")
 	fs.Var(&name, "name", "server or game name")
@@ -144,7 +146,7 @@ func adminCmd(kind string, args []string) error {
 		return adminDoc(ctx, a, kind, rest)
 	}
 	aa := adminArgs{fields: admin.ServerFields{Game: game.ptr(), Name: name.ptr(), RconPassword: rcon.ptr(), PublicAddress: public.ptr(), LogSecret: logSecret.ptr()},
-		game: admin.GameFields{Name: name.ptr()}, given: given, template: *template, realgame: *realgame, hidden: *hidden, rankBots: *rankBots, botPoints: *botPoints, botKills: *botKills, order: *order, logSecret: logSecret, dry: *dry}
+		game: admin.GameFields{Name: name.ptr()}, given: given, template: *template, realgame: *realgame, hidden: *hidden, rankBots: *rankBots, botPoints: *botPoints, botKills: *botKills, blockVAC: *blockVAC, order: *order, logSecret: logSecret, dry: *dry}
 	return captured(os.Stdout, func(w io.Writer, _ *result) error {
 		a.Out = w
 		if write && !cf.dryRun && !cf.force {
@@ -175,6 +177,7 @@ type adminArgs struct {
 	template, realgame            string
 	hidden                        bool
 	rankBots, botPoints, botKills bool
+	blockVAC                      bool
 	order                         int
 	logSecret                     optional
 	dry                           bool
@@ -246,6 +249,9 @@ func adminRun(ctx context.Context, a *admin.Admin, kind, sub string, rest []stri
 		}
 		if given["bot-kills"] {
 			gf.BotKills = &f.botKills
+		}
+		if given["block-vac"] {
+			gf.BlockVAC = &f.blockVAC
 		}
 		return a.SetGame(ctx, rest[0], gf)
 	case "game hide", "game show":

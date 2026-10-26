@@ -266,6 +266,7 @@ func TestAdminGameBots(t *testing.T) {
 			`DELETE FROM hlstats_PlayerUniqueIds WHERE game IN ('zz_bot', 'zz_oth')`,
 			`DELETE FROM hlstats_Games WHERE code IN ('zz_bot', 'zz_oth')`,
 			`DELETE FROM hlstats_Options WHERE keyname LIKE 'gamewe_%bot%zz_%'`,
+			`DELETE FROM hlstats_Options WHERE keyname = 'gamewe_block_vac_zz_bot'`,
 		} {
 			if _, err := db.Exec(db.Q(q)); err != nil {
 				t.Fatal(err)
@@ -353,5 +354,26 @@ func TestAdminGameBots(t *testing.T) {
 	}
 	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Options WHERE keyname IN ('gamewe_rank_bots_zz_bot', 'gamewe_bot_points_zz_bot', 'gamewe_bot_kills_zz_bot')`); n != 3 {
 		t.Errorf("%d option rows, want 3", n)
+	}
+	// game set -block-vac: off by default, stored per ranking, no player changes.
+	if find().BlockVAC {
+		t.Error("VAC block on by default")
+	}
+	out.Reset()
+	if err := a.SetGame(ctx, "zz_bot", GameFields{BlockVAC: &yes}); err != nil || !strings.Contains(out.String(), "VAC ban on record blocked") {
+		t.Fatalf("block-vac: %v %q", err, out.String())
+	}
+	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Options WHERE keyname = 'gamewe_block_vac_zz_bot' AND value = '1'`); n != 1 || !find().BlockVAC {
+		t.Errorf("block-vac not stored (%d rows)", n)
+	}
+	if hide(990001) != 0 || hide(990003) != 0 {
+		t.Errorf("block-vac changed players: %d %d", hide(990001), hide(990003))
+	}
+	out.Reset()
+	if err := (&Admin{DB: db, Out: &out}).ListGames(ctx); err != nil || !strings.Contains(out.String(), "blocked") {
+		t.Errorf("game list: %v %q", err, out.String())
+	}
+	if err := a.SetGame(ctx, "zz_bot", GameFields{BlockVAC: &no}); err != nil || find().BlockVAC {
+		t.Errorf("block-vac off: %v", err)
 	}
 }

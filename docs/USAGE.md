@@ -137,6 +137,10 @@ The values in `code style` are `hlstats_Options` keys (defaults in
   points unless the ranking turns that off (`gamewe_bot_points_<game>`),
   and count as kills for the kill-based ranks unless it turns that off
   (`gamewe_bot_kills_<game>`).
+- Per ranking, players with a VAC ban on record (also from another game)
+  can be kept out (`gamewe_block_vac_<game>`, default off): kicked at
+  connect, recorded as banned and out of the ranking (DB-SEMANTICS.md,
+  "VAC block").
 - VAC-banned players (disconnect reason) and permanent bans (`Banid: ... "permanently"`)
   are hidden from the rankings (`hideranking` = 2).
 
@@ -515,6 +519,7 @@ gamewe game set css3 -hidden=true                  # the same as game hide css3
 gamewe game set css3 -rank-bots=false              # bots of css3 out of the ranking (hides its bots now)
 gamewe game set css3 -bot-points=false             # kills with bots give no points in css3
 gamewe game set css3 -bot-kills=false              # kills of bots do not count as kills (career rank, K/D)
+gamewe game set css3 -block-vac=true               # kick players with a VAC ban on record (needs the Steam key)
 gamewe game hide css                               # hide / show in the web's game list
 gamewe game delete css3                            # only a game without servers and players;
                                                    #   default games (css, cstrike, tf, ...) are refused: hide them

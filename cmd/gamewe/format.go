@@ -212,12 +212,12 @@ func yesNo(b bool) string { return strconv.FormatBool(b) }
 type gameList []admin.Game
 
 func (gameList) Header() []string {
-	return []string{"code", "realgame", "realgame_guessed", "engine", "hidden", "rank_bots", "bot_points", "bot_kills", "servers", "players", "name"}
+	return []string{"code", "realgame", "realgame_guessed", "engine", "hidden", "rank_bots", "bot_points", "bot_kills", "block_vac", "servers", "players", "name"}
 }
 func (l gameList) Rows() [][]string {
 	out := [][]string{}
 	for _, g := range l {
-		out = append(out, []string{g.Code, g.Realgame, yesNo(g.Guessed), g.Engine, yesNo(g.Hidden), yesNo(g.RankBots), yesNo(g.BotPoints), yesNo(g.BotKills), itoa(g.Servers), itoa(g.Players), g.Name})
+		out = append(out, []string{g.Code, g.Realgame, yesNo(g.Guessed), g.Engine, yesNo(g.Hidden), yesNo(g.RankBots), yesNo(g.BotPoints), yesNo(g.BotKills), yesNo(g.BlockVAC), itoa(g.Servers), itoa(g.Players), g.Name})
 	}
 	return out
 }

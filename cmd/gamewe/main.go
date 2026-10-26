@@ -35,6 +35,7 @@ import (
 	"gamewe-collector/internal/simulate"
 	"gamewe-collector/internal/sourcebans"
 	"gamewe-collector/internal/stats"
+	"gamewe-collector/internal/steam"
 	"gamewe-collector/internal/version"
 
 	_ "time/tzdata" // time zones also where the system has none (distroless image)
@@ -425,6 +426,10 @@ func runCmd(args []string) error {
 			Phrases: sb.Phrases, Interval: sbEvery}
 		hub.Bans = banWatch
 	}
+	// Per ranking (gamewe_block_vac_<game>: web admin, gamewe game set -block-vac); idle while no
+	// ranking switches it on.
+	vacBlock := &collector.VACBlock{Store: store, Set: set, Lookup: (&steam.Client{}).PlayerBans, Reply: replier, Log: log}
+	hub.VAC = vacBlock
 	ls := cfg.Features.LogSecret
 	hub.Secret = collector.SecretConfig{Mode: secretMode(ls.Enabled)}
 	if len(ls.Obsolete) > 0 {
@@ -475,6 +480,7 @@ func runCmd(args []string) error {
 	if banWatch != nil {
 		go banWatch.Run(ctx)
 	}
+	go vacBlock.Run(ctx)
 	da := cfg.Features.DailyAwards
 	daLoc, _ := da.Location(cfg.Timezone) // checked by config.Validate
 	if da.Enabled {
@@ -485,7 +491,8 @@ func runCmd(args []string) error {
 		"log_address_http", la.HTTP, "log_secret", ls.Enabled, "server_info", si.Enabled, "server_info_every", siEvery.String(),
 		"daily_awards", da.Enabled, "daily_awards_at", da.Time+" "+daLoc.String(), "cs2_hitgroups", cfg.Features.CS2Hitgroups.Enabled,
 		"inactive_players", ip.Enabled, "inactive_players_at", ip.Time+" "+ipLoc.String(),
-		"sourcebans", sb.Enabled, "sourcebans_every", sbEvery.String(), "sourcebans_url_set", set.Get().SourceBansURL != "")
+		"sourcebans", sb.Enabled, "sourcebans_every", sbEvery.String(), "sourcebans_url_set", set.Get().SourceBansURL != "",
+		"steam_api_key_set", set.Get().SteamAPIKey != "")
 
 	// Config, database and servers are fine; READY=1 once every input is
 	// open, so that systemctl start / restart report every failure before.

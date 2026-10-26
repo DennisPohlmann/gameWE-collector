@@ -104,6 +104,9 @@ type Processor struct {
 	// Bans is told the disconnect reasons (features.sourcebans; nil: off).
 	// Set before the first line.
 	Bans BanNotifier
+	// VAC is told every connect of a player (gamewe_block_vac_<game>;
+	// nil: off). Set before the first line.
+	VAC VACNotifier
 }
 
 // GeoLookup finds the location of an IP address (*geoip.DB).
@@ -358,6 +361,9 @@ func (p *Processor) Handle(ctx context.Context, line string, now time.Time) erro
 			return err
 		}
 		p.markConnected(e.Player.Key())
+		if p.VAC != nil && !e.Player.IsBot() {
+			p.VAC.Connected(p.srv.info, e.Player.UserID, UniqueID(e.Player))
+		}
 		st.locatedIP = netip.Addr{} // a new connect: store the location again
 		return p.locate(ctx, ev, st, ip)
 	case logparse.Entered:

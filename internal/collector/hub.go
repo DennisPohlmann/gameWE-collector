@@ -63,6 +63,9 @@ type Hub struct {
 	// Bans is features.sourcebans (Processor.Bans; nil: off). Set it
 	// before the first SetServers.
 	Bans BanNotifier
+	// VAC is told every connect (Processor.VAC; nil: off). Set it before
+	// the first SetServers.
+	VAC VACNotifier
 
 	mu      sync.RWMutex
 	byID    map[int64]*worker
@@ -235,6 +238,7 @@ func (h *Hub) SetServers(list []stats.Server) (added, removed int) {
 		w.proc.Geo = h.Geo
 		w.proc.Source2Hits = h.Source2Hits
 		w.proc.Bans = h.Bans
+		w.proc.VAC = h.VAC
 		h.applySecret(w, srv, now, grace)
 		if h.Monitor.Status || h.Monitor.LogAddress || h.Monitor.ServerInfo {
 			ctx, cancel := context.WithCancel(context.Background())
