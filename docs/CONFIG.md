@@ -80,7 +80,7 @@ Optional jobs, all on by default except `inactive_players`. They need the
 game server's `rcon_password` in `hlstats_Servers` (except `daily_awards`
 and `inactive_players`). The switches are only in the
 config file (changing them needs a restart); the old key `gamewe_daily_awards` of
-`hlstats_Options` is not read.
+`hlstats_Options` is not read, and migration 13 deletes it ([DATABASE.md](DATABASE.md)).
 
 | Key | Default | Meaning |
 |-----|---------|---------|
@@ -307,7 +307,7 @@ seed only adds missing keys and never changes values that are already set.
 | `gamewe_command_prefix` | `gamewe` | prefix of the plugin's server commands: `gamewe` (the gameWE plugin also knows `gameme_`), or `gameme` for a server that still runs the original gameME plugin |
 | `gamewe_raw_messages` | `0` | 1 = answer `!rank`, `!session`, `!top10` and `!next` with `gamewe_raw_message` (types 1, 4, 5, 6) for a plugin that shows them, instead of chat text ([INTERFACE.md](INTERFACE.md#queries-of-other-plugins-raw-messages)) |
 | `gamewe_store_locations` | `1` | 1 = store the kill and death positions of the plugin's location lines in `hlstats_Events_Locations` (one row per position; the plugin's `gamewe_log_locations` must be 1) |
-| `gamewe_geoip_db` | `/var/lib/gamewe/GeoLite2-City.mmdb` | **Legacy.** Used only when config.yaml has no `geoip.path` and the value is not this old default; otherwise the DB-IP database of `geoip.path` is used ([GeoIP database](#geoip-database-player-and-server-locations)). Old meaning: MaxMind-format city database for player and server locations, skipped with one warning if missing |
+| `gamewe_geoip_db` | – | **Legacy, no longer a setting** (not in a new database, not settable with `gamewe option set`, not on the web admin's settings pages): a stored path other than the old default `/var/lib/gamewe/GeoLite2-City.mmdb` is still used while config.yaml has no `geoip.path`; set `geoip.path` instead and delete the row ([GeoIP database](#geoip-database-player-and-server-locations)). Migration 13 deletes the row when it is empty or the old default |
 | `gamewe_server_load` | `1` | 1 = write a row of `hlstats_server_load` every 10 minutes per server (DB-SEMANTICS.md) |
 | `gamewe_player_reset` | `0` | 1 = players may reset their own stats in game with `!gamewe_reset`, confirmed with `!gamewe_reset 1` within 30 seconds ([USAGE.md](USAGE.md#settings)); never players hidden by an admin or banned. The events stay. Like every chat command it is read from the log: a faked log packet could reset any player's stats, so turn it on only where the servers send their logs with `sv_logsecret` ([Log secret](#log-secret)) |
 | `gamewe_player_reset_cooldown` | `24` | hours before a player may reset the own stats again (from `hlstats_Players_Resets`); 0 = no wait |
@@ -321,7 +321,7 @@ seed only adds missing keys and never changes values that are already set.
 | `gamewe_collector_version` | – | **written by the collector** at start (its version, e.g. `0.17.0`), not a setting: the web admin compares it with the latest release |
 
 The other `gamewe_*` keys the web admin writes are settings of the web frontend
-(`gamewe_default_game`, `gamewe_page_size`, site, header, SEO, map, voice and
+(`gamewe_page_size`, site, header, SEO, map, voice and
 TeamSpeak settings, the header links `gamewe_link_<n>` and the admins' TOTP
 secrets `gamewe_totp_<hash>`); the collector ignores them and `gamewe check`
 does not report them. One exception: the collector reads the web's

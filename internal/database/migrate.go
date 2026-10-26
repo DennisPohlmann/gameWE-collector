@@ -326,6 +326,15 @@ func plan(ctx context.Context, q querier, dialect string, pfx Prefix) (*Plan, er
 				What: "copy the awards " + strings.Join(m.RankingAwards, ", ") + " and their ribbons from the template to every ranking that lacks them",
 				kind: stepExec, stmts: rankingAwardsSQL(pg, m.RankingAwards)})
 		}
+		if len(m.RetireOptions) > 0 {
+			keys := make([]string, len(m.RetireOptions))
+			for i, o := range m.RetireOptions {
+				keys[i] = o.Key
+			}
+			p.Steps = append(p.Steps, Step{Version: m.Version, Name: m.Name, Table: "hlstats_Options",
+				What: "delete the retired options " + strings.Join(keys, ", ") + " (where unused)",
+				kind: stepExec, stmts: retireOptionsSQL(m.RetireOptions)})
+		}
 		p.Steps = append(p.Steps, Step{Version: m.Version, Name: m.Name, What: "record version " + fmt.Sprint(m.Version), kind: stepRecord, rec: &m, note: "applied"})
 	}
 	if !synced && len(p.Missing) > 0 {

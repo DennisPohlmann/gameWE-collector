@@ -108,7 +108,6 @@ func Keys() []Key {
 		{"gamewe_command_prefix", d.CommandPrefix, "prefix of the plugin's server commands: gamewe, or gameme for servers with the original gameME plugin"},
 		{"gamewe_raw_messages", b(d.RawMessages), "1 = answer !rank, !session, !top10 and !next with gamewe_raw_message for a message plugin instead of chat text"},
 		{"gamewe_store_locations", b(d.StoreLocations), "1 = store kill and death positions (plugin location lines) in hlstats_Events_Locations"},
-		{"gamewe_geoip_db", d.GeoIPDB, "MaxMind-format city database (GeoLite2-City or DB-IP Lite City .mmdb) for player and server locations; skipped if missing"},
 		{"gamewe_server_load", b(d.ServerLoad), "1 = write hlstats_server_load every 10 minutes per server"},
 		{"gamewe_player_reset", b(d.PlayerReset), "1 = players may reset their own stats in game (!gamewe_reset, confirmed with !gamewe_reset 1); never for banned or admin-hidden players"},
 		{"gamewe_player_reset_cooldown", strconv.Itoa(d.ResetCooldown), "hours before a player may reset the own stats again (0 = no wait)"},
@@ -123,7 +122,7 @@ func Keys() []Key {
 // them as typos. Keep it in step with the web; slot and per-user keys are
 // matched in otherKey.
 var WebKeys = []string{
-	"gamewe_default_game", "gamewe_page_size", "gamewe_site_url", "gamewe_logo_url", "gamewe_header_logo",
+	"gamewe_page_size", "gamewe_site_url", "gamewe_logo_url", "gamewe_header_logo",
 	"gamewe_favicon", "gamewe_apple_icon", "gamewe_title_format", "gamewe_title_ranking", "gamewe_geoip_credit",
 	"gamewe_sig_brand", "gamewe_chat_public", "gamewe_game_events", "gamewe_player_events", "gamewe_skin",
 	"gamewe_game_skins", "gamewe_map_live", "gamewe_map_players", "gamewe_map_style", "gamewe_sourcebans_url",
@@ -154,6 +153,8 @@ func otherKey(k string) bool {
 	switch k {
 	case "gamewe_heartbeat", "gamewe_collector_version", // written by the collector
 		"gamewe_daily_awards", // 1.4.x; now features.daily_awards in the config file
+		"gamewe_default_game", // old web setting nothing reads; migration 13 deletes both
+		"gamewe_geoip_db",     // legacy, read below; config.yaml geoip.path replaces it
 		"gamewe_ignore_bots":  // reported above
 		return true
 	}

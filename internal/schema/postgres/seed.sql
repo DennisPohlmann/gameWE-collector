@@ -2598,10 +2598,7 @@ INSERT INTO hlstats_Definition_Ribbons_Classes (game_code, name, maximum, steps,
 -- Site settings for the web frontend (not read by the collector).
 INSERT INTO hlstats_Options (keyname, value) VALUES
   ('sitename', 'gameWE'),
-  ('siteurl', ''),
-  ('contact', ''),
   ('MinActivity', '28'),
-  ('gamewe_default_game', 'css'),
   ('gamewe_page_size', '50'),
   -- Collector settings (re-read every 60 s; a missing key uses the same default):
   ('gamewe_start_skill', '1000'),
@@ -2622,7 +2619,6 @@ INSERT INTO hlstats_Options (keyname, value) VALUES
   ('gamewe_command_prefix', 'gamewe'),
   ('gamewe_raw_messages', '0'),
   ('gamewe_store_locations', '1'),
-  ('gamewe_geoip_db', '/var/lib/gamewe/GeoLite2-City.mmdb'),
   ('gamewe_server_load', '1'),
   ('gamewe_player_reset', '0'),
   ('gamewe_player_reset_cooldown', '24'),

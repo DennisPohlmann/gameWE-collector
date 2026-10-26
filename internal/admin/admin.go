@@ -738,7 +738,7 @@ func (a *Admin) SetOption(ctx context.Context, key, value string) error {
 		for _, k := range settings.Keys() {
 			known = known || k.Name == key
 		}
-		if !known && key != "gamewe_default_game" && key != "gamewe_page_size" && key != "gamewe_heartbeat" {
+		if !known && key != "gamewe_page_size" && key != "gamewe_heartbeat" {
 			names := []string{}
 			for _, k := range settings.Keys() {
 				names = append(names, k.Name)

@@ -2613,10 +2613,7 @@ INSERT IGNORE INTO hlstats_Definition_Ribbons_Classes (game_code, name, maximum,
 -- Site settings for the web frontend (not read by the collector).
 INSERT IGNORE INTO hlstats_Options (keyname, value) VALUES
   ('sitename', 'gameWE'),
-  ('siteurl', ''),
-  ('contact', ''),
   ('MinActivity', '28'),          -- days without play before a player leaves the rankings
-  ('gamewe_default_game', 'css'), -- game shown first
   ('gamewe_page_size', '50'),     -- rows per page in lists
   -- Collector settings (re-read every 60 s; a missing key uses the same default):
   ('gamewe_start_skill', '1000'),     -- skill of a new player
@@ -2637,7 +2634,6 @@ INSERT IGNORE INTO hlstats_Options (keyname, value) VALUES
   ('gamewe_command_prefix', 'gamewe'), -- gameme for servers with the original gameME plugin
   ('gamewe_raw_messages', '0'),       -- 1 = command answers as gamewe_raw_message for a message plugin
   ('gamewe_store_locations', '1'),    -- 1 = kill/death positions in hlstats_Events_Locations
-  ('gamewe_geoip_db', '/var/lib/gamewe/GeoLite2-City.mmdb'), -- city database for locations (optional)
   ('gamewe_server_load', '1'),        -- 1 = hlstats_server_load every 10 minutes
   ('gamewe_player_reset', '0'),       -- 1 = players may reset their own stats (!gamewe_reset)
   ('gamewe_player_reset_cooldown', '24'), -- hours between two own resets

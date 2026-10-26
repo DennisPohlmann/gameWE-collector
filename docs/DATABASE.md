@@ -190,6 +190,7 @@ What it does:
 | 8 | `czero` | Counter-Strike: Condition Zero: the reference data of the game `czero`, a copy of the cstrike definitions (game, teams, actions, weapons, awards, ranks, ribbons, ribbon classes; `INSERT IGNORE`, existing rows are kept); no structure change |
 | 11 | `hlstatsx-awards` | the HLstatsX:CE awards `mvp` (css, CE's `round_mvp`) and `teamkills` (every team game: not valve, hl2mp, fof) with one ribbon each (CE's `mostkills`, `suicide`, `headshot` are not added: `most_kills`, `most_suicides`, `most_headshots` cover them); rankings (games whose `realgame` is another game, e.g. css1 of css) get them from their template where they lack an award or ribbon of that code; existing rows are kept; no structure change |
 | 12 | `hall-of-fame` | table `hlstats_gamewe_hall_of_fame`: the best three players of each period of a scheduled ranking reset ([USAGE.md](USAGE.md#scheduled-resets-and-the-hall-of-fame)); `gamewe_web` may read it |
+| 13 | `retired-options` | deletes `hlstats_Options` rows that neither the collector nor the web reads: `gamewe_default_game` and `gamewe_daily_awards` always, `contact` and `siteurl` (HLstatsX:CE) when empty, `gamewe_geoip_db` when empty or the old default `/var/lib/gamewe/GeoLite2-City.mmdb` (another path stays: it is still used while config.yaml has no `geoip.path`); no structure change |
 
 The SQL files of older packages (`/opt/gamewe/collector/doc/schema/hlstatsx.sql`,
 `init/01_schema.sql`, `02_seed.sql`, `03_grants.sql` and the PostgreSQL

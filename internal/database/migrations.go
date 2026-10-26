@@ -34,6 +34,17 @@ type Migration struct {
 	// the template's award and its ribbons, where the ranking has no award
 	// or ribbon of that code yet. Seed itself only reaches the templates.
 	RankingAwards []string
+	// RetireOptions are hlstats_Options rows that neither the collector nor
+	// the website reads any more; each is deleted as given there.
+	RetireOptions []RetiredOption
+}
+
+// RetiredOption is an hlstats_Options key to delete: always when IfValue is
+// nil, else only while its value (trimmed) is one of IfValue, so a value
+// someone set on purpose stays.
+type RetiredOption struct {
+	Key     string
+	IfValue []string
 }
 
 // DropIndex is an index that ReplacedBy makes superfluous.
@@ -118,6 +129,18 @@ var Migrations = []Migration{
 		Desc: "table hlstats_gamewe_hall_of_fame: the best three players of each period of a scheduled ranking reset (readable by gamewe_web)",
 		Sync: true,
 	},
+	{
+		Version: 13, Name: "retired-options",
+		Desc: "delete hlstats_Options rows nothing reads any more: gamewe_default_game and gamewe_daily_awards, " +
+			"contact and siteurl (HLstatsX:CE) when empty, gamewe_geoip_db when empty or the old default path",
+		RetireOptions: []RetiredOption{
+			{Key: "gamewe_default_game"},
+			{Key: "gamewe_daily_awards"},
+			{Key: "contact", IfValue: []string{""}},
+			{Key: "siteurl", IfValue: []string{""}},
+			{Key: "gamewe_geoip_db", IfValue: []string{"", "/var/lib/gamewe/GeoLite2-City.mmdb"}},
+		},
+	},
 }
 
 // Latest is the newest schema version this collector knows.
@@ -129,6 +152,9 @@ func (m Migration) Checksum() string {
 	b := fmt.Appendf(nil, "%d|%s|%t|%v|%t", m.Version, m.Name, m.Sync, m.Drop, m.Seed)
 	if len(m.RankingAwards) > 0 { // only then: the checksums of older migrations stay as recorded
 		b = fmt.Appendf(b, "|%v", m.RankingAwards)
+	}
+	if len(m.RetireOptions) > 0 {
+		b = fmt.Appendf(b, "|%v", m.RetireOptions)
 	}
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
@@ -161,4 +187,23 @@ func rankingAwardsSQL(postgres bool, codes []string) []string {
 			  AND NOT EXISTS (SELECT 1 FROM hlstats_Definition_Ranks_Ribbons x
 			                  WHERE x.game_code = g.code AND x.definition_type = r.definition_type AND x.code = r.code)` + conflict,
 	}
+}
+
+// retireOptionsSQL deletes the retired hlstats_Options rows. Keys and values
+// are constants of Migrations, never user input.
+func retireOptionsSQL(opts []RetiredOption) []string {
+	quote := func(v string) string { return "'" + strings.ReplaceAll(v, "'", "''") + "'" }
+	out := make([]string, 0, len(opts))
+	for _, o := range opts {
+		q := `DELETE FROM hlstats_Options WHERE keyname = ` + quote(o.Key)
+		if o.IfValue != nil {
+			vals := make([]string, len(o.IfValue))
+			for i, v := range o.IfValue {
+				vals[i] = quote(v)
+			}
+			q += ` AND TRIM(value) IN (` + strings.Join(vals, ", ") + `)`
+		}
+		out = append(out, q)
+	}
+	return out
 }
