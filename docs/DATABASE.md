@@ -195,6 +195,7 @@ What it does:
 | 15 | `bots-per-ranking` | the bot settings per ranking: the global `gamewe_rank_bots` (and the old `gamewe_ignore_bots` = 1) becomes `gamewe_rank_bots_<game>` and `gamewe_bot_points_<game>` of every ranking with the same effect (Left 4 Dead keeps the points for kills of the AI), then the global rows are deleted ([CONFIG.md](CONFIG.md#settings-in-hlstats_options)); no new table or column |
 | 16 | `hall-of-fame-edit` | column `hlstats_gamewe_hall_of_fame.removed` (0 or 1): entries an admin took out of the hall of fame; `gamewe_web_admin` may update this column only (UPDATE (`removed`)). Places 4 and 5 that the collector now stores move up ([USAGE.md](USAGE.md#scheduled-resets-and-the-hall-of-fame)) |
 | 17 | `event-indexes` | indexes for large databases (e.g. after an import of old players and events): `game_time` (game_id, timestamp_id) on `hlstats_Events_Connects`, `_Entries`, `_Disconnects`, `_ChangeTeam`, `_ChangeRole`, `_ChangeName`, `_PlayerActions`, `_PlayerPlayerActions`, `_TeamBonuses`, `_Frags`, `_Suicides` and `_Teamkills` (the web's latest events of a ranking and its events page read the newest rows of one ranking), `game_activity` (game, hideranking, last_event, playerId) on `hlstats_PlayersInactive` (the web's list of inactive players); no data changes. On MariaDB with MyISAM each table is rebuilt and locked while its index is added: a few seconds per million rows, during which the collector does not record yet |
+| 18 | `player-indexes` | indexes for large rankings: `game_skill` (game, hideranking, skill, playerId) and `game_activity` (game, hideranking, last_event, playerId) on `hlstats_Players` (the web's player list sorted by points or by last seen, the player map and the ranking positions read only the rows they show instead of sorting every player of the ranking); no data changes. On MariaDB with MyISAM `hlstats_Players` is rebuilt and locked while the indexes are added: a few seconds per 100,000 players, during which the collector does not record yet |
 
 The SQL files of older packages (`/opt/gamewe/collector/doc/schema/hlstatsx.sql`,
 `init/01_schema.sql`, `02_seed.sql`, `03_grants.sql` and the PostgreSQL
@@ -400,6 +401,12 @@ are MyISAM:
 - `concurrent_insert = ALWAYS` lets the collector's INSERTs run while the
   web reads a table, also when the table has gaps from deleted rows
   (`gamewe db purge`); with the default `AUTO` they wait for the reads.
+
+The collector's UPDATEs of `hlstats_Players` (points, kills after every
+frag) still wait for a read of that table, and every read behind them waits
+too. So the web should not read all players of a ranking per page view: the
+migrations `event-indexes` (17) and `player-indexes` (18) add the indexes
+its pages use, and it keeps the counts over all players for a while.
 
 Both go into the `[mysqld]` section of the server configuration (e.g.
 `/etc/mysql/mariadb.conf.d/50-server.cnf` or `/etc/my.cnf.d/server.cnf`),

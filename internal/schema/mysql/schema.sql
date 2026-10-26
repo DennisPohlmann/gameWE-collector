@@ -462,7 +462,9 @@ CREATE TABLE `hlstats_Players` (
   KEY `clan` (`clan`),
   KEY `game` (`game`),
   KEY `game_id` (`game_id`,`rank`),
-  KEY `kills` (`kills`)
+  KEY `kills` (`kills`),
+  KEY `game_skill` (`game`,`hideranking`,`skill`,`playerId`),
+  KEY `game_activity` (`game`,`hideranking`,`last_event`,`playerId`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_PlayersInactive` (
   `playerId` mediumint(8) unsigned NOT NULL,

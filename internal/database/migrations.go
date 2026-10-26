@@ -169,6 +169,13 @@ var Migrations = []Migration{
 			"game_activity (game, hideranking, last_event, playerId) on hlstats_PlayersInactive for the list of inactive players",
 		Sync: true,
 	},
+	{
+		Version: 18, Name: "player-indexes",
+		Desc: "indexes for the web's player list on large rankings: game_skill (game, hideranking, skill, playerId) and " +
+			"game_activity (game, hideranking, last_event, playerId) on hlstats_Players, so a page of the ranking, the player map " +
+			"and the ranking positions no longer sort or read every player of the ranking",
+		Sync: true,
+	},
 }
 
 // Latest is the newest schema version this collector knows.
