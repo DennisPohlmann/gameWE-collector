@@ -96,7 +96,7 @@ func TestFeatures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f := cfg.Features; !f.RconStatus.Enabled || f.RconStatus.Interval != "10s" || !f.LogAddress.Enabled || f.LogAddress.Interval != "1m" || !f.DailyAwards.Enabled || f.DailyAwards.Timezone != "UTC" || f.DailyAwards.Time != "00:00" {
+	if f := cfg.Features; !f.RconStatus.Enabled || f.RconStatus.Interval != "10s" || !f.LogAddress.Enabled || f.LogAddress.Interval != "1m" || !f.DailyAwards.Enabled || f.DailyAwards.Timezone != "" || f.DailyAwards.Time != "00:00" {
 		t.Errorf("defaults %+v, want all on", f)
 	}
 	cfg, err = Parse([]byte(base + "features:\n  rcon_status: false\n  daily_awards: false\nlisten:\n  public_address: 203.0.113.4:41337\n"))
@@ -173,16 +173,73 @@ func TestDailyAwardsSchedule(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := cfg.Features.DailyAwards
-	loc, _ := d.Location()
+	loc, _ := d.Location("America/New_York") // its own zone wins
 	h, m, _ := d.At()
 	if !d.Enabled || loc.String() != "Europe/Berlin" || h != 3 || m != 30 {
 		t.Errorf("parsed %+v %v %d:%d", d, loc, h, m)
 	}
 	cfg, err = Parse([]byte(base + "    enabled: false\n")) // the others keep their defaults
-	if err != nil || cfg.Features.DailyAwards.Enabled || cfg.Features.DailyAwards.Timezone != "UTC" || cfg.Features.DailyAwards.Time != "00:00" {
+	if err != nil || cfg.Features.DailyAwards.Enabled || cfg.Features.DailyAwards.Timezone != "" || cfg.Features.DailyAwards.Time != "00:00" {
 		t.Errorf("partial: %+v %v", cfg.Features.DailyAwards, err)
 	}
 	for _, bad := range []string{"    timezone: Mars/Base\n", "    time: \"25:00\"\n", "    when: daily\n"} {
+		if _, err := Parse([]byte(base + bad)); err == nil {
+			t.Errorf("accepted %q", bad)
+		}
+	}
+}
+
+func TestInactivePlayers(t *testing.T) {
+	base := "database:\n  host: db\n  user: u\n  name: n\n"
+	cfg, err := Parse([]byte(base))
+	ip := cfg.Features.InactivePlayers
+	if h, m, _ := ip.At(); err != nil || ip.Enabled || h != 1 || m != 0 || ip.Timezone != "" {
+		t.Errorf("default %+v %v, want off, 01:00", ip, err)
+	}
+	cfg, err = Parse([]byte(base + "features:\n  inactive_players:\n    enabled: true\n    time: \"04:15\"\n    timezone: Europe/Berlin\n"))
+	ip = cfg.Features.InactivePlayers
+	if h, m, _ := ip.At(); err != nil || !ip.Enabled || h != 4 || m != 15 || ip.Timezone != "Europe/Berlin" {
+		t.Errorf("parsed %+v %v", ip, err)
+	}
+	if cfg, err = Parse([]byte(base + "features:\n  inactive_players: true\n")); err != nil || !cfg.Features.InactivePlayers.Enabled {
+		t.Errorf("short form: %+v %v", cfg.Features.InactivePlayers, err)
+	}
+	for _, bad := range []string{"    after_days: 60\n", "    interval: 1h\n", "    time: \"24:00\"\n", "    time: \"1:00 am\"\n", "    timezone: Mars/Base\n"} {
+		if _, err := Parse([]byte(base + "features:\n  inactive_players:\n" + bad)); err == nil {
+			t.Errorf("accepted %q", bad)
+		}
+	}
+}
+
+// The zone of a daily job: its own, else the global timezone, else the
+// server's.
+func TestTimezones(t *testing.T) {
+	base := "database:\n  host: db\n  user: u\n  name: n\n"
+	for _, c := range []struct {
+		yaml, awards, inactive string
+	}{
+		{"", "Local", "Local"},
+		{"timezone: Europe/Berlin\n", "Europe/Berlin", "Europe/Berlin"},
+		{"timezone: Europe/Berlin\nfeatures:\n  daily_awards:\n    timezone: UTC\n  inactive_players:\n    timezone: Asia/Tokyo\n", "UTC", "Asia/Tokyo"},
+		{"features:\n  inactive_players:\n    timezone: America/New_York\n", "Local", "America/New_York"},
+	} {
+		cfg, err := Parse([]byte(base + c.yaml))
+		if err != nil {
+			t.Fatalf("%q: %v", c.yaml, err)
+		}
+		a, _ := cfg.Features.DailyAwards.Location(cfg.Timezone)
+		i, _ := cfg.Features.InactivePlayers.Location(cfg.Timezone)
+		name := func(l *time.Location) string {
+			if l == time.Local { // its name is TZ when that is set
+				return "Local"
+			}
+			return l.String()
+		}
+		if name(a) != c.awards || name(i) != c.inactive {
+			t.Errorf("%q: awards %s, inactive %s; want %s, %s", c.yaml, a, i, c.awards, c.inactive)
+		}
+	}
+	for _, bad := range []string{"timezone: Mars/Base\n", "features:\n  daily_awards:\n    timezone: Nowhere\n"} {
 		if _, err := Parse([]byte(base + bad)); err == nil {
 			t.Errorf("accepted %q", bad)
 		}

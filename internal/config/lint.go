@@ -198,7 +198,7 @@ func (l *linter) lint(data []byte, opt LintOptions) Report {
 	}
 	root := doc.Content[0]
 	if root.Kind != yaml.MappingNode {
-		l.findings = append(l.findings, Finding{Severity: SevError, Line: root.Line, Msg: "want a mapping with listen:, database:, geoip: and features:"})
+		l.findings = append(l.findings, Finding{Severity: SevError, Line: root.Line, Msg: "want a mapping with listen:, database:, geoip:, features: and timezone:"})
 		return r
 	}
 	legacyKeys := legacyProblems(data)
@@ -534,6 +534,9 @@ func (l *linter) unused(cfg Config) {
 	off("features.daily_awards.enabled", !f.DailyAwards.Enabled,
 		changed("features.daily_awards.timezone", f.DailyAwards.Timezone != df.DailyAwards.Timezone),
 		changed("features.daily_awards.time", f.DailyAwards.Time != df.DailyAwards.Time))
+	off("features.inactive_players.enabled", !f.InactivePlayers.Enabled,
+		changed("features.inactive_players.time", f.InactivePlayers.Time != df.InactivePlayers.Time),
+		changed("features.inactive_players.timezone", f.InactivePlayers.Timezone != ""))
 	// The public addresses are only what features.log_address registers.
 	if u.UDPEnabled && u.PublicAddress != "" && !f.LogAddress.Enabled {
 		l.warnf(l.udpKey("listen.public_address"), "has no effect while features.log_address.enabled is false (nothing registers it); use it in logaddress_add by hand")

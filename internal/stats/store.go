@@ -480,9 +480,10 @@ func (s *Store) Player(ctx context.Context, ev Ev, uniqueID, name string) (id in
 		return id, skill, err
 	}
 	// Known id but no active row: reactivate it, or recreate it.
+	if err := s.reactivate(ctx, id); err != nil {
+		return 0, 0, err
+	}
 	if err := s.run(ctx,
-		step{s.ignore(`INSERT INTO hlstats_Players SELECT * FROM hlstats_PlayersInactive WHERE playerId = ?`), []any{id}},
-		step{`DELETE FROM hlstats_PlayersInactive WHERE playerId = ?`, []any{id}},
 		step{s.ignore(`INSERT INTO hlstats_Players (playerId, game, game_id, skill, last_event, hideranking) VALUES (?, ?, ?, ?, ?, ?)`),
 			[]any{id, game, ev.Srv.GameID, s.set.Get().StartSkill, ev.ts(), boolInt(IsBot(uniqueID) && !s.set.Get().RankBots)}},
 	); err != nil {
@@ -523,8 +524,42 @@ func (s *Store) newPlayer(ctx context.Context, ev Ev, uniqueID, name string) (in
 }
 
 // Join records that a tracked player is on the server: the name use and
-// the live view. It runs when the collector first sees the player.
+// the live view, and last_event. It runs when the collector first sees the
+// player. A row moved to hlstats_PlayersInactive between Player and the
+// live row (features.inactive_players) is moved back.
 func (s *Store) Join(ctx context.Context, ev Ev, p Live) error {
+	if err := s.join(ctx, ev, p); err != nil {
+		return err
+	}
+	// After the live row: the move skips players in hlstats_Livestats, and
+	// on PostgreSQL this waits for a move of the row in progress.
+	seen := step{`UPDATE hlstats_Players SET last_event = GREATEST(last_event, ?) WHERE playerId = ?`, []any{ev.ts(), p.ID}}
+	res, err := s.exec(ctx, seen.q, seen.args...)
+	if err != nil {
+		return fmt.Errorf("UPDATE hlstats_Players last_event: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		return nil
+	}
+	// No row changed: moved meanwhile, or (MariaDB) last_event was already
+	// this time. Moving back is a no-op then.
+	return s.run(ctx, append(s.reactivateSteps(p.ID), seen)...)
+}
+
+// reactivate moves a player from hlstats_PlayersInactive back to
+// hlstats_Players (all columns, unchanged); a row in hlstats_Players wins.
+func (s *Store) reactivate(ctx context.Context, id int64) error {
+	return s.run(ctx, s.reactivateSteps(id)...)
+}
+
+func (s *Store) reactivateSteps(id int64) []step {
+	return []step{
+		{s.ignore(`INSERT INTO hlstats_Players SELECT * FROM hlstats_PlayersInactive WHERE playerId = ?`), []any{id}},
+		{`DELETE FROM hlstats_PlayersInactive WHERE playerId = ?`, []any{id}},
+	}
+}
+
+func (s *Store) join(ctx context.Context, ev Ev, p Live) error {
 	return s.run(ctx,
 		step{s.nameUse(),
 			[]any{p.ID, clip(p.Name, 128), ev.Time.UTC()}},

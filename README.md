@@ -20,7 +20,8 @@ HLstatsX. The **collector** is its core: one static Go binary that
   the web frontend's pages in the in-game browser and can announce points of
   kills and actions,
 - runs daily awards, ranking resets queued by the web admin, GeoIP locations
-  (DB-IP database included) and the RCON status of every server.
+  (DB-IP database included), the RCON status of every server and, if
+  enabled, the daily move of inactive players to `hlstats_PlayersInactive`.
 
 The config file holds only the log inputs (UDP, HTTP) and the database connection.
 Game servers and all point and command settings come from the database, so

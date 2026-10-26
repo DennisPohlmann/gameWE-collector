@@ -27,7 +27,7 @@ import (
 // Tables lists the HLstatsX tables gameWE reads or writes.
 var Tables = []string{
 	"hlstats_Games", "hlstats_Servers", "hlstats_Maps", "hlstats_Weapons", "hlstats_Teams", "hlstats_Actions",
-	"hlstats_Players", "hlstats_PlayerUniqueIds", "hlstats_Players_Data", "hlstats_PlayerNames",
+	"hlstats_Players", "hlstats_PlayersInactive", "hlstats_PlayerUniqueIds", "hlstats_Players_Data", "hlstats_PlayerNames",
 	"hlstats_Players_History", "hlstats_Players_Weapons", "hlstats_Players_Actions", "hlstats_Livestats",
 	"hlstats_Events_Connects", "hlstats_Events_Entries", "hlstats_Events_Disconnects", "hlstats_Events_ChangeName",
 	"hlstats_Events_ChangeTeam", "hlstats_Events_Frags", "hlstats_Events_Teamkills", "hlstats_Events_Suicides",

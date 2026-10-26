@@ -57,6 +57,11 @@ pkill -f hlstats.pl
 crontab -e        # comment out the HLstatsX lines
 ```
 
+The collector takes over their jobs: the daily awards (`features.daily_awards`)
+and, if you want it, moving players without play for `MinActivity` days to
+`hlstats_PlayersInactive` (`features.inactive_players`, off by default; see
+CONFIG.md).
+
 Dump the CE database (the name is often `hlstatsx`) and keep the dump as
 your backup:
 

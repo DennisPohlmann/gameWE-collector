@@ -9,6 +9,7 @@ package config
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -48,6 +49,25 @@ type Config struct {
 	Database Database `yaml:"database"`
 	Features Features `yaml:"features"`
 	GeoIP    GeoIP    `yaml:"geoip"`
+	// Timezone is the collector's time zone (IANA name) for the daily jobs
+	// without one of their own; empty: the server's (TZ, /etc/localtime).
+	Timezone string `yaml:"timezone"`
+}
+
+// zone resolves the time zone of a daily job: its own, else the
+// collector's, else the server's local zone.
+func zone(job, global string) (*time.Location, error) {
+	name := cmp.Or(job, global)
+	if name == "" {
+		return time.Local, nil // time.LoadLocation("") would be UTC
+	}
+	return time.LoadLocation(name)
+}
+
+// clock reads HH:MM.
+func clock(v string) (hour, minute int, err error) {
+	t, err := time.Parse("15:04", v)
+	return t.Hour(), t.Minute(), err
 }
 
 // GeoIP is the city database for player and server locations.
@@ -190,6 +210,9 @@ type Features struct {
 	LogSecret    LogSecret   `yaml:"log_secret"`   // check sv_logsecret of the log packets
 	DailyAwards  DailyAwards `yaml:"daily_awards"` // the daily awards job
 	ServerInfo   ServerInfo  `yaml:"server_info"`  // version, OS and VAC of every server (A2S_INFO, status)
+	// InactivePlayers moves players without play for a while to
+	// hlstats_PlayersInactive (off by default).
+	InactivePlayers InactivePlayers `yaml:"inactive_players"`
 }
 
 // Toggle is a feature without settings: a mapping with enabled, or just
@@ -325,6 +348,47 @@ func (s *ServerInfo) UnmarshalYAML(n *yaml.Node) error {
 // Every returns Interval as a duration ("5m" or plain seconds).
 func (s ServerInfo) Every() (time.Duration, error) { return interval(s.Interval) }
 
+// InactivePlayers moves players whose last event is older than the days of
+// hlstats_Options MinActivity (default 28) and who are not online from
+// hlstats_Players to hlstats_PlayersInactive, once a day at Time. A
+// returning player is moved back. In the config file it is a mapping, or
+// just true / false.
+type InactivePlayers struct {
+	Enabled bool   `yaml:"enabled"`
+	Time    string `yaml:"time"` // HH:MM in Location
+	// Timezone (IANA name) of Time; empty: the collector's timezone, else
+	// the server's.
+	Timezone string `yaml:"timezone"`
+}
+
+// UnmarshalYAML accepts "inactive_players: true" and the mapping.
+func (p *InactivePlayers) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode {
+		return n.Decode(&p.Enabled)
+	}
+	if n.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: features.inactive_players: want true / false or enabled, time, timezone", n.Line)
+	}
+	for i := 0; i < len(n.Content); i += 2 {
+		switch k := n.Content[i].Value; k {
+		case "enabled", "time", "timezone":
+		default:
+			return fmt.Errorf("line %d: features.inactive_players: unknown key %q (enabled, time, timezone)", n.Content[i].Line, k)
+		}
+	}
+	type plain InactivePlayers
+	return n.Decode((*plain)(p))
+}
+
+// Location is the time zone of the run: Timezone, else the collector's
+// (global, Config.Timezone), else the server's.
+func (p InactivePlayers) Location(global string) (*time.Location, error) {
+	return zone(p.Timezone, global)
+}
+
+// At returns hour and minute of Time.
+func (p InactivePlayers) At() (hour, minute int, err error) { return clock(p.Time) }
+
 // LogSecret checks the secret (sv_logsecret) in the log packets against
 // hlstats_Servers.log_secret: a server with a stored secret must send it,
 // a server without one is not checked. The secret is set by hand (gamewe
@@ -386,9 +450,11 @@ func (l *LogSecret) UnmarshalYAML(n *yaml.Node) error {
 // DailyAwards is when the daily awards of the previous day are decided.
 // In the config file it is a mapping, or (legacy form) just true / false.
 type DailyAwards struct {
-	Enabled  bool   `yaml:"enabled"`
-	Timezone string `yaml:"timezone"` // IANA name, e.g. UTC or Europe/Berlin
-	Time     string `yaml:"time"`     // HH:MM in Timezone
+	Enabled bool `yaml:"enabled"`
+	// Timezone (IANA name, e.g. UTC or Europe/Berlin) of the day and Time;
+	// empty: the collector's timezone, else the server's.
+	Timezone string `yaml:"timezone"`
+	Time     string `yaml:"time"` // HH:MM in Timezone
 }
 
 // UnmarshalYAML accepts "daily_awards: true" and the mapping.
@@ -410,14 +476,14 @@ func (d *DailyAwards) UnmarshalYAML(n *yaml.Node) error {
 	return n.Decode((*plain)(d))
 }
 
-// Location is the time zone of the daily awards.
-func (d DailyAwards) Location() (*time.Location, error) { return time.LoadLocation(d.Timezone) }
+// Location is the time zone of the daily awards: Timezone, else the
+// collector's (global, Config.Timezone), else the server's.
+func (d DailyAwards) Location(global string) (*time.Location, error) {
+	return zone(d.Timezone, global)
+}
 
 // At returns hour and minute of Time.
-func (d DailyAwards) At() (hour, minute int, err error) {
-	t, err := time.Parse("15:04", d.Time)
-	return t.Hour(), t.Minute(), err
-}
+func (d DailyAwards) At() (hour, minute int, err error) { return clock(d.Time) }
 
 // DefaultListenPort is the default UDP port for game-server logs.
 const DefaultListenPort = 41337
@@ -466,11 +532,12 @@ func Defaults() Config {
 		TLS:            TLS{Mode: TLSDisable},
 		AutoMigrate:    true,
 	}, GeoIP: GeoIP{AutoUpdate: true}, Features: Features{RconStatus: RconStatus{Enabled: true, Interval: "10s"},
-		LogAddress:   LogAddress{Enabled: true, Interval: "1m", HTTP: true},
-		LogSecret:    LogSecret{Enabled: true},
-		DailyAwards:  DailyAwards{Enabled: true, Timezone: "UTC", Time: "00:00"},
-		ServerInfo:   ServerInfo{Enabled: true, Interval: "5m"},
-		CS2Hitgroups: Toggle{Enabled: true}}}
+		LogAddress:      LogAddress{Enabled: true, Interval: "1m", HTTP: true},
+		LogSecret:       LogSecret{Enabled: true},
+		DailyAwards:     DailyAwards{Enabled: true, Time: "00:00"},
+		ServerInfo:      ServerInfo{Enabled: true, Interval: "5m"},
+		CS2Hitgroups:    Toggle{Enabled: true},
+		InactivePlayers: InactivePlayers{Time: "01:00"}}}
 }
 
 // Load reads, decodes and validates the YAML file at path.
@@ -687,8 +754,25 @@ func (c Config) Problems() []Problem {
 	if d, err := c.Features.ServerInfo.Every(); err != nil || d < MinServerInfoInterval {
 		add("features.server_info.interval", "%q: want a duration of at least %v, e.g. \"5m\"", c.Features.ServerInfo.Interval, MinServerInfoInterval)
 	}
-	if _, err := c.Features.DailyAwards.Location(); err != nil {
-		add("features.daily_awards.timezone", "%q: %v (an IANA name such as UTC or Europe/Berlin)", c.Features.DailyAwards.Timezone, err)
+	const tzHint = "(an IANA name such as UTC or Europe/Berlin; empty: the server's time zone)"
+	if c.Timezone != "" {
+		if _, err := time.LoadLocation(c.Timezone); err != nil {
+			add("timezone", "%q: %v %s", c.Timezone, err, tzHint)
+		}
+	}
+	if tz := c.Features.DailyAwards.Timezone; tz != "" {
+		if _, err := time.LoadLocation(tz); err != nil {
+			add("features.daily_awards.timezone", "%q: %v %s", tz, err, tzHint)
+		}
+	}
+	ip := c.Features.InactivePlayers
+	if ip.Timezone != "" {
+		if _, err := time.LoadLocation(ip.Timezone); err != nil {
+			add("features.inactive_players.timezone", "%q: %v %s", ip.Timezone, err, tzHint)
+		}
+	}
+	if _, _, err := ip.At(); err != nil {
+		add("features.inactive_players.time", "%q: want HH:MM, e.g. \"01:00\"", ip.Time)
 	}
 	if _, _, err := c.Features.DailyAwards.At(); err != nil {
 		add("features.daily_awards.time", "%q: want HH:MM, e.g. \"00:00\"", c.Features.DailyAwards.Time)

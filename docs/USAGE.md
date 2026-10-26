@@ -140,9 +140,17 @@ The values in `code style` are `hlstats_Options` keys (defaults in
 What the collector writes into which table, for anyone reading the database
 (e.g. the web frontend), is in [DB-SEMANTICS.md](DB-SEMANTICS.md).
 
+Inactive players: with `features.inactive_players.enabled: true` the
+collector moves once a day (default 01:00 in `timezone`, else the server's
+time zone) the players who have not played for `MinActivity` days (web
+admin, default 28) and are not online to `hlstats_PlayersInactive`, and
+logs how many. They come back unchanged with their next log line. It is off
+by default; see [CONFIG.md](CONFIG.md#features).
+
 Daily awards (most kills with a weapon, most actions, most kills, longest play
 time, ...) are decided every day for the previous day, by default at 00:00
-UTC; time and time zone are `features.daily_awards` in the config file; see
+in the server's time zone; time and time zone are `features.daily_awards` in the config file (or
+the collector's top-level `timezone`); see
 [DB-SEMANTICS.md](DB-SEMANTICS.md#daily-awards-ribbons-ranks). To decide a day
 again (after changing the awards in the web admin):
 

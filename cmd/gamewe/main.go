@@ -412,16 +412,21 @@ func runCmd(args []string) error {
 		log.Warn("no usable game servers in hlstats_Servers yet; add them in the web admin (checked every " + reload.String() + ")")
 	}
 	go hub.RunReloader(ctx, reload)
-	go (&collector.Jobs{Store: store, Hub: hub, Log: log}).Run(ctx)
+	ip := cfg.Features.InactivePlayers
+	ipLoc, _ := ip.Location(cfg.Timezone) // checked by config.Validate
+	ipH, ipM, _ := ip.At()
+	go (&collector.Jobs{Store: store, Hub: hub, Log: log,
+		Inactive: collector.InactiveConfig{Enabled: ip.Enabled, At: collector.Schedule{Loc: ipLoc, Hour: ipH, Minute: ipM}}}).Run(ctx)
 	da := cfg.Features.DailyAwards
+	daLoc, _ := da.Location(cfg.Timezone) // checked by config.Validate
 	if da.Enabled {
-		loc, _ := da.Location() // checked by config.Validate
 		h, m, _ := da.At()
-		go collector.RunDailyAwards(ctx, store, collector.Schedule{Loc: loc, Hour: h, Minute: m}, log)
+		go collector.RunDailyAwards(ctx, store, collector.Schedule{Loc: daLoc, Hour: h, Minute: m}, log)
 	}
 	log.Info("features", "rcon_status", rs.Enabled, "rcon_status_every", every.String(), "log_address", la.Enabled, "log_address_every", laEvery.String(),
 		"log_address_http", la.HTTP, "log_secret", ls.Enabled, "server_info", si.Enabled, "server_info_every", siEvery.String(),
-		"daily_awards", da.Enabled, "daily_awards_at", da.Time+" "+da.Timezone, "cs2_hitgroups", cfg.Features.CS2Hitgroups.Enabled)
+		"daily_awards", da.Enabled, "daily_awards_at", da.Time+" "+daLoc.String(), "cs2_hitgroups", cfg.Features.CS2Hitgroups.Enabled,
+		"inactive_players", ip.Enabled, "inactive_players_at", ip.Time+" "+ipLoc.String())
 
 	// Config, database and servers are fine; READY=1 once every input is
 	// open, so that systemctl start / restart report every failure before.
@@ -570,6 +575,9 @@ type checkFeatures struct {
 	DailyAwardsTime     string `json:"daily_awards_time"`
 	DailyAwardsTimezone string `json:"daily_awards_timezone"`
 	CS2Hitgroups        bool   `json:"cs2_hitgroups"`
+	InactivePlayers     bool   `json:"inactive_players"`
+	InactiveTime        string `json:"inactive_players_time"`
+	InactiveTimezone    string `json:"inactive_players_timezone"`
 }
 
 type checkDatabase struct {
@@ -652,12 +660,15 @@ func check(cfg config.Config, out io.Writer, rep *checkReport) error {
 	laEvery, _ := cfg.Features.LogAddress.Every()
 	si := cfg.Features.ServerInfo
 	siEvery, _ := si.Every()
-	fmt.Fprintf(out, "features:  rcon_status %v (every %v), log_address %v (every %v, http %v), log_secret %v, server_info %v (every %v), daily_awards %v (%s %s), cs2_hitgroups %v\n",
+	ip := cfg.Features.InactivePlayers
+	daLoc, _ := da.Location(cfg.Timezone) // checked by config.Validate
+	ipLoc, _ := ip.Location(cfg.Timezone)
+	fmt.Fprintf(out, "features:  rcon_status %v (every %v), log_address %v (every %v, http %v), log_secret %v, server_info %v (every %v), daily_awards %v (%s %s), cs2_hitgroups %v, inactive_players %v (%s %s, days: hlstats_Options MinActivity)\n",
 		cfg.Features.RconStatus.Enabled, every, cfg.Features.LogAddress.Enabled, laEvery, cfg.Features.LogAddress.HTTP, cfg.Features.LogSecret.Enabled,
-		si.Enabled, siEvery, da.Enabled, da.Time, da.Timezone, cfg.Features.CS2Hitgroups.Enabled)
+		si.Enabled, siEvery, da.Enabled, da.Time, daLoc, cfg.Features.CS2Hitgroups.Enabled, ip.Enabled, ip.Time, ipLoc)
 	rep.Features = checkFeatures{cfg.Features.RconStatus.Enabled, every.String(), cfg.Features.LogAddress.Enabled, laEvery.String(),
-		cfg.Features.LogAddress.HTTP, cfg.Features.LogSecret.Enabled, si.Enabled, siEvery.String(), da.Enabled, da.Time, da.Timezone,
-		cfg.Features.CS2Hitgroups.Enabled}
+		cfg.Features.LogAddress.HTTP, cfg.Features.LogSecret.Enabled, si.Enabled, siEvery.String(), da.Enabled, da.Time, daLoc.String(),
+		cfg.Features.CS2Hitgroups.Enabled, ip.Enabled, ip.Time, ipLoc.String()}
 	if o := cfg.Features.LogSecret.ObsoleteWarning(); o != "" {
 		warn("features.log_secret: " + o)
 	}
@@ -797,7 +808,7 @@ func awardsCmd(args []string) error {
 	cfg, err := loadConfig("awards", args, func(fs *flag.FlagSet) {
 		fs.StringVar(&date, "date", "", "day YYYY-MM-DD (default: yesterday)")
 		fs.StringVar(&game, "game", "", "game code (default: all games)")
-		fs.StringVar(&tz, "tz", "", "time zone of the day (default: features.daily_awards.timezone)")
+		fs.StringVar(&tz, "tz", "", "time zone of the day (default: features.daily_awards.timezone, else timezone, else the server's)")
 	})
 	if err != nil {
 		return err
@@ -805,12 +816,11 @@ func awardsCmd(args []string) error {
 	if err := needList(true); err != nil {
 		return err
 	}
-	if tz == "" {
-		tz = cfg.Features.DailyAwards.Timezone
-	}
-	loc, err := time.LoadLocation(tz)
-	if err != nil {
-		return fmt.Errorf("-tz %q: %v", tz, err)
+	loc, err := cfg.Features.DailyAwards.Location(cfg.Timezone) // checked by config.Validate
+	if tz != "" {
+		if loc, err = time.LoadLocation(tz); err != nil {
+			return fmt.Errorf("-tz %q: %v", tz, err)
+		}
 	}
 	y, m, d := time.Now().In(loc).Date()
 	day := time.Date(y, m, d-1, 0, 0, 0, 0, loc)

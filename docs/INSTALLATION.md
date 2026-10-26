@@ -247,8 +247,12 @@ features:
     interval: 5m
   daily_awards:
     enabled: true
-    timezone: UTC               # IANA zone, e.g. Europe/Berlin
+    timezone: ""                # IANA zone, e.g. Europe/Berlin; empty: timezone, else the server's
     time: "00:00"
+  inactive_players:
+    enabled: false              # daily: players without play for MinActivity days to hlstats_PlayersInactive
+    time: "01:00"
+timezone: ""                    # the collector's time zone; empty: the server's
 ```
 
 Everything else (game servers, points, commands, bots, ...) is in the database

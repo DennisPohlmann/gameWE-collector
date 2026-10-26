@@ -76,8 +76,9 @@ first time per sender and reason, then every 1000th time.
 
 ### features
 
-Optional jobs, all on by default. They need the game server's `rcon_password`
-in `hlstats_Servers` (except `daily_awards`). The switches are only in the
+Optional jobs, all on by default except `inactive_players`. They need the
+game server's `rcon_password` in `hlstats_Servers` (except `daily_awards`
+and `inactive_players`). The switches are only in the
 config file (changing them needs a restart); the old key `gamewe_daily_awards` of
 `hlstats_Options` is not read.
 
@@ -92,9 +93,22 @@ config file (changing them needs a restart); the old key `gamewe_daily_awards` o
 | `server_info.enabled` | `true` | ask every server for its version, operating system and VAC state every `interval`: an `A2S_INFO` query (Valve's server browser query, UDP to the game port in `hlstats_Servers`, no `rcon_password` needed; one answer of at most 1400 bytes, 3 s timeout, a challenge answer is answered once), and with `rcon_status` also the `version` (and `os` / `os/type`) line of each RCON `status`. Stored in `hlstats_Servers.server_version`, `server_os`, `server_vac` only when a value changes; `A2S_INFO` wins where both answer. A server that does not answer is logged once (warning) until it answers again. `false`: neither is stored. The short form `server_info: true` / `false` works too. |
 | `server_info.interval` | `5m` | how often `A2S_INFO` is sent, a duration (`1m`, `10m`) or seconds; at least `30s` |
 | `daily_awards.enabled` | `true` | decide the daily awards of the previous day (DB-SEMANTICS.md) every day at `time`; `gamewe awards -date YYYY-MM-DD` works also when it is off. The old form `daily_awards: true` / `false` still works and means `enabled`. |
-| `daily_awards.timezone` | `UTC` | IANA time zone (`UTC`, `Europe/Berlin`, ...) of `time` and of the day: the awards of a day count from 00:00 to 24:00 in this zone (23 or 25 hours on daylight saving days) |
+| `daily_awards.timezone` | empty | IANA time zone (`UTC`, `Europe/Berlin`, ...) of `time` and of the day: the awards of a day count from 00:00 to 24:00 in this zone (23 or 25 hours on daylight saving days). Empty: the collector's [`timezone`](#timezone), else the server's time zone. Before 0.14 an empty or missing value meant `UTC`: a config without `timezone` here now counts the day in the server's zone (the container image stays UTC unless `TZ` is set); write `timezone: UTC` to keep the old day. |
 | `daily_awards.time` | `"00:00"` | when the previous day is decided, `HH:MM` in `timezone` (on the day summer time starts, a time that does not exist runs an hour later) |
+| `inactive_players.enabled` | `false` | once a day at `time`, move the players without play for `MinActivity` days (the `hlstats_Options` key of the web admin, "days until 0 % activity", default 28) from `hlstats_Players` to `hlstats_PlayersInactive`, as the maintenance job of HLstatsX did. A player counts as inactive when `last_event` is older than that and the player is not online (no row in `hlstats_Livestats`); bots are treated like players. All columns move unchanged in batches of 500; no other table is touched (names, unique ids, events, history stay). A returning player is moved back with the same values at the first log line (DB-SEMANTICS.md). A missing or invalid `MinActivity` (not 1 to 3650) uses 28 and logs a warning. The number of moved players is logged. The rankings, `hlstats_Servers.players` and the web admin's player list only read `hlstats_Players`, so the moved players drop out of them; their profile page still works. Off by default so that an update changes no existing database. The first run is at the next `time` after the start (no run at start). The short form `inactive_players: true` / `false` works too. |
+| `inactive_players.time` | `"01:00"` | when, `HH:MM` in `timezone`; exactly one run per calendar day, also on the days daylight saving time starts (a time that does not exist runs an hour later) or ends |
+| `inactive_players.timezone` | empty | IANA time zone of `time`; empty: the collector's [`timezone`](#timezone), else the server's time zone |
 | `cs2_hitgroups.enabled` | `true` | Counter-Strike 2: count hits per body part (`head`, `neck`, `chest`, `stomach`, arms, legs) and damage per weapon from the `attacked` lines and kills, headshots and deaths per weapon from the kill lines, stored in `hlstats_Players_Weapons` at the end of every round and when a player leaves. CS2 has no plugin that reports `weaponstats`, so shots and accuracy stay empty. The short form `cs2_hitgroups: true` / `false` works too. |
+
+### timezone
+
+`timezone: ""` (top level): the collector's time zone, an IANA name such as
+`Europe/Berlin`, for the daily jobs (`features.daily_awards`,
+`features.inactive_players`) that have no `timezone` of their own. Empty (the
+default): the server's time zone (`TZ`, `/etc/localtime`; in the container
+image UTC unless `TZ` is set). The order is: the job's `timezone`, then
+this one, then the server's. An unknown name is a config error:
+`gamewe run` exits with 78, `gamewe config test` reports the line.
 
 ### `geoip`
 

@@ -57,7 +57,9 @@ host.
 | `gamewe_web_admin` | SELECT on all tables (including `rcon_password`, to manage servers); INSERT, UPDATE, DELETE on `hlstats_Options`, `_Games`, `_Servers`, `_Clans`, `_Weapons`, `_Actions`, `_Teams`, `_Roles`, `_Awards`, `_Definition_Ranks_Ribbons`, `_Users`; on `hlstats_Players` only UPDATE of `skill`, `hideranking`, `clan`; INSERT on `hlstats_gamewe_jobs` | the web admin pages |
 
 The collector itself only reads and writes rows (`DELETE` is needed for
-`hlstats_Livestats`, `hlstats_PlayersInactive` and a rare race when two
+`hlstats_Livestats`, `hlstats_PlayersInactive`, the daily move of inactive
+players from `hlstats_Players` to `hlstats_PlayersInactive`
+(`features.inactive_players`, off by default) and a rare race when two
 servers register the same new player). CREATE, ALTER and INDEX are for
 the migration (at the start with `database.auto_migrate`, or `gamewe db
 migrate`); it has no DROP right, so it cannot drop a table (`gamewe db drop`

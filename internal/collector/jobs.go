@@ -19,15 +19,26 @@ const jobKeep = 30 * 24 * time.Hour
 
 // Jobs runs the jobs of hlstats_gamewe_jobs (ranking resets queued by the
 // web admin or `gamewe reset`) in the running collector, which pauses the
-// game's servers for it, and writes the heartbeat.
+// game's servers for it, writes the heartbeat and moves inactive players
+// (features.inactive_players; one after the other, never during a reset).
 type Jobs struct {
-	Store *stats.Store
-	Hub   *Hub
-	Log   *slog.Logger
-	Now   func() time.Time // tests
+	Store    *stats.Store
+	Hub      *Hub
+	Log      *slog.Logger
+	Now      func() time.Time // tests
+	Inactive InactiveConfig
 
-	lastBeat  time.Time
-	lastPrune time.Time
+	lastBeat     time.Time
+	lastPrune    time.Time
+	lastInactive time.Time
+}
+
+// InactiveConfig is features.inactive_players: once a day at At (its hour
+// and minute in its zone), players without an event for hlstats_Options
+// MinActivity days who are not online are moved to hlstats_PlayersInactive.
+type InactiveConfig struct {
+	Enabled bool
+	At      Schedule
 }
 
 func (j *Jobs) now() time.Time {
@@ -40,6 +51,7 @@ func (j *Jobs) now() time.Time {
 // Run first completes jobs left running by a stopped collector, then polls
 // every JobPoll until ctx is done.
 func (j *Jobs) Run(ctx context.Context) {
+	j.lastInactive = j.now() // the first move at the next daily time, not at start
 	if err := j.Recover(ctx); err != nil {
 		j.Log.Error("jobs: recovering running jobs failed", "err", err)
 	}
@@ -88,6 +100,11 @@ func (j *Jobs) Poll(ctx context.Context) error {
 		}
 		j.lastPrune = now
 	}
+	if j.inactiveDue(now) {
+		if err := j.MoveInactive(ctx, now); err != nil && ctx.Err() == nil {
+			j.Log.Error("jobs: moving inactive players failed", "err", err)
+		}
+	}
 	pending, err := j.Store.JobsByStatus(ctx, stats.JobPending)
 	if err != nil {
 		return err
@@ -125,6 +142,37 @@ func (j *Jobs) Poll(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// inactiveDue reports whether the daily move is due and marks it done: once
+// per daily time passed since the last move (also across DST changes:
+// At.Last gives one run per calendar day).
+func (j *Jobs) inactiveDue(now time.Time) bool {
+	if !j.Inactive.Enabled {
+		return false
+	}
+	if run, _ := j.Inactive.At.Last(now); !run.After(j.lastInactive) {
+		return false
+	}
+	j.lastInactive = now
+	return true
+}
+
+// MoveInactive moves the players without an event for hlstats_Options
+// MinActivity days before now (and not online) to hlstats_PlayersInactive.
+func (j *Jobs) MoveInactive(ctx context.Context, now time.Time) error {
+	days, warn, err := j.Store.InactiveDays(ctx)
+	if err != nil {
+		return err
+	}
+	if warn != "" {
+		j.Log.Warn("jobs: " + warn)
+	}
+	n, err := j.Store.MoveInactive(ctx, now.Add(-time.Duration(days)*24*time.Hour))
+	if n > 0 || err != nil {
+		j.Log.Info("jobs: inactive players moved to hlstats_PlayersInactive", "players", n, "days", days)
+	}
+	return err
 }
 
 // do runs a claimed job and stores its result.

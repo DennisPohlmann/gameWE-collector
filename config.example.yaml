@@ -87,7 +87,7 @@ geoip:
   path: /var/lib/gamewe/collector/dbip-city-lite.mmdb
   auto_update: true
 
-# Optional jobs of the collector, all on by default.
+# Optional jobs of the collector, all on by default except inactive_players.
 features:
   rcon_status:         # RCON "status" of every server: players and bots, map, max players (DB-SEMANTICS.md)
     enabled: true
@@ -105,7 +105,18 @@ features:
     interval: 5m       # how often (at least 30s)
   daily_awards:        # the daily awards of the previous day (by hand: gamewe awards -date ...)
     enabled: true
-    timezone: UTC      # IANA time zone of the day and the time, e.g. Europe/Berlin
+    timezone: ""       # IANA time zone of the day and the time, e.g. Europe/Berlin
+                       # (empty: timezone below, else the server's)
     time: "00:00"      # HH:MM in that time zone
+  inactive_players:    # once a day: players without play for MinActivity days (hlstats_Options,
+    enabled: false     # web admin, default 28) who are not online move to hlstats_PlayersInactive;
+                       # they come back unchanged with their next log line
+    time: "01:00"      # HH:MM in timezone
+    timezone: ""       # IANA time zone; empty: timezone below, else the server's
   cs2_hitgroups:       # Counter-Strike 2: hits per body part (head, neck, chest, ...) and damage
     enabled: true      # from the attacked lines (CS2 has no plugin that reports them)
+
+# The collector's time zone (IANA name, e.g. Europe/Berlin) for the daily
+# jobs above without a timezone of their own. Empty: the server's time zone
+# (TZ, /etc/localtime; the container image is UTC unless TZ is set).
+timezone: ""

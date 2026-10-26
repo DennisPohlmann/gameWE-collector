@@ -135,6 +135,8 @@ func TestLint(t *testing.T) {
 			want: []wantFinding{{SevWarning, "listen.udp.port", "no effect while listen.udp.enabled is false"}, {SevWarning, "listen.udp.public_address", "no effect"}}},
 		{name: "interval while the feature is off", in: lintBase + "features:\n  rcon_status:\n    enabled: false\n    interval: 30s\n",
 			want: []wantFinding{{SevWarning, "features.rcon_status.interval", "no effect while features.rcon_status.enabled is false"}}},
+		{name: "inactive players time while off", in: lintBase + "features:\n  inactive_players:\n    time: \"04:00\"\n",
+			want: []wantFinding{{SevWarning, "features.inactive_players.time", "no effect"}}},
 		{name: "daily award time while off", in: lintBase + "features:\n  daily_awards:\n    enabled: false\n    time: \"03:00\"\n",
 			want: []wantFinding{{SevWarning, "features.daily_awards.time", "no effect"}}},
 		{name: "log_address.http while log_address is off", in: lintBase + "features:\n  log_address:\n    enabled: false\n    http: true\n",
