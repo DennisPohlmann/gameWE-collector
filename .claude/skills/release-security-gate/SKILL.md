@@ -47,6 +47,13 @@ version semantic-release will make (`feat` → minor, `fix` → patch,
 8. **Packaging:** `packaging/*.service` keeps its hardening
    (`NoNewPrivileges`, `ProtectSystem`, dedicated user); Dockerfile runs as
    non-root; example configs contain only placeholders.
+   **Image:** every `FROM` is pinned by digest (`@sha256:`); build and
+   scan it as CI does (`make geoip && docker build -t gamewe-collector:gate .`, then
+   `trivy config --severity HIGH,CRITICAL --exit-code 1 .` and
+   `trivy image --scanners vuln --ignore-unfixed --severity HIGH,CRITICAL --exit-code 1 gamewe-collector:gate`).
+   A fixable HIGH or CRITICAL is a no-go unless `.trivyignore` lists it
+   with a reason and an unexpired date; also report open issues labelled
+   `security` and open code-scanning alerts of the image scan.
 9. **The 20 points:** go through the `security-check` skill's list for the
    whole code base, with extra attention on what changed since the last tag
    (`git log --oneline <last-tag>..HEAD`).

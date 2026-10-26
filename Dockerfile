@@ -4,11 +4,12 @@
 # Needs geoip-data/ (make geoip): the DB-IP City Lite database shipped in the
 # image at /var/lib/gamewe/collector, where the collector also updates it
 # monthly (the volume /var/lib/gamewe, owned by nonroot, uid 65532).
+# Every base image is pinned by digest; Dependabot proposes new digests.
 
-FROM busybox:1.38 AS dirs
+FROM busybox:1.38@sha256:fd7dc98638c8e305f4dc34e979f1c0fdfdcaeb0fbf8fcff77ae834b6da3d7e6e AS dirs
 RUN mkdir -p /out/var/lib/gamewe/collector
 
-FROM golang:1.27 AS build
+FROM golang:1.27@sha256:f20d83a83e18dbd2a4714b8ffd4b30b287b6243962dd75608e86abcc63ba4efc AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -19,7 +20,8 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
       -o /out/gamewe ./cmd/gamewe
 
 # distroless: CA certificates (for database TLS) and a non-root user, no shell.
-FROM gcr.io/distroless/static-debian13:nonroot
+# No package manager, so its patches come only with a new digest.
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:18f4cc26c9ffa7f20a359298be7deadac5c607c8e03a02b8119f1a5fc2f82c99
 ARG VERSION=dev
 LABEL org.opencontainers.image.title="gameWE - collector" \
       org.opencontainers.image.description="Collects Source game-server logs into an HLstatsX database" \

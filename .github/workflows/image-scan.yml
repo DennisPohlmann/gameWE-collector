@@ -1,0 +1,87 @@
+name: image scan
+
+# Every night: scans the published images (tags latest and edge) with a
+# fresh vulnerability database, because new CVEs show up without any change
+# here. Findings with a fix go to the Security tab (code scanning, one
+# category per tag). Fixable HIGH or CRITICAL ones open one issue labelled
+# "security" (or update it), and the first clean run closes it again. The
+# fix is a new image: merge the Dependabot PR for the base image or the
+# package, or rebuild (build workflow, weekly for edge).
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/dennispohlmann/gamewe-collector
+  ISSUE_TITLE: Fixable HIGH/CRITICAL vulnerabilities in the published image
+
+jobs:
+  scan:
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      security-events: write
+      issues: write
+      packages: read # the images in ghcr.io are private
+    steps:
+      - uses: actions/checkout@v7 # .trivyignore and the setup action
+      - uses: ./.github/actions/setup-trivy
+      - name: scan latest and edge
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ github.token }}
+        run: |
+          for tag in latest edge; do
+            trivy image --scanners vuln --ignore-unfixed \
+              --format sarif --output "trivy-$tag.sarif" "$IMAGE:$tag"
+            trivy image --skip-db-update --scanners vuln --ignore-unfixed \
+              --severity HIGH,CRITICAL --format json --output "fixable-$tag.json" "$IMAGE:$tag"
+          done
+      - uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-latest.sarif
+          category: image-latest
+      - uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-edge.sarif
+          category: image-edge
+      - name: open, update or close the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          rows=$(for tag in latest edge; do
+            jq -r --arg tag "$tag" '.Results[]? | .Vulnerabilities[]? |
+              "| \($tag) | \(.PkgName) | [\(.VulnerabilityID)](\(.PrimaryURL // "")) | \(.Severity) | \(.InstalledVersion) | \(.FixedVersion) |"' \
+              "fixable-$tag.json"
+          done | sort -u)
+          open=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label security \
+            --search "\"$ISSUE_TITLE\" in:title" --json number --jq '.[0].number // empty')
+          if [ -z "$rows" ]; then
+            if [ -n "$open" ]; then
+              gh issue close "$open" --repo "$GITHUB_REPOSITORY" \
+                --comment "The nightly scan is clean again: $RUN_URL"
+            fi
+            exit 0
+          fi
+          {
+            echo "The nightly Trivy scan of \`$IMAGE\` found vulnerabilities rated HIGH or CRITICAL that have a fixed version ([run]($RUN_URL), $(date -u +%F))."
+            echo
+            echo "| Tag | Package | Vulnerability | Severity | Installed | Fixed in |"
+            echo "| --- | --- | --- | --- | --- | --- |"
+            echo "$rows"
+            echo
+            echo "Fix: merge the pending Dependabot PR for the base image or the package, or rebuild the image. A finding accepted on purpose goes into \`.trivyignore\` with a reason and an expiry date."
+          } > body.md
+          if [ -n "$open" ]; then
+            gh issue edit "$open" --repo "$GITHUB_REPOSITORY" --body-file body.md
+          else
+            gh label create security --repo "$GITHUB_REPOSITORY" --color B60205 \
+              --description "Security findings" --force
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$ISSUE_TITLE" \
+              --label security --body-file body.md
+          fi

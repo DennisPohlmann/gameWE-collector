@@ -9,12 +9,17 @@ name: build
 # tag: the archive goes into the release, the image gets the tags <version>,
 # <major>.<minor> and latest. A manual run (workflow_dispatch) tests and
 # builds without pushing an image or making a release, and so does a pull
-# request (e.g. from Dependabot).
+# request (e.g. from Dependabot). The image is built and scanned with Trivy
+# first (image-scan); a fixable HIGH or CRITICAL vulnerability stops the
+# release. Once a week (schedule) everything runs again and edge is rebuilt
+# from main.
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: '23 4 * * 1'
   workflow_dispatch:
 
 permissions:
@@ -166,8 +171,36 @@ jobs:
           done
           [ "$before" = "$(rows)" ] || { echo "the rows of the hlstats_ tables changed"; exit 1; }
 
+  # Builds the image without pushing it and scans it: HIGH or CRITICAL
+  # vulnerabilities that have a fix fail, and so do HIGH or CRITICAL
+  # misconfigurations of the Dockerfile. Findings accepted on purpose go into
+  # .trivyignore with a reason and an expiry date.
+  image-scan:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: ./.github/actions/setup-trivy
+      - name: scan the Dockerfile
+        run: trivy config --severity HIGH,CRITICAL --exit-code 1 .
+      - name: GeoIP database (DB-IP City Lite, CC BY 4.0)
+        run: make geoip
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: gamewe-collector:scan
+      - name: scan the image
+        run: >-
+          trivy image --scanners vuln --ignore-unfixed
+          --severity HIGH,CRITICAL --exit-code 1 gamewe-collector:scan
+
   release:
-    needs: [test, integration]
+    needs: [test, integration, image-scan]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-26.04
     permissions:
@@ -201,8 +234,8 @@ jobs:
   # Runs after the release job (or without it on a manual run) and builds the
   # new tag if there was a release, otherwise the pushed commit.
   package:
-    needs: [test, integration, release]
-    if: ${{ !cancelled() && needs.test.result == 'success' && needs.integration.result == 'success' && needs.release.result != 'failure' }}
+    needs: [test, integration, image-scan, release]
+    if: ${{ !cancelled() && needs.test.result == 'success' && needs.integration.result == 'success' && needs.image-scan.result == 'success' && needs.release.result != 'failure' }}
     runs-on: ubuntu-26.04
     permissions:
       contents: write
@@ -231,15 +264,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "v$RELEASE" dist/*.tar.gz dist/*.tar.gz.sha256 --repo "$GITHUB_REPOSITORY"
 
+  # Publishes on a push to main and on the weekly schedule (edge only), with
+  # an SBOM and full provenance as attestations; a release also gets the
+  # SBOM as an SPDX file. A pull request stops at image-scan.
   docker:
-    needs: [test, integration, release]
-    if: ${{ !cancelled() && needs.test.result == 'success' && needs.integration.result == 'success' && needs.release.result != 'failure' }}
+    needs: [test, integration, image-scan, release]
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.test.result == 'success' && needs.integration.result == 'success' && needs.image-scan.result == 'success' && needs.release.result != 'failure' }}
     runs-on: ubuntu-26.04
     permissions:
-      contents: read
+      contents: write # the SBOM file in the release
       packages: write
     env:
       RELEASE: ${{ needs.release.outputs.version }}
+      PUBLISH: ${{ github.event_name == 'push' || github.event_name == 'schedule' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -258,7 +295,7 @@ jobs:
           echo "version=$v" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
-        if: github.event_name == 'push'
+        if: env.PUBLISH == 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -277,7 +314,22 @@ jobs:
         with:
           context: .
           platforms: linux/amd64
-          push: ${{ github.event_name == 'push' }}
+          push: ${{ env.PUBLISH == 'true' }}
+          sbom: ${{ env.PUBLISH == 'true' }}
+          provenance: ${{ env.PUBLISH == 'true' && 'mode=max' || 'false' }}
           build-args: VERSION=${{ steps.version.outputs.version }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+      - uses: ./.github/actions/setup-trivy
+        if: env.RELEASE != ''
+      - name: add the SBOM to the release
+        if: env.RELEASE != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ github.token }}
+        run: |
+          sbom="dist/gamewe-collector-$RELEASE-image.spdx.json"
+          mkdir -p dist
+          trivy image --format spdx-json --output "$sbom" "ghcr.io/dennispohlmann/gamewe-collector:$RELEASE"
+          gh release upload "v$RELEASE" "$sbom" --repo "$GITHUB_REPOSITORY"

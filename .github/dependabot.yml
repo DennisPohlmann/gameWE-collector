@@ -34,17 +34,17 @@ updates:
       actions:
         patterns: ["*"]
 
-  # Base images in the Dockerfile (golang, busybox; distroless has no
-  # version tag to follow).
+  # Base images in the Dockerfile (golang, busybox, distroless), pinned by
+  # digest: a new digest behind the same tag is a patch (Go, Debian), so they
+  # are checked daily with a short cooldown.
   - package-ecosystem: docker
     directory: /
     schedule:
-      interval: weekly
-      day: monday
+      interval: daily
       time: "06:00"
       timezone: Europe/Berlin
     cooldown:
-      default-days: 5
+      default-days: 2
     commit-message:
       prefix: fix
       include: scope

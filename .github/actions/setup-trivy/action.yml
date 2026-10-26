@@ -1,0 +1,29 @@
+name: setup trivy
+description: >-
+  Installs a pinned Trivy release (checksum-checked, no third-party action)
+  and restores the vulnerability database from the cache of the same day.
+runs:
+  using: composite
+  steps:
+    - name: install trivy
+      id: install
+      shell: bash
+      env:
+        # A new version: the checksum of trivy_<version>_Linux-64bit.tar.gz
+        # from trivy_<version>_checksums.txt of the GitHub release.
+        TRIVY_VERSION: 0.76.1
+        TRIVY_SHA256: c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0
+      run: |
+        dir="$RUNNER_TEMP/trivy"
+        mkdir -p "$dir"
+        curl -sSfL -o "$dir/trivy.tar.gz" \
+          "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+        echo "$TRIVY_SHA256  $dir/trivy.tar.gz" | sha256sum -c -
+        tar -xzf "$dir/trivy.tar.gz" -C "$dir" trivy
+        echo "$dir" >> "$GITHUB_PATH"
+        echo "day=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+    - uses: actions/cache@v6
+      with:
+        path: ~/.cache/trivy/db
+        key: trivy-db-${{ steps.install.outputs.day }}
+        restore-keys: trivy-db-

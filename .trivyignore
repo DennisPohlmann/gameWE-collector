@@ -1,0 +1,6 @@
+# Vulnerabilities accepted on purpose, skipped by every Trivy scan (build,
+# nightly scan of the published images). One ID per line, each with the
+# reason and an expiry date after which the finding counts again:
+#
+#   # libfoo in the base image, not reachable from gameWE; Debian fix pending
+#   CVE-2026-12345 exp:2026-12-31
