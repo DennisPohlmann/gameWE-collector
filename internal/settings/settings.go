@@ -132,6 +132,7 @@ var WebKeys = []string{
 	"gamewe_ts_host", "gamewe_ts_port", "gamewe_ts_query_port", "gamewe_ts_query_user", "gamewe_ts_query_password",
 	"gamewe_ts_password", "gamewe_ts_name", "gamewe_ts_link", "gamewe_ts_display", "gamewe_ts_country",
 	"gamewe_ts_show_clients", "gamewe_update_check",
+	"gamewe_default_lang", "gamewe_steam_profiles", "gamewe_steam_api_key",
 }
 
 var webKeys = func() map[string]bool {
