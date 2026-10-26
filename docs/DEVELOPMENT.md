@@ -65,7 +65,11 @@ and its older name `-yes`, `--dry-run`, a running collector, the missing DROP
 right on MariaDB); `TestMigrateJobCommands` the job commands (`inactive`,
 `awards`, `serverinfo`, the admin commands, `simulate`, `geoip-update`)
 without a terminal, with `--force` and `--dry-run`. New commands that change
-something use `changeFlags` and `approve` (`cmd/gamewe/confirm.go`).
+something use `changeFlags` and `approve` (`cmd/gamewe/confirm.go`). Whatever
+runs the binary without a terminal (the Makefile: `make geoip` / `make
+package`, the workflow, scripts) passes `--force` to such commands;
+`TestMakefileForce` checks the Makefile (v0.15.0 had no archive and no image
+because `make geoip` asked).
 `TestMigrateCollectorLock` (`internal/database/running_integration_test.go`)
 and `TestMigrateRefusesRunningCollector` cover the collector lock (migrate
 refuses while `gamewe run` holds the lock, while only the lock of a collector

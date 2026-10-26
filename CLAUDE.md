@@ -136,5 +136,9 @@ the audit summary of `security-privacy-audit`.
   it too. Every job of the collector that only needs the database has a
   CLI command that works with its feature off (USAGE.md, "Collector jobs by
   hand and from cron").
+- Every CLI command that changes something asks first (`changeFlags`,
+  `approve` in `cmd/gamewe/confirm.go`: `--force`/`-f`, older `-yes`/`-y`,
+  `--dry-run`/`-n`); calls without a terminal (Makefile, workflow, docs
+  for cron) pass `--force` (`TestMakefileForce`).
 - Secrets stay out of git: `config.yaml`, `*.pem`, `*.key`, real
   `docker-compose.yml` values are ignored; examples use `change-me`.

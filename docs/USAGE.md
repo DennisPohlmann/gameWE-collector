@@ -177,9 +177,9 @@ game code typed instead.
   -n`: 2 when a migration is pending).
 - `--force` (`-f`): do not ask, for scripts and cron. The older `-yes` and
   `-y` still work and mean the same.
-- Without a terminal on stdin (cron, a pipe) and without `--force` the
-  command stops before changing anything, with exit code 1 and the hint to
-  use `--force` or `--dry-run`.
+- Without a terminal on stdin (cron, systemd, CI, a pipe, `< /dev/null`)
+  and without `--force` the command stops at once before changing
+  anything, with exit code 1 and the hint to use `--force` or `--dry-run`.
 - `--force` and `--dry-run` together are refused (exit code 2).
 
 This holds for `db migrate`, `db init`, `db grants`, `db seed`, `db purge`,
