@@ -55,6 +55,141 @@ Current version: see `VERSION` and [CHANGELOG.md](CHANGELOG.md).
 
 Details per game: [docs/GAMES.md](docs/GAMES.md).
 
+## Quick start with Docker
+
+Database, collector and web on one Docker host, ready in a few minutes. Every
+`change-me` is a placeholder: replace it with your own password (no `'`, `\`
+or `$`), the same value everywhere it appears.
+
+| Port | Container | For |
+|------|-----------|-----|
+| `41337/udp` | collector (host network) | the logs of the game servers (`logaddress_add`); open it in the firewall for the game servers |
+| `3000/tcp` | web | the website and the admin area: `http://<docker host>:3000` |
+| `3306/tcp` | database | only on `127.0.0.1`, for the collector |
+
+The collector runs in the host network: it recognises a game server by the
+source address of its log packets, which a published port (`-p`) can replace.
+
+**1. Network and database** (MariaDB 12.3)
+
+```bash
+docker network create gamewe
+
+docker run -d --name gamewe-db --restart unless-stopped \
+  --network gamewe \
+  -p 127.0.0.1:3306:3306 \
+  -e MARIADB_ROOT_PASSWORD=change-me-root \
+  -v gamewe-db:/var/lib/mysql \
+  mariadb:12.3
+```
+
+**2. Database users** (once; waits until the database is up)
+
+```bash
+until docker exec gamewe-db healthcheck.sh --connect --innodb_initialized >/dev/null 2>&1; do sleep 2; done
+docker exec -i gamewe-db mariadb -uroot -pchange-me-root <<'SQL'
+CREATE DATABASE gamewe CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'gamewe'@'%' IDENTIFIED BY 'change-me-collector';
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX ON gamewe.* TO 'gamewe'@'%' WITH GRANT OPTION;
+CREATE USER 'gamewe_web'@'%' IDENTIFIED BY 'change-me-web';
+CREATE USER 'gamewe_web_admin'@'%' IDENTIFIED BY 'change-me-web-admin';
+GRANT SELECT ON gamewe.* TO 'gamewe_web_admin'@'%';
+SQL
+```
+
+`gamewe` is the collector, `gamewe_web` the public pages (read only),
+`gamewe_web_admin` the admin area. The collector creates the tables and
+grants the two web users their table rights at its first start.
+
+**3. Collector**
+
+The collector reads its database connection and log port only from a config
+file, not from environment variables, so it needs this short one:
+
+```bash
+mkdir -p ~/gamewe && cat > ~/gamewe/collector.yaml <<'EOF'
+listen:
+  udp:
+    port: 41337
+database:
+  type: mariadb
+  host: 127.0.0.1
+  port: 3306
+  name: gamewe
+  user: gamewe
+  password: "change-me-collector"
+EOF
+
+docker run -d --name gamewe-collector --restart unless-stopped \
+  --network host \
+  -e TZ=Europe/Berlin \
+  -v ~/gamewe/collector.yaml:/etc/gamewe/collector/config.yaml:ro \
+  -v gamewe-collector:/var/lib/gamewe \
+  --log-opt max-size=50m --log-opt max-file=5 \
+  ghcr.io/dennispohlmann/gamewe-collector:latest
+
+docker logs gamewe-collector    # "database migrated", "listening for game server logs"
+```
+
+**4. Web**
+
+```bash
+docker run -d --name gamewe-web --restart unless-stopped \
+  --network gamewe \
+  -p 3000:3000 \
+  -e DB_TYPE=mariadb \
+  -e DB_HOST=gamewe-db \
+  -e DB_NAME=gamewe \
+  -e DB_USER=gamewe_web \
+  -e DB_PASSWORD=change-me-web \
+  -e DB_ADMIN_USER=gamewe_web_admin \
+  -e DB_ADMIN_PASSWORD=change-me-web-admin \
+  -e ADMIN_SECRET=change-me-change-me-change-me-change-me \
+  -e TZ=Europe/Berlin \
+  ghcr.io/dennispohlmann/gamewe-web:latest
+
+docker exec gamewe-web node scripts/create-admin.mjs admin   # prints the admin password once
+```
+
+`ADMIN_SECRET` signs the admin login: at least 32 characters, e.g. from
+`openssl rand -hex 32`; keep it when you recreate the container.
+
+**5. Open it and add the game servers**
+
+Open `http://<docker host>:3000`, sign in at `http://<docker host>:3000/admin`
+with `admin` and the printed password, and add your game servers: Rankings,
+pick the game's ranking, "Add server" (address, game port, RCON password).
+The collector picks them up within a minute. Then add to each game server's `server.cfg`:
+
+```
+log on
+logaddress_add <docker host>:41337
+```
+
+Counter-Strike 2 sends its logs over HTTP instead: see
+[Counter-Strike 2](https://github.com/DennisPohlmann/gameWE-collector/blob/main/docs/GAMES.md#counter-strike-2)
+in the collector's docs (`listen.http`, TCP port 41338).
+
+**The same with Docker Compose:**
+[`docker-compose.quickstart.yml`](docker-compose.quickstart.yml) (in both
+repositories) starts database, collector and web in one go. The database
+users and the collector's config are written into the file itself, so
+nothing else is needed:
+
+```bash
+curl -O https://raw.githubusercontent.com/DennisPohlmann/gameWE-collector/main/docker-compose.quickstart.yml
+$EDITOR docker-compose.quickstart.yml        # replace every change-me
+docker compose -f docker-compose.quickstart.yml up -d
+docker compose -f docker-compose.quickstart.yml exec web node scripts/create-admin.mjs admin
+```
+
+For production put a reverse proxy with TLS in front of the web (bind it
+to `127.0.0.1:3000:3000`), keep the collector's config file private
+(`chmod 600`, owner uid `65532`), and see the installation guides of the
+[collector](https://github.com/DennisPohlmann/gameWE-collector/blob/main/docs/INSTALLATION.md)
+and the [web](https://github.com/DennisPohlmann/gameWE-web/blob/main/docs/INSTALLATION.md)
+(PostgreSQL, TLS to the database, own templates, updates).
+
 ## Quick start
 
 1. Install the collector as a container (`ghcr.io/dennispohlmann/gamewe-collector`,

@@ -55,6 +55,10 @@ database. It runs as the
 non-root user `nonroot` (uid 65532). Pull it with `docker pull`, or
 build it yourself: `make docker`.
 
+The shortest way, with a MariaDB container and the web on the same host
+(`docker run` commands and `docker-compose.quickstart.yml`):
+[Quick start with Docker](../README.md#quick-start-with-docker).
+
 **Use the host network.** The collector recognises a game server by the source
 IP and port of its log packets. With published ports (`-p 41337:41337/udp`)
 Docker's or Podman's port forwarder can replace that source address, and every

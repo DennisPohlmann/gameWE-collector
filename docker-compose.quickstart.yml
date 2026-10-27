@@ -1,0 +1,124 @@
+# gameWE quick start: database, collector and web in one Compose project,
+# without any other file. The same file is in gameWE-collector and gameWE-web.
+#
+#   1. Change every change-me below (or set the variables in the shell or in
+#      a .env file next to this file, e.g. COLLECTOR_PASSWORD=...).
+#   2. docker compose -f docker-compose.quickstart.yml up -d
+#   3. docker compose -f docker-compose.quickstart.yml exec web node scripts/create-admin.mjs admin
+#      (prints the password of the new admin user once)
+#   4. Open http://<this host>:3000 (admin area: http://<this host>:3000/admin),
+#      add your game servers under Admin -> Servers and let them send their
+#      logs to UDP port 41337 of this host (README, Quick start with Docker).
+#
+# Ports:
+#   41337/udp  collector, logs of the game servers (host network, see below)
+#   41338/tcp  collector, HTTP logs of Counter-Strike 2 (only with listen.http)
+#   3000/tcp   web, the website and the admin area
+#   3306/tcp   database, on 127.0.0.1 only
+#
+# The collector uses the host network: it recognises a game server by the
+# source address of its log packets, which a published port (-p) can replace.
+# It reaches the database through 127.0.0.1:3306, the web through the
+# Compose network (host db).
+#
+# The database users are created once, at the first start with an empty
+# volume (configs: db-init). The collector creates the tables at its first
+# start and migrates them after an update (database.auto_migrate).
+# Passwords must not contain ' \ or $.
+name: gamewe
+
+services:
+  db:
+    image: mariadb:12.3
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-change-me-root}
+      MARIADB_AUTO_UPGRADE: "1"
+    ports:
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - db:/var/lib/mysql
+    configs:
+      - source: db-init
+        target: /docker-entrypoint-initdb.d/gamewe.sql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  collector:
+    image: ghcr.io/dennispohlmann/gamewe-collector:latest
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TZ: Europe/Berlin              # daily awards and history days; the same as the web
+    configs:
+      - source: collector
+        target: /etc/gamewe/collector/config.yaml
+    volumes:
+      - collector:/var/lib/gamewe     # GeoIP database and its monthly update
+    depends_on:
+      db:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"               # every received log line is logged
+        max-file: "5"
+
+  web:
+    image: ghcr.io/dennispohlmann/gamewe-web:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"                   # http://<this host>:3000
+    environment:
+      DB_TYPE: mariadb
+      DB_HOST: db
+      DB_NAME: gamewe
+      DB_USER: gamewe_web
+      DB_PASSWORD: ${WEB_PASSWORD:-change-me-web}
+      DB_ADMIN_USER: gamewe_web_admin
+      DB_ADMIN_PASSWORD: ${WEB_ADMIN_PASSWORD:-change-me-web-admin}
+      # Signs the admin login, at least 32 characters: openssl rand -hex 32
+      ADMIN_SECRET: ${ADMIN_SECRET:-change-me-change-me-change-me-change-me}
+      TZ: Europe/Berlin
+    # Own design templates and map pictures (docs/INSTALLATION.md of the web):
+    # volumes:
+    #   - /var/lib/gamewe/web/templates:/var/lib/gamewe/web/templates:ro
+    #   - /var/lib/gamewe/web/overviews:/var/lib/gamewe/web/overviews:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      collector:
+        condition: service_started
+
+configs:
+  # The database and its three users (the same as schema/init/init-db.sh of
+  # the collector). The table rights of the web users are granted by the
+  # collector when it creates the tables.
+  db-init:
+    content: |
+      CREATE DATABASE gamewe CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+      CREATE USER 'gamewe'@'%' IDENTIFIED BY '${COLLECTOR_PASSWORD:-change-me-collector}';
+      GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX ON gamewe.* TO 'gamewe'@'%' WITH GRANT OPTION;
+      CREATE USER 'gamewe_web'@'%' IDENTIFIED BY '${WEB_PASSWORD:-change-me-web}';
+      CREATE USER 'gamewe_web_admin'@'%' IDENTIFIED BY '${WEB_ADMIN_PASSWORD:-change-me-web-admin}';
+      GRANT SELECT ON gamewe.* TO 'gamewe_web_admin'@'%';
+  # The collector's config file (all settings: docs/CONFIG.md of the collector).
+  collector:
+    content: |
+      listen:
+        udp:
+          port: 41337
+      database:
+        type: mariadb
+        host: 127.0.0.1
+        port: 3306
+        name: gamewe
+        user: gamewe
+        password: "${COLLECTOR_PASSWORD:-change-me-collector}"
+
+volumes:
+  db:
+  collector:
