@@ -22,12 +22,13 @@ const jobsUsage = `Usage:
   gamewe jobs [-queue] [-type TYPE[,TYPE]] [-status STATUS[,STATUS]] [-n N] [-config FILE]
 
 Lists the jobs in hlstats_gamewe_jobs: ranking resets (reset, from the
-command line or the web admin), scheduled resets (scheduled-reset) and moves
-of inactive players (inactive), newest first. The running collector takes
-pending jobs one after the other.
+command line or the web admin), scheduled resets (scheduled-reset), moves
+of inactive players (inactive) and the daily awards (awards, the day as
+mode), newest first. The running collector queues its daily jobs itself
+(requested by "schedule") and takes pending jobs one after the other.
   -queue    only the waiting and running jobs (pending, running), in the
             order the collector does them
-  -type     reset, scheduled-reset, inactive (comma separated)
+  -type     reset, scheduled-reset, inactive, awards (comma separated)
   -status   pending, running, done, failed (comma separated)
   -n        at most N jobs (default 20)
 Finished jobs stay 30 days (gamewe db purge deletes them).
@@ -35,7 +36,7 @@ gamewe reset -list and gamewe inactive -list are the same with -type.
 -o json|yaml|csv|tsv|name writes the list as a document.`
 
 var (
-	jobTypes    = []string{stats.JobReset, stats.JobScheduledReset, stats.JobInactive}
+	jobTypes    = []string{stats.JobReset, stats.JobScheduledReset, stats.JobInactive, stats.JobAwards}
 	jobStatuses = []string{stats.JobPending, stats.JobRunning, stats.JobDone, stats.JobFailed}
 )
 

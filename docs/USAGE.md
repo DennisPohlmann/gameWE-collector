@@ -216,7 +216,7 @@ is the service and never asks; its automatic migration is
 | `gamewe reset GAME -mode player-stats\|all-stats\|all` | reset a ranking (below) |
 | `gamewe awards [-date YYYY-MM-DD]` | decide the daily awards of a day (again), also with `features.daily_awards` off |
 | `gamewe inactive` | move the inactive players to `hlstats_PlayersInactive` now, also with `features.inactive_players` off |
-| `gamewe jobs [-queue]` | the jobs queued for the collector (resets, scheduled resets, inactive players), their state and result ([below](#collector-jobs-by-hand-and-from-cron)) |
+| `gamewe jobs [-queue]` | the jobs queued for the collector (resets, scheduled resets, inactive players, daily awards), their state and result ([below](#collector-jobs-by-hand-and-from-cron)) |
 | `gamewe geoip-update` | download the DB-IP database now |
 | `gamewe check-update` | ask GitHub for the latest release now and report on stderr whether it is newer (with `-o json` also the document on stdout); exit code 1 when GitHub cannot be reached. Nothing is installed ([`features.update_check`](CONFIG.md#features)) |
 | `gamewe simulate` | replay a sample game into the database or to a running collector |
@@ -461,6 +461,14 @@ asks first, `--dry-run` shows what it would do, `--force` does not ask):
 | log address (`features.log_address`) | every minute | `gamewe logaddress -add` |
 | GeoIP update (`geoip.auto_update`) | monthly | `gamewe geoip-update` |
 
+The daily awards, the daily move of inactive players and the scheduled
+resets go through `hlstats_gamewe_jobs` like the jobs of the web admin
+(`requested_by` `schedule`), so `gamewe jobs` and the web admin (page
+Jobs) list every run with its result. The web admin also shows when they
+run next: the collector writes it with its heartbeat (`gamewe_next_*` in
+`hlstats_Options`, [CONFIG.md](CONFIG.md)), because their times are in the
+config file.
+
 Not by hand, because they only make sense with the collector's own state in
 memory (the players it tracks): the live view and `act_players` from RCON
 status (`gamewe status` only shows it), `hlstats_server_load` every 10
@@ -488,7 +496,7 @@ The queue and the results:
 ```bash
 gamewe jobs                       # the latest 20 jobs of all types, newest first
 gamewe jobs -queue                # only pending and running, in the order the collector takes them
-gamewe jobs -type inactive -n 5   # -type reset|scheduled-reset|inactive, -status pending|running|done|failed (comma separated)
+gamewe jobs -type inactive -n 5   # -type reset|scheduled-reset|inactive|awards, -status pending|running|done|failed (comma separated)
 gamewe inactive -list             # the same as gamewe jobs -type inactive
 gamewe reset -list                # the same as gamewe jobs -type reset,scheduled-reset
 ```

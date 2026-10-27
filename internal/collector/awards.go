@@ -4,6 +4,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -16,8 +17,9 @@ type Awarder interface {
 	AwardsDone(ctx context.Context, day time.Time) (bool, error)
 }
 
-// Schedule is when the daily awards are decided: every day at hour:minute
-// in Loc, for the previous calendar day in Loc.
+// Schedule is when a daily job runs (the daily awards, the move of
+// inactive players): every day at hour:minute in Loc; the daily awards
+// decide the previous calendar day in Loc.
 type Schedule struct {
 	Loc          *time.Location
 	Hour, Minute int
@@ -47,47 +49,36 @@ func (s Schedule) Next(now time.Time) time.Time {
 	return s.runAt(time.Date(y, m, d+1, 12, 0, 0, 0, s.Loc))
 }
 
-// RunDailyAwards decides the awards of the previous day at every run of
-// the schedule, and at start if the day of the latest run has no awards
-// yet, until ctx is done (features.daily_awards in the config file).
-// lock is the job lock (database.JobLock; nil: none), so that a run of
-// gamewe awards or a ranking reset never runs at the same time.
-func RunDailyAwards(ctx context.Context, a Awarder, s Schedule, lock func(context.Context) (func(), error), log *slog.Logger) {
-	for {
-		now := time.Now()
-		_, day := s.Last(now)
-		DecideAwards(ctx, a, day, lock, log)
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(time.Until(s.Next(now))):
-		}
+// Clock is the time of day as HH:MM.
+func (s Schedule) Clock() string { return fmt.Sprintf("%02d:%02d", s.Hour, s.Minute) }
+
+// DecideAwards decides the awards of day unless the day has some already,
+// under the job lock (nil: none), and logs the result.
+func DecideAwards(ctx context.Context, a Awarder, day time.Time, lock func(context.Context) (func(), error), log *slog.Logger) {
+	if _, err := decideAwards(ctx, a, day, lock, log); err != nil {
+		log.Error("daily awards", "day", stats.AwardDate(day), "err", err)
 	}
 }
 
-// DecideAwards decides the awards of day unless the day has some already,
-// under the job lock (nil: none).
-func DecideAwards(ctx context.Context, a Awarder, day time.Time, lock func(context.Context) (func(), error), log *slog.Logger) {
+// decideAwards is DecideAwards with its result text for the job row.
+func decideAwards(ctx context.Context, a Awarder, day time.Time, lock func(context.Context) (func(), error), log *slog.Logger) (string, error) {
 	if lock != nil {
 		release, err := lock(ctx)
 		if err != nil {
-			log.Error("daily awards", "day", stats.AwardDate(day), "err", err)
-			return
+			return "", err
 		}
 		defer release()
 	}
 	done, err := a.AwardsDone(ctx, day)
 	if err != nil {
-		log.Error("daily awards", "day", stats.AwardDate(day), "err", err)
-		return
+		return "", err
 	}
 	if done {
-		return
+		return "awards of " + stats.AwardDate(day) + " decided already", nil
 	}
 	res, err := a.DailyAwards(ctx, day, "")
 	if err != nil {
-		log.Error("daily awards", "day", stats.AwardDate(day), "err", err)
-		return
+		return "", err
 	}
 	won := 0
 	for _, r := range res {
@@ -96,4 +87,10 @@ func DecideAwards(ctx context.Context, a Awarder, day time.Time, lock func(conte
 		}
 	}
 	log.Info("daily awards decided", "day", stats.AwardDate(day), "awards", len(res), "with_winner", won)
+	return AwardsResult(day, len(res), won), nil
+}
+
+// AwardsResult is the result text of the daily awards of day.
+func AwardsResult(day time.Time, awards, won int) string {
+	return fmt.Sprintf("awards of %s decided: %d awards, %d with a winner", stats.AwardDate(day), awards, won)
 }

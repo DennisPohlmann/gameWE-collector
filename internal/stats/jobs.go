@@ -22,12 +22,18 @@ const (
 
 // Job types: a ranking reset (game and mode), the move of inactive players
 // (features.inactive_players; no game, no mode), the scheduled reset of a
-// ranking (game; hall of fame first, mode from its schedule).
+// ranking (game; hall of fame first, mode from its schedule), the daily
+// awards (features.daily_awards; no game, the day YYYY-MM-DD as mode).
 const (
 	JobReset          = "reset"
 	JobInactive       = "inactive"
 	JobScheduledReset = "scheduled-reset"
+	JobAwards         = "awards"
 )
+
+// JobBySchedule is requested_by of the jobs the collector queues itself
+// (daily awards, daily move of inactive players, scheduled resets).
+const JobBySchedule = "schedule"
 
 // Job is a row of hlstats_gamewe_jobs.
 type Job struct {
@@ -218,6 +224,37 @@ func (s *Store) setOption(ctx context.Context, key, v string) error {
 	}
 	_, err = s.exec(ctx, s.ignore(`INSERT INTO hlstats_Options (keyname, value) VALUES (?, ?)`), key, v)
 	return err
+}
+
+// DeleteOption removes one hlstats_Options row.
+func (s *Store) DeleteOption(ctx context.Context, key string) error {
+	return s.run(ctx, step{`DELETE FROM hlstats_Options WHERE keyname = ?`, []any{key}})
+}
+
+// Plan keys: the running collector writes when its daily jobs run next, so
+// the web admin can show it (the times are in config.yaml, not in the
+// database). NextAwardsKey and NextInactiveKey hold a JobPlan as JSON,
+// NextResetsKey the time of day and zone of the scheduled resets (a JobPlan
+// without Next), NextResetKey(game) the Unix time the running period of a
+// ranking's reset schedule ends.
+const (
+	NextAwardsKey   = "gamewe_next_awards"
+	NextInactiveKey = "gamewe_next_inactive"
+	NextResetsKey   = "gamewe_next_resets"
+)
+
+// NextResetKey is the hlstats_Options key with the end of the running
+// period of game's reset schedule (Unix time).
+func NextResetKey(game string) string { return "gamewe_next_reset_" + game }
+
+// JobPlan is when a daily job of the collector runs: on or off in
+// config.yaml, the time of day (HH:MM) in Zone (IANA name) and the next run
+// (Unix time; 0 while off).
+type JobPlan struct {
+	Enabled bool   `json:"enabled"`
+	Time    string `json:"time"`
+	Zone    string `json:"zone"`
+	Next    int64  `json:"next,omitempty"`
 }
 
 // LastHeartbeat returns the collector's last heartbeat (zero if none).

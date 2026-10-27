@@ -4,9 +4,12 @@ package collector
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,14 +21,18 @@ const JobPoll = 10 * time.Second
 
 // Jobs runs the jobs of hlstats_gamewe_jobs (ranking resets queued by the
 // web admin or `gamewe reset`) in the running collector, which pauses the
-// game's servers for it, writes the heartbeat and moves inactive players
-// (features.inactive_players; one after the other, never during a reset).
+// game's servers for it, writes the heartbeat and queues its daily jobs:
+// the daily awards (features.daily_awards) and the move of inactive
+// players (features.inactive_players), both run one after the other with
+// the other jobs, never during a reset. With the heartbeat it writes when
+// they run next (stats.JobPlan), for the web admin.
 type Jobs struct {
 	Store    *stats.Store
 	Hub      *Hub
 	Log      *slog.Logger
 	Now      func() time.Time // tests
 	Inactive InactiveConfig
+	Awards   AwardsConfig
 	// Version is written to hlstats_Options with the first heartbeat
 	// (stats.VersionKey); empty: not written (tests).
 	Version string
@@ -35,11 +42,24 @@ type Jobs struct {
 	// Zone is the time zone of the scheduled ranking resets (the
 	// collector's timezone); nil: the server's.
 	Zone *time.Location
+	// ResetClock is features.scheduled_resets.time (HH:MM), only shown in
+	// the plan for the web admin.
+	ResetClock string
 
 	lastBeat     time.Time
 	lastSchedule time.Time
 	lastPrune    time.Time
 	lastInactive time.Time
+	lastAwards   time.Time
+	written      map[string]string // plan keys as last written
+}
+
+// AwardsConfig is features.daily_awards: once a day at At the awards of
+// the previous calendar day (in At.Loc) are queued, and at start if that
+// day has none yet.
+type AwardsConfig struct {
+	Enabled bool
+	At      Schedule
 }
 
 // InactiveConfig is features.inactive_players: once a day at At (its hour
@@ -106,6 +126,9 @@ func (j *Jobs) Poll(ctx context.Context) error {
 		if err := j.Store.Heartbeat(ctx, now); err != nil {
 			return fmt.Errorf("heartbeat: %w", err)
 		}
+		if err := j.writePlan(ctx, j.Plan(now)); err != nil {
+			return fmt.Errorf("plan: %w", err)
+		}
 		j.lastBeat = now
 	}
 	if now.Sub(j.lastPrune) >= time.Hour {
@@ -121,8 +144,13 @@ func (j *Jobs) Poll(ctx context.Context) error {
 		}
 	}
 	if j.inactiveDue(now) {
-		if err := j.MoveInactive(ctx, now); err != nil && ctx.Err() == nil {
-			j.Log.Error("jobs: moving inactive players failed", "err", err)
+		if err := j.queueDaily(ctx, stats.JobInactive, "", now); err != nil && ctx.Err() == nil {
+			j.Log.Error("jobs: queueing the move of inactive players failed", "err", err)
+		}
+	}
+	if day, ok := j.awardsDue(now); ok {
+		if err := j.queueAwards(ctx, day, now); err != nil && ctx.Err() == nil {
+			j.Log.Error("jobs: queueing the daily awards failed", "day", stats.AwardDate(day), "err", err)
 		}
 	}
 	pending, err := j.Store.JobsByStatus(ctx, stats.JobPending)
@@ -141,7 +169,7 @@ func (j *Jobs) Poll(ctx context.Context) error {
 		busy[r.Game] = r.ID
 	}
 	for _, job := range pending {
-		if job.Type == stats.JobInactive { // all games; a second one is a no-op
+		if job.Type == stats.JobInactive || job.Type == stats.JobAwards { // all games; a second one is a no-op
 			if ok, err := j.Store.ClaimJob(ctx, job.ID, stats.JobPending, j.now()); err != nil || !ok {
 				continue
 			}
@@ -170,6 +198,107 @@ func (j *Jobs) Poll(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+	}
+	return nil
+}
+
+// queueDaily queues a daily job of typ (mode: its argument) unless one of
+// that type and mode is pending or running already.
+func (j *Jobs) queueDaily(ctx context.Context, typ, mode string, now time.Time) error {
+	for _, st := range []string{stats.JobPending, stats.JobRunning} {
+		jobs, err := j.Store.JobsByStatus(ctx, st)
+		if err != nil {
+			return err
+		}
+		if slices.ContainsFunc(jobs, func(o stats.Job) bool { return o.Type == typ && o.Mode == mode }) {
+			return nil
+		}
+	}
+	_, err := j.Store.AddJob(ctx, typ, "", mode, stats.JobBySchedule, now)
+	return err
+}
+
+// awardsDue reports whether the daily awards are due and the day they
+// decide, and marks them done: at the first poll (the latest run's day may
+// lack its awards) and once per daily time passed since.
+func (j *Jobs) awardsDue(now time.Time) (time.Time, bool) {
+	if !j.Awards.Enabled {
+		return time.Time{}, false
+	}
+	run, day := j.Awards.At.Last(now)
+	if !j.lastAwards.IsZero() && !run.After(j.lastAwards) {
+		return time.Time{}, false
+	}
+	j.lastAwards = now
+	return day, true
+}
+
+// queueAwards queues the daily awards of day unless the day has some
+// already (a restart of the collector).
+func (j *Jobs) queueAwards(ctx context.Context, day, now time.Time) error {
+	done, err := j.Store.AwardsDone(ctx, day)
+	if err != nil || done {
+		return err
+	}
+	return j.queueDaily(ctx, stats.JobAwards, stats.AwardDate(day), now)
+}
+
+// awardsDay is the day of a queued awards job (its mode) in the zone of
+// the daily awards.
+func (j *Jobs) awardsDay(mode string) (time.Time, error) {
+	loc := j.Awards.At.Loc
+	if loc == nil {
+		loc = j.zone()
+	}
+	day, err := time.ParseInLocation(time.DateOnly, mode, loc)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("awards job: day %q is not YYYY-MM-DD", mode)
+	}
+	return day, nil
+}
+
+// Plan returns the plan entries the web admin shows: key -> value.
+func (j *Jobs) Plan(now time.Time) map[string]string {
+	plan := func(on bool, s Schedule, next time.Time) string {
+		p := stats.JobPlan{Enabled: on, Time: s.Clock()}
+		if s.Loc != nil {
+			p.Zone = s.Loc.String()
+		}
+		if on && s.Loc != nil {
+			p.Next = next.Unix()
+		}
+		b, _ := json.Marshal(p)
+		return string(b)
+	}
+	var awardsNext, inactiveNext time.Time
+	if j.Awards.At.Loc != nil {
+		awardsNext = j.Awards.At.Next(now)
+	}
+	if j.Inactive.At.Loc != nil {
+		inactiveNext = j.Inactive.At.Next(now)
+	}
+	resets, _ := json.Marshal(stats.JobPlan{Enabled: true, Time: j.ResetClock, Zone: j.zone().String()})
+	return map[string]string{
+		stats.NextAwardsKey:   plan(j.Awards.Enabled, j.Awards.At, awardsNext),
+		stats.NextInactiveKey: plan(j.Inactive.Enabled, j.Inactive.At, inactiveNext),
+		stats.NextResetsKey:   string(resets),
+	}
+}
+
+// writePlan stores the plan entries that changed since the last call.
+func (j *Jobs) writePlan(ctx context.Context, entries map[string]string) error {
+	if j.written == nil {
+		j.written = map[string]string{}
+	}
+	for _, k := range slices.Sorted(maps.Keys(entries)) {
+		v := entries[k]
+		if old, ok := j.written[k]; ok && old == v {
+			continue
+		}
+		if err := j.Store.SetOption(ctx, k, v); err != nil {
+			return err
+		}
+		j.written[k] = v
 	}
 	return nil
 }
@@ -219,11 +348,18 @@ func (j *Jobs) QueueScheduled(ctx context.Context, now time.Time) error {
 		}
 		open = append(open, jobs...)
 	}
+	next := map[string]string{}
+	defer func() {
+		if err := j.writePlan(ctx, next); err != nil && ctx.Err() == nil {
+			j.Log.Warn("jobs: storing the next scheduled resets failed", "err", err)
+		}
+	}()
 	for _, r := range rankings {
 		due, err := j.Store.Due(ctx, r, now, j.zone())
 		if err != nil {
 			return fmt.Errorf("%s: %w", r.Game, err)
 		}
+		next[stats.NextResetKey(r.Game)] = strconv.FormatInt(due.Next.Unix(), 10)
 		if due.Started {
 			if _, err := j.Store.ScheduledReset(ctx, r, now, j.zone()); err != nil {
 				return fmt.Errorf("%s: %w", r.Game, err)
@@ -241,7 +377,7 @@ func (j *Jobs) QueueScheduled(ctx context.Context, now time.Time) error {
 		if !due.Due || slices.ContainsFunc(open, func(o stats.Job) bool { return o.Game == r.Game }) {
 			continue
 		}
-		id, err := j.Store.AddJob(ctx, stats.JobScheduledReset, r.Game, r.Mode, "schedule", now)
+		id, err := j.Store.AddJob(ctx, stats.JobScheduledReset, r.Game, r.Mode, stats.JobBySchedule, now)
 		if err != nil {
 			return err
 		}
@@ -331,6 +467,16 @@ func (j *Jobs) do(ctx context.Context, job stats.Job) {
 		j.finish(ctx, job, stats.JobDone, res)
 		return
 	}
+	if job.Type == stats.JobAwards {
+		res, err := j.decideAwards(ctx, job.Mode)
+		if err != nil {
+			j.Log.Error("jobs: daily awards failed", "job", job.ID, "day", job.Mode, "err", err)
+			j.finish(ctx, job, stats.JobFailed, err.Error())
+			return
+		}
+		j.finish(ctx, job, stats.JobDone, res)
+		return
+	}
 	if job.Type == stats.JobScheduledReset {
 		res, err := j.scheduledReset(ctx, job.Game)
 		if err != nil {
@@ -363,6 +509,16 @@ func (j *Jobs) do(ctx context.Context, job stats.Job) {
 	}
 	j.Log.Info("jobs: ranking reset", "job", job.ID, "game", job.Game, "mode", job.Mode, "by", job.RequestedBy, "rows", stats.FormatCounts(res))
 	j.finish(ctx, job, stats.JobDone, stats.FormatCounts(res))
+}
+
+// decideAwards decides the awards of the day mode (YYYY-MM-DD) under the
+// job lock.
+func (j *Jobs) decideAwards(ctx context.Context, mode string) (string, error) {
+	day, err := j.awardsDay(mode)
+	if err != nil {
+		return "", err
+	}
+	return decideAwards(ctx, j.Store, day, j.Lock, j.Log)
 }
 
 // ScheduledText is the result of a scheduled reset for the job row and

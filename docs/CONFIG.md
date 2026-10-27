@@ -335,6 +335,9 @@ seed only adds missing keys and never changes values that are already set.
 | `gamewe_hof_<game>` | – | web: `1` = show the page "Hall of Fame" of the ranking, `0` = hide it; missing = shown when the ranking has a schedule or entries |
 | `gamewe_heartbeat` | – | **written by the collector** (Unix time, every 60 s), not a setting: the web and `gamewe reset` see from it whether a collector runs |
 | `gamewe_collector_version` | – | **written by the collector** at start (its version, e.g. `0.17.0`), not a setting: the web admin compares it with the latest release |
+| `gamewe_next_awards`, `gamewe_next_inactive` | – | **written by the collector** with the heartbeat when the value changes, not a setting: when the daily awards and the move of inactive players run, from `features.daily_awards` and `features.inactive_players` of the config file, as JSON `{"enabled":true,"time":"00:05","zone":"Europe/Berlin","next":1793142300}` (`next`: the next run, Unix time; missing while off). The web admin shows it on the page Jobs |
+| `gamewe_next_resets` | – | **written by the collector**, like `gamewe_next_awards`: `features.scheduled_resets.time` and the collector's time zone, without `next` |
+| `gamewe_next_reset_<game>` | – | **written by the collector** every minute when it changes: the end of the running period of the ranking's reset schedule (Unix time), the time of its next scheduled reset; stays when the schedule is switched off (the web admin then ignores it) |
 
 The other `gamewe_*` keys the web admin writes are settings of the web frontend
 (`gamewe_page_size`, site, header, SEO, map, voice and

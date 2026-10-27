@@ -482,20 +482,19 @@ func runCmd(args []string) error {
 	ip := cfg.Features.InactivePlayers
 	ipLoc, _ := ip.Location(cfg.Timezone) // checked by config.Validate
 	ipH, ipM, _ := ip.At()
+	da := cfg.Features.DailyAwards
+	daLoc, _ := da.Location(cfg.Timezone) // checked by config.Validate
+	daH, daM, _ := da.At()
 	jobLock := func(ctx context.Context) (func(), error) { return database.JobLock(ctx, db, time.Hour, nil) }
 	zoneLoc, _ := cfg.Location() // checked by config.Validate
 	go (&collector.Jobs{Store: store, Hub: hub, Log: log, Lock: jobLock, Version: version.Version, Zone: zoneLoc,
-		Inactive: collector.InactiveConfig{Enabled: ip.Enabled, At: collector.Schedule{Loc: ipLoc, Hour: ipH, Minute: ipM}}}).Run(ctx)
+		ResetClock: cfg.Features.ScheduledResets.Time,
+		Inactive:   collector.InactiveConfig{Enabled: ip.Enabled, At: collector.Schedule{Loc: ipLoc, Hour: ipH, Minute: ipM}},
+		Awards:     collector.AwardsConfig{Enabled: da.Enabled, At: collector.Schedule{Loc: daLoc, Hour: daH, Minute: daM}}}).Run(ctx)
 	if banWatch != nil {
 		go banWatch.Run(ctx)
 	}
 	go vacBlock.Run(ctx)
-	da := cfg.Features.DailyAwards
-	daLoc, _ := da.Location(cfg.Timezone) // checked by config.Validate
-	if da.Enabled {
-		h, m, _ := da.At()
-		go collector.RunDailyAwards(ctx, store, collector.Schedule{Loc: daLoc, Hour: h, Minute: m}, jobLock, log)
-	}
 	log.Info("features", "rcon_status", rs.Enabled, "rcon_status_every", every.String(), "log_address", la.Enabled, "log_address_every", laEvery.String(),
 		"log_address_http", la.HTTP, "log_secret", ls.Enabled, "server_info", si.Enabled, "server_info_every", siEvery.String(),
 		"daily_awards", da.Enabled, "daily_awards_at", da.Time+" "+daLoc.String(), "cs2_hitgroups", cfg.Features.CS2Hitgroups.Enabled,
