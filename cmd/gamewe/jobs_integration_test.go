@@ -155,8 +155,19 @@ func TestMigrateJobCommands(t *testing.T) {
 	if n := num(`SELECT COUNT(*) FROM hlstats_Options WHERE keyname = 'gamewe_collector_version' AND value = '9.8.7'`); n != 1 {
 		t.Errorf("gamewe_collector_version not written (%d rows)", n)
 	}
+	out, code = gw(t, bin, "inactive", "-list", "-config", cfg)
+	expect(t, out, code, 0, "inactive", "done", "3 players moved")
 	out, code = gw(t, bin, "reset", "-list", "-config", cfg)
-	expect(t, out, code, 0, "inactive")
+	expect(t, out, code, 0, "TYPE")
+	if strings.Contains(out, "inactive") {
+		t.Errorf("reset -list shows the inactive job:\n%s", out)
+	}
+	out, code = gw(t, bin, "jobs", "-config", cfg)
+	expect(t, out, code, 0, "inactive", "done")
+	out, code = gw(t, bin, "jobs", "-type", "inactive", "-status", "done", "-o", "csv", "-config", cfg)
+	expect(t, out, code, 0, "id,type,", ",inactive,")
+	out, code = gw(t, bin, "jobs", "-type", "bogus", "-config", cfg)
+	expect(t, out, code, 2, `-type "bogus"`)
 
 	// db purge also deletes the finished jobs older than 30 days.
 	sql(`UPDATE hlstats_gamewe_jobs SET requested_at = ?`, time.Now().Add(-31*24*time.Hour).Unix())

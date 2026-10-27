@@ -38,7 +38,7 @@ for the game code to confirm.
 With a running collector (heartbeat less than 2 minutes old, table
 hlstats_gamewe_jobs present) the reset is queued for it: it pauses the game's servers, resets and goes
 on. Otherwise it runs here; then no collector may be running.
--list shows the latest queued resets.
+-list shows the latest resets, also the scheduled ones (gamewe jobs: all jobs).
 -o json|yaml writes the result as a document (the question goes to stderr);
 -list also -o csv|tsv|name.`
 
@@ -55,7 +55,7 @@ func resetWith(args []string, in io.Reader, out io.Writer) error {
 	var cf changeFlags
 	cf.add(fs, "only show the rows per table")
 	dry, yes := &cf.dryRun, &cf.force
-	list := fs.Bool("list", false, "show the latest queued jobs")
+	list := fs.Bool("list", false, "show the latest reset jobs")
 	addOutputFlag(fs)
 	wait := fs.Duration("wait", 10*time.Minute, "how long to wait for a running collector to do the reset")
 	pos, err := parseInterspersed(fs, args)
@@ -103,7 +103,7 @@ func resetRun(pos []string, path, mode string, dry, yes, list bool, wait time.Du
 		if !jobs {
 			return errors.New("no hlstats_gamewe_jobs: " + database.SchemaHint)
 		}
-		return listJobs(ctx, store, out)
+		return listJobs(ctx, store, stats.JobFilter{Types: []string{stats.JobReset, stats.JobScheduledReset}, Limit: 20}, out)
 	}
 	if len(pos) != 1 {
 		return errors.New(resetUsage)
@@ -243,11 +243,13 @@ func queueJob(ctx context.Context, store *stats.Store, typ, game, mode string, w
 			return nil
 		}
 	}
-	return fmt.Errorf("job %d not finished after %v (still queued or running; see gamewe reset -list)", id, wait)
+	return fmt.Errorf("job %d not finished after %v (still queued or running, the collector goes on with it; see gamewe jobs -queue)", id, wait)
 }
 
-func listJobs(ctx context.Context, store *stats.Store, out io.Writer) error {
-	jobs, err := store.RecentJobs(ctx, 20)
+// listJobs writes the jobs that match f (gamewe jobs, reset -list,
+// inactive -list).
+func listJobs(ctx context.Context, store *stats.Store, f stats.JobFilter, out io.Writer) error {
+	jobs, err := store.ListJobs(ctx, f)
 	if err != nil {
 		return err
 	}

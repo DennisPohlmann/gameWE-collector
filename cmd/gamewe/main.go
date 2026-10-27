@@ -80,6 +80,7 @@ Usage:
                                    hlstats_PlayersInactive now, also when
                                    features.inactive_players is off; queued for the running
                                    collector if there is one
+  gamewe inactive -list            the latest moves of inactive players and their results
   gamewe rcon     [-config FILE] -server ID|IP:PORT COMMAND...
                                    send an RCON command to a game server of
                                    hlstats_Servers and print the answer
@@ -101,7 +102,11 @@ Usage:
                                    start skill, server statistics stay; all-stats: server
                                    statistics too; all: players deleted too); queued for
                                    the running collector if there is one
-  gamewe reset -list               the latest queued jobs (resets, inactive players)
+  gamewe reset -list               the latest ranking resets (also the scheduled ones)
+  gamewe jobs [-queue] [-type TYPE] [-status STATUS] [-n N]
+                                   the jobs for the collector (resets, scheduled resets,
+                                   inactive players) and their results; -queue: only the
+                                   waiting and running ones, in the order they run
   gamewe halloffame [list] [GAME] | schedule GAME [EVERY] [-mode MODE] | run GAME
                   [--dry-run|-n] [--force|-f]
                                    scheduled ranking resets (every N days, weeks, months or
@@ -128,8 +133,8 @@ GAMEWE_UPDATE_CHECK=off turns that off. Nothing is updated automatically.
 
 Every command except run takes -o FORMAT (or --output FORMAT, also before the
 command: gamewe -o json server list): text (default), json, yaml; the lists
-(game|server|option list, status, serverinfo, logaddress, awards, reset -list) also csv,
-tsv and name (only the id / code / key, one per line). Passwords and log
+(game|server|option list, status, serverinfo, logaddress, awards, jobs,
+reset -list, inactive -list) also csv, tsv and name (only the id / code / key, one per line). Passwords and log
 secrets are never printed, in no format: only whether they are set.
 
 The config file (default ` + config.DefaultPath + `) holds the inputs
@@ -187,6 +192,8 @@ func main() {
 		err = resetCmd(args)
 	case "inactive":
 		err = inactiveCmd(args)
+	case "jobs":
+		err = jobsCmd(args)
 	case "halloffame":
 		err = hallCmd(args)
 	case "serverinfo":

@@ -194,7 +194,7 @@ This holds for `db migrate`, `db init`, `db grants`, `db seed`, `db purge`,
 `awards`, `serverinfo`, `logaddress -add`, `geoip-update`, `simulate` and
 the changing `game`, `server` and `option` commands. Commands that only read
 never ask: `check`, `status`, `config test`, `db status`, `version`,
-`reset -list`, `check-update`, `game|server|option list`, `option get`, `logaddress`
+`jobs`, `reset -list`, `inactive -list`, `check-update`, `game|server|option list`, `option get`, `logaddress`
 without `-add`, `db grants|seed|drop -print`. `gamewe rcon` does not ask
 either: the RCON command typed on its command line is the intent itself
 (as in the server console), and there is nothing to show beforehand. `run`
@@ -216,6 +216,7 @@ is the service and never asks; its automatic migration is
 | `gamewe reset GAME -mode player-stats\|all-stats\|all` | reset a ranking (below) |
 | `gamewe awards [-date YYYY-MM-DD]` | decide the daily awards of a day (again), also with `features.daily_awards` off |
 | `gamewe inactive` | move the inactive players to `hlstats_PlayersInactive` now, also with `features.inactive_players` off |
+| `gamewe jobs [-queue]` | the jobs queued for the collector (resets, scheduled resets, inactive players), their state and result ([below](#collector-jobs-by-hand-and-from-cron)) |
 | `gamewe geoip-update` | download the DB-IP database now |
 | `gamewe check-update` | ask GitHub for the latest release now and report on stderr whether it is newer (with `-o json` also the document on stdout); exit code 1 when GitHub cannot be reached. Nothing is installed ([`features.update_check`](CONFIG.md#features)) |
 | `gamewe simulate` | replay a sample game into the database or to a running collector |
@@ -472,10 +473,24 @@ MySQL, `pg_advisory_lock` on PostgreSQL), in the collector and in the
 commands; a command waits for a job in progress up to `-wait` (default 10
 minutes, then exit code 1 and nothing changed). So a cron run of
 `gamewe awards` at the minute of the collector's own run cannot write a day
-twice. `gamewe reset` and `gamewe inactive` hand the job to a running collector
-(heartbeat less than 2 minutes old) through `hlstats_gamewe_jobs` and wait
-for its result (`gamewe reset -list` lists all jobs); without one they run it
-themselves.
+twice. `gamewe reset`, `gamewe inactive` and `gamewe halloffame run` hand the job
+to a running collector (heartbeat less than 2 minutes old) through
+`hlstats_gamewe_jobs` and wait for its result; without one they run it
+themselves. After `-wait` (default 10 minutes) the command gives up waiting
+with exit code 1, but the collector goes on with the job.
+
+The queue and the results:
+
+```bash
+gamewe jobs                       # the latest 20 jobs of all types, newest first
+gamewe jobs -queue                # only pending and running, in the order the collector takes them
+gamewe jobs -type inactive -n 5   # -type reset|scheduled-reset|inactive, -status pending|running|done|failed (comma separated)
+gamewe inactive -list             # the same as gamewe jobs -type inactive
+gamewe reset -list                # the same as gamewe jobs -type reset,scheduled-reset
+```
+
+Finished jobs stay 30 days (the collector deletes older ones hourly, as
+`gamewe db purge` does).
 
 Cron (instead of, or in addition to, the features in the config file; with
 `--force`, since cron has no terminal to ask on), as
@@ -547,7 +562,7 @@ it must come before the RCON command.
 | `text` | the normal output (default) | all |
 | `json` | one indented JSON document | all except `run` |
 | `yaml` | the same document as YAML (`yml` works too) | all except `run` |
-| `csv` | a header line and one line per item (RFC 4180) | the lists: `game list`, `server list`, `option list`, `status` (one line per player), `logaddress`, `awards`, `reset -list` |
+| `csv` | a header line and one line per item (RFC 4180) | the lists: `game list`, `server list`, `option list`, `status` (one line per player), `logaddress`, `awards`, `jobs`, `reset -list`, `inactive -list` |
 | `tsv` | as `csv`, tab separated (tabs and line breaks in values become spaces) | the lists |
 | `name` | only the first column, one per line: server id, game code, option key, job id | the lists |
 
@@ -592,7 +607,7 @@ gamewe reset css3 -mode player-stats -dry-run  # rows per table that would be de
 gamewe reset css3 -mode player-stats   # player statistics only: players stay with the start skill, server statistics stay
 gamewe reset css3 -mode all-stats      # player and server statistics; the players stay
 gamewe reset css3 -mode all            # all statistics, and the players of css3 are deleted too
-gamewe reset -list                     # the latest resets and their results
+gamewe reset -list                     # the latest resets and their results (gamewe jobs: all jobs)
 ```
 
 What each mode clears:
@@ -676,7 +691,7 @@ gamewe halloffame                                   # all entries, newest period
 - **The mode** (`-mode`, default `player-stats`) is that of `gamewe reset`
   ([above](#resetting-a-ranking)).
 - **The collector** checks the schedules every minute and queues the reset as
-  a job (`requested_by` = `schedule`, `gamewe reset -list` shows it); a
+  a job (`requested_by` = `schedule`, `gamewe reset -list` and `gamewe jobs` show it); a
   collector that was stopped over the end of a period does it at its next
   start, once, for the period that ended last (several missed periods are
   one reset, the best five then stand for all of them). Without a running

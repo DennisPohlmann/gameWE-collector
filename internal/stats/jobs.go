@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"strconv"
+	"strings"
 	"time"
 	"unicode/utf8"
 )
@@ -80,7 +81,43 @@ func (s *Store) JobsByStatus(ctx context.Context, status string) ([]Job, error) 
 
 // RecentJobs returns the newest n jobs, newest first.
 func (s *Store) RecentJobs(ctx context.Context, n int) ([]Job, error) {
-	rows, err := s.query(ctx, `SELECT `+jobCols+` FROM hlstats_gamewe_jobs ORDER BY id DESC LIMIT `+strconv.Itoa(max(1, n)))
+	return s.ListJobs(ctx, JobFilter{Limit: n})
+}
+
+// JobFilter selects jobs for ListJobs: only these types and statuses
+// (empty: all), at most Limit (at least 1), newest first or, with
+// OldestFirst, in the order the collector does them.
+type JobFilter struct {
+	Types, Statuses []string
+	Limit           int
+	OldestFirst     bool
+}
+
+// ListJobs returns the jobs that match f.
+func (s *Store) ListJobs(ctx context.Context, f JobFilter) ([]Job, error) {
+	var where []string
+	var args []any
+	for _, c := range []struct {
+		col  string
+		vals []string
+	}{{"job_type", f.Types}, {"status", f.Statuses}} {
+		if len(c.vals) == 0 {
+			continue
+		}
+		where = append(where, c.col+" IN (?"+strings.Repeat(", ?", len(c.vals)-1)+")") // only placeholders
+		for _, v := range c.vals {
+			args = append(args, v)
+		}
+	}
+	q := `SELECT ` + jobCols + ` FROM hlstats_gamewe_jobs`
+	if len(where) > 0 {
+		q += ` WHERE ` + strings.Join(where, " AND ")
+	}
+	order := " DESC"
+	if f.OldestFirst {
+		order = ""
+	}
+	rows, err := s.query(ctx, q+` ORDER BY id`+order+` LIMIT `+strconv.Itoa(max(1, f.Limit)), args...)
 	if err != nil {
 		return nil, err
 	}
