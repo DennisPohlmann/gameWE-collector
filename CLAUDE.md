@@ -129,7 +129,7 @@ the audit summary of `security-privacy-audit`.
   Besides that only the explicit maintenance commands `gamewe db drop` /
   `reset` / `purge` (`internal/database/maintenance.go`) remove tables or
   rows, only of the compiled schema's tables, with confirmation. The daily
-  `features.inactive_players` job (off by default, `internal/stats/inactive.go`;
+  `features.inactive_players` job (on by default, `internal/stats/inactive.go`;
   by hand `gamewe inactive`)
   only moves whole rows between `hlstats_Players` and
   `hlstats_PlayersInactive` (`SELECT *`, the column order must stay equal;

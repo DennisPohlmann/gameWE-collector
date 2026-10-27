@@ -250,7 +250,7 @@ features:
     timezone: ""                # IANA zone, e.g. Europe/Berlin; empty: timezone, else the server's
     time: "00:00"
   inactive_players:
-    enabled: false              # daily: players without play for MinActivity days to hlstats_PlayersInactive
+    enabled: true               # daily: players without play for MinActivity days to hlstats_PlayersInactive
     time: "01:00"
 timezone: ""                    # the collector's time zone; empty: the server's
 ```

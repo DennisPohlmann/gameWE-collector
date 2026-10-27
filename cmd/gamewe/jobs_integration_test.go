@@ -31,8 +31,8 @@ func a2sReply(version string) []byte {
 }
 
 // The jobs of the collector from the command line, also with the features
-// off (the config of writeConfig has daily_awards off, inactive_players
-// off by default): gamewe inactive (here, under the job lock, and queued
+// off (the config of writeConfig has daily_awards and
+// inactive_players off): gamewe inactive (here, under the job lock, and queued
 // for a running collector), gamewe awards under the job lock, gamewe
 // serverinfo, and gamewe db purge deleting old finished jobs. Named
 // Migrate* so that CI runs it with the binary tests.

@@ -193,8 +193,8 @@ func TestInactivePlayers(t *testing.T) {
 	base := "database:\n  host: db\n  user: u\n  name: n\n"
 	cfg, err := Parse([]byte(base))
 	ip := cfg.Features.InactivePlayers
-	if h, m, _ := ip.At(); err != nil || ip.Enabled || h != 1 || m != 0 || ip.Timezone != "" {
-		t.Errorf("default %+v %v, want off, 01:00", ip, err)
+	if h, m, _ := ip.At(); err != nil || !ip.Enabled || h != 1 || m != 0 || ip.Timezone != "" {
+		t.Errorf("default %+v %v, want on, 01:00", ip, err)
 	}
 	cfg, err = Parse([]byte(base + "features:\n  inactive_players:\n    enabled: true\n    time: \"04:15\"\n    timezone: Europe/Berlin\n"))
 	ip = cfg.Features.InactivePlayers

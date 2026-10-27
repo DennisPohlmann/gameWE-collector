@@ -61,7 +61,7 @@ host.
 The collector itself only reads and writes rows (`DELETE` is needed for
 `hlstats_Livestats`, `hlstats_PlayersInactive`, the daily move of inactive
 players from `hlstats_Players` to `hlstats_PlayersInactive`
-(`features.inactive_players`, off by default) and a rare race when two
+(`features.inactive_players`, on by default) and a rare race when two
 servers register the same new player). CREATE, ALTER and INDEX are for
 the migration (at the start with `database.auto_migrate`, or `gamewe db
 migrate`); it has no DROP right, so it cannot drop a table (`gamewe db drop`

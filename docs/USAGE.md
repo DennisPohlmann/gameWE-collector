@@ -151,7 +151,7 @@ Inactive players: with `features.inactive_players.enabled: true` the
 collector moves once a day (default 01:00 in `timezone`, else the server's
 time zone) the players who have not played for `MinActivity` days (web
 admin, default 28) and are not online to `hlstats_PlayersInactive`, and
-logs how many. They come back unchanged with their next log line. It is off
+logs how many. They come back unchanged with their next log line. It is on
 by default; see [CONFIG.md](CONFIG.md#features). `gamewe inactive` does it
 now, also when the feature is off
 ([jobs by hand](#collector-jobs-by-hand-and-from-cron)).

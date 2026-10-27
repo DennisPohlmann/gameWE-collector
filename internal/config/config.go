@@ -259,7 +259,7 @@ type Features struct {
 	DailyAwards  DailyAwards `yaml:"daily_awards"` // the daily awards job
 	ServerInfo   ServerInfo  `yaml:"server_info"`  // version, OS and VAC of every server (A2S_INFO, status)
 	// InactivePlayers moves players without play for a while to
-	// hlstats_PlayersInactive (off by default).
+	// hlstats_PlayersInactive (on by default).
 	InactivePlayers InactivePlayers `yaml:"inactive_players"`
 	// UpdateCheck asks GitHub for the latest release: at start and daily in
 	// "run" (log), before the other commands (stderr). Never installs.
@@ -653,7 +653,7 @@ func Defaults() Config {
 		ServerInfo:      ServerInfo{Enabled: true, Interval: "5m"},
 		CS2Hitgroups:    Toggle{Enabled: true},
 		UpdateCheck:     Toggle{Enabled: true},
-		InactivePlayers: InactivePlayers{Time: "01:00"},
+		InactivePlayers: InactivePlayers{Enabled: true, Time: "01:00"},
 		SourceBans:      SourceBans{Enabled: true, Interval: "30m"}}}
 }
 

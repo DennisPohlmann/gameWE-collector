@@ -72,6 +72,7 @@ features:
   log_address: false
   daily_awards:
     enabled: false
+  inactive_players: false
 `, port, d.Type, d.Host, d.Port, d.User, pwFile, d.Name, d.TablePrefix, d.AutoMigrate, filepath.Join(t.TempDir(), "none.mmdb"))
 	p := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(p, []byte(cfg), 0o600); err != nil {
