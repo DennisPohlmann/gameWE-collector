@@ -190,7 +190,8 @@ func Keys() []Key {
 }
 
 // WebKeys lists the gamewe_* keys in hlstats_Options that belong to the web
-// frontend (src/lib/settings.ts, admin-settings.ts, voice.ts of gameWE-web).
+// frontend (src/lib/settings.ts, admin-settings.ts, voice.ts,
+// privacy-operator.ts of gameWE-web).
 // The collector does not read them, `gamewe check` only must not report
 // them as typos. Keep it in step with the web; slot and per-user keys are
 // matched in otherKey.
@@ -199,6 +200,7 @@ var WebKeys = []string{
 	"gamewe_favicon", "gamewe_apple_icon", "gamewe_title_format", "gamewe_title_ranking", "gamewe_geoip_credit",
 	"gamewe_sig_brand", "gamewe_chat_public", "gamewe_game_events", "gamewe_player_events", "gamewe_skin",
 	"gamewe_game_skins", "gamewe_map_live", "gamewe_map_players", "gamewe_map_style",
+	"gamewe_map_satellite", "gamewe_map_carto_key", "gamewe_map_esri_key",
 	"gamewe_seo_description", "gamewe_seo_keywords", "gamewe_seo_image", "gamewe_seo_index", "gamewe_seo_twitter",
 	"gamewe_header_home", "gamewe_header_order", "gamewe_metrics_token",
 	"gamewe_voice_type", "gamewe_discord_guild", "gamewe_discord_invite",
@@ -206,6 +208,7 @@ var WebKeys = []string{
 	"gamewe_ts_password", "gamewe_ts_name", "gamewe_ts_link", "gamewe_ts_display", "gamewe_ts_country",
 	"gamewe_ts_show_clients", "gamewe_update_check",
 	"gamewe_default_lang", "gamewe_steam_profiles", "gamewe_steam_api_key",
+	"gamewe_privacy_name", "gamewe_privacy_address", "gamewe_privacy_email",
 }
 
 var webKeys = func() map[string]bool {
@@ -224,18 +227,21 @@ func gameCode(g string) bool {
 // otherKey reports gamewe_* keys that are not collector settings but are
 // expected in hlstats_Options: web settings, header link slots
 // (gamewe_link_<n>), web admin TOTP secrets (gamewe_totp_<hash>, pending
-// gamewe_totpp_<hash>), the scheduled ranking resets and hall of fame per
+// gamewe_totpp_<hash>), the operator's free text of the privacy page
+// (gamewe_privacy_text_<n>), the scheduled ranking resets and hall of fame per
 // game (gamewe_reset_schedule_<game>, gamewe_reset_mode_<game>,
 // gamewe_reset_last_<game>, gamewe_hof_<game>) and of all rankings
 // (gamewe_reset_schedule, gamewe_reset_mode; gamewe_reset_paused: the
 // schedule the web admin turned off), the bot settings per game
 // (gamewe_rank_bots_<game>, gamewe_bot_points_<game>, gamewe_bot_kills_<game>), the VAC block per game
-// (gamewe_block_vac_<game>), the collector's heartbeat and
-// version and retired keys that the migrations delete.
+// (gamewe_block_vac_<game>), the collector's heartbeat, version and job
+// plan (gamewe_next_awards, gamewe_next_inactive, gamewe_next_resets,
+// gamewe_next_reset_<game>) and retired keys that the migrations delete.
 func otherKey(k string) bool {
 	switch k {
 	case "gamewe_reset_schedule", "gamewe_reset_mode", "gamewe_reset_paused", // the scheduled reset of all rankings
 		"gamewe_heartbeat", "gamewe_collector_version", // written by the collector
+		"gamewe_next_awards", "gamewe_next_inactive", "gamewe_next_resets", // the job plan, written by the collector
 		"gamewe_daily_awards",                    // 1.4.x; now features.daily_awards in the config file
 		"gamewe_default_game",                    // old web setting nothing reads; migration 13 deletes both
 		"gamewe_geoip_db",                        // legacy, read below; config.yaml geoip.path replaces it
@@ -245,10 +251,12 @@ func otherKey(k string) bool {
 	if webKeys[k] {
 		return true
 	}
-	if n, ok := strings.CutPrefix(k, "gamewe_link_"); ok {
-		return n != "" && strings.Trim(n, "0123456789") == ""
+	for _, p := range []string{"gamewe_link_", "gamewe_privacy_text_"} {
+		if n, ok := strings.CutPrefix(k, p); ok {
+			return n != "" && strings.Trim(n, "0123456789") == ""
+		}
 	}
-	for _, p := range []string{"gamewe_reset_schedule_", "gamewe_reset_mode_", "gamewe_reset_last_", "gamewe_hof_", "gamewe_rank_bots_", "gamewe_bot_points_", "gamewe_bot_kills_", "gamewe_block_vac_"} {
+	for _, p := range []string{"gamewe_next_reset_", "gamewe_reset_schedule_", "gamewe_reset_mode_", "gamewe_reset_last_", "gamewe_hof_", "gamewe_rank_bots_", "gamewe_bot_points_", "gamewe_bot_kills_", "gamewe_block_vac_"} {
 		if g, ok := strings.CutPrefix(k, p); ok {
 			return gameCode(g)
 		}

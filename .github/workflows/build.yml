@@ -37,6 +37,15 @@ jobs:
         run: go vet ./...
       - name: go test
         run: go test ./...
+      # The web's gamewe_* option keys must be known to the collector
+      # (settings.WebKeys), or gamewe check reports them as typos.
+      - uses: actions/checkout@v7
+        with:
+          repository: DennisPohlmann/gameWE-web
+          path: gamewe-web
+          persist-credentials: false
+      - name: web keys in step
+        run: GAMEWE_WEB_SRC="$GITHUB_WORKSPACE/gamewe-web" go test -count=1 -run TestWebSourceKeys ./internal/settings
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
       - name: actionlint

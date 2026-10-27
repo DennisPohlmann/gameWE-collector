@@ -5,8 +5,10 @@ package settings
 import (
 	"bytes"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strings"
@@ -49,6 +51,12 @@ func TestWebKeysNotReported(t *testing.T) {
 		"gamewe_reset_schedule":     "quarter@15",
 		"gamewe_reset_mode":         "all-stats",
 		"gamewe_reset_paused":       "month",
+		"gamewe_privacy_text_1":     "text",
+		"gamewe_privacy_text_25":    "text",
+		"gamewe_next_awards":        "{}",
+		"gamewe_next_inactive":      "{}",
+		"gamewe_next_resets":        "{}",
+		"gamewe_next_reset_css":     "1791504000",
 	}
 	for _, k := range WebKeys {
 		opts[k] = "x"
@@ -56,7 +64,8 @@ func TestWebKeysNotReported(t *testing.T) {
 	if _, warn := FromOptions(opts); len(warn) != 0 {
 		t.Errorf("web keys reported: %q", warn)
 	}
-	for _, k := range []string{"gamewe_link_", "gamewe_link_x", "gamewe_totp_", "gamewe_totp_abc", "gamewe_ts_hots", "gamewe_kill_point", "gamewe_hof_", "gamewe_reset_mode_CSS"} {
+	for _, k := range []string{"gamewe_link_", "gamewe_link_x", "gamewe_totp_", "gamewe_totp_abc", "gamewe_ts_hots", "gamewe_kill_point", "gamewe_hof_", "gamewe_reset_mode_CSS",
+		"gamewe_privacy_text_", "gamewe_privacy_text_x", "gamewe_privacy_phone", "gamewe_next_reset_", "gamewe_map_satelite"} {
 		if _, warn := FromOptions(map[string]string{k: "1"}); len(warn) != 1 {
 			t.Errorf("%s: warnings %q, want one", k, warn)
 		}
@@ -65,6 +74,68 @@ func TestWebKeysNotReported(t *testing.T) {
 		if webKeys[k.Name] {
 			t.Errorf("%s is a collector and a web key", k.Name)
 		}
+	}
+}
+
+// webNames are gamewe_* names in the web's source that are no
+// hlstats_Options keys: cookies, Prometheus metrics and the prefixes of
+// the web admin's hidden keys (gamewe_totp_<hash> and gamewe_privacy_text_<n>
+// are checked in TestWebKeysNotReported).
+var webNames = map[string]bool{
+	"gamewe_2fa": true, "gamewe_admin": true, "gamewe_admin_theme": true, "gamewe_consent": true,
+	"gamewe_lang": true, "gamewe_session": true, "gamewe_totp": true, "gamewe_privacy_": true,
+	"gamewe_info": true, "gamewe_up": true, "gamewe_servers": true, "gamewe_players_online": true,
+	"gamewe_players_ranked": true, "gamewe_database_up": true, "gamewe_database_latency_seconds": true,
+}
+
+// TestWebSourceKeys keeps WebKeys in step with the web: every gamewe_* name
+// string in the source of a gameWE-web checkout (GAMEWE_WEB_SRC, set in CI) must be
+// a collector setting, a key otherKey knows or one of webNames. A prefix
+// (gamewe_link_, from `gamewe_link_${n}`) is tried with a number and a game
+// code. A new web setting fails here until it is added to WebKeys.
+func TestWebSourceKeys(t *testing.T) {
+	dir := os.Getenv("GAMEWE_WEB_SRC")
+	if dir == "" {
+		t.Skip("GAMEWE_WEB_SRC not set (path of a gameWE-web checkout)")
+	}
+	known := map[string]bool{}
+	for _, k := range Keys() {
+		known[k.Name] = true
+	}
+	ok := func(k string) bool { return known[k] || otherKey(k) }
+	// String literals only ("gamewe_x", `gamewe_x_${n}`), not names in
+	// comments and help texts (!gamewe_reset, the gamewe_web_admin user).
+	re := regexp.MustCompile("[\"'`](gamewe_[a-z0-9_]+)(?:[\"'`]|\\$\\{)")
+	found := map[string]bool{}
+	err := filepath.WalkDir(filepath.Join(dir, "src"), func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		switch filepath.Ext(p) {
+		case ".ts", ".tsx", ".js", ".mjs":
+		default:
+			return nil
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		for _, m := range re.FindAllStringSubmatch(string(b), -1) {
+			found[m[1]] = true
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) < 20 {
+		t.Fatalf("only %d gamewe_* names in %s/src, not a gameWE-web checkout?", len(found), dir)
+	}
+	for k := range found {
+		if webNames[k] || ok(k) || strings.HasSuffix(k, "_") && (ok(k+"1") || ok(k+"css")) {
+			continue
+		}
+		t.Errorf("web uses %s: add it to WebKeys (or to webNames if it is no hlstats_Options key)", k)
 	}
 }
 

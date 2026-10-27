@@ -340,12 +340,17 @@ seed only adds missing keys and never changes values that are already set.
 | `gamewe_next_reset_<game>` | – | **written by the collector** every minute when it changes: the end of the running period of the ranking's reset schedule (Unix time), the time of its next scheduled reset; stays when the schedule is switched off (the web admin then ignores it) |
 
 The other `gamewe_*` keys the web admin writes are settings of the web frontend
-(`gamewe_page_size`, site, header, SEO, map, voice and
-TeamSpeak settings, the header links `gamewe_link_<n>` and the admins' TOTP
-secrets `gamewe_totp_<hash>`); the collector ignores them and `gamewe check`
-does not report them. One exception: the collector reads the web's
+(`gamewe_page_size`, site, header, SEO, map (including the satellite view
+and the CARTO and Esri keys), voice and TeamSpeak settings, the operator's
+details of the privacy page `gamewe_privacy_*`, the header links
+`gamewe_link_<n>` and the admins' TOTP secrets `gamewe_totp_<hash>`); the
+collector ignores them and `gamewe check` does not report them. Neither does
+it report the job plan the collector writes itself (`gamewe_next_awards`,
+`gamewe_next_inactive`, `gamewe_next_resets`, `gamewe_next_reset_<game>`). One exception: the collector reads the web's
 `gamewe_site_url` (the public address of the site, set in the web admin) for
 the in-game browser commands (`!statsme`, `!status`, ...); it must be a plain
 `http://` or `https://` address, otherwise those commands answer that the web
 address is not configured. The list is `WebKeys` in `internal/settings/settings.go`;
-a new web setting needs an entry there.
+a new web setting needs an entry there. CI checks out gameWE-web and fails
+(`TestWebSourceKeys`) when the web uses a `gamewe_*` key the collector does
+not know.
