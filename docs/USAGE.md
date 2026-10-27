@@ -700,6 +700,12 @@ gamewe halloffame                                   # all entries, newest period
   start, once, for the period that ended last (several missed periods are
   one reset, the best five then stand for all of them). Without a running
   collector `gamewe halloffame run` does it.
+- **Turned off and on again:** while a ranking has no schedule (its own is
+  `off`, or the schedule for all rankings is off) the collector forgets its
+  running period. Turning the schedule on again starts with the period then
+  running; the time it was off is never reset afterwards. The web admin
+  (Rankings → "Scheduled reset for all rankings") has a switch for this and
+  keeps the schedule while it is off (`gamewe_reset_paused`).
 - **Where it is stored:** `hlstats_Options` (`gamewe_reset_schedule`,
   `gamewe_reset_mode` for all rankings, `gamewe_reset_schedule_<game>`,
   `gamewe_reset_mode_<game>`, `gamewe_reset_last_<game>`;

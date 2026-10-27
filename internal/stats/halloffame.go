@@ -31,7 +31,10 @@ import (
 // player-stats) and stores the start of the period now running in
 // gamewe_reset_last_<game>, with the schedule it belongs to ("1790805600
 // 3 month"): when the schedule changes, the next check starts the new one
-// with the period now running instead of resetting at once. A period that ended while no collector ran is
+// with the period now running instead of resetting at once. A ranking whose
+// schedule is turned off loses gamewe_reset_last_<game>, so turning it on
+// again starts anew as well. The web admin keeps a schedule for all
+// rankings that it turned off in gamewe_reset_paused (read by the web only). A period that ended while no collector ran is
 // done at the next start; several missed periods become one entry.
 
 // Units of a reset schedule.
@@ -271,6 +274,36 @@ func (s *Store) ScheduledRankings(ctx context.Context) ([]ScheduledRanking, []er
 		}
 	}
 	return out, bad, nil
+}
+
+// ForgetStoppedPeriods deletes gamewe_reset_last_<game> of the rankings
+// that have no schedule (their own is "off", or they follow the schedule
+// for all rankings while that is off) and returns their codes. A schedule
+// turned on again later then starts with the period running at that time
+// instead of resetting at once for the time it was off.
+func (s *Store) ForgetStoppedPeriods(ctx context.Context) ([]string, error) {
+	opts, err := s.Options(ctx)
+	if err != nil {
+		return nil, err
+	}
+	games, err := s.gameCodes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, g := range games {
+		if strings.TrimSpace(opts[LastResetKey(g)]) == "" {
+			continue
+		}
+		if r, err := s.scheduleOf(g, opts); err != nil || r.Schedule.On() {
+			continue // a broken value is reported by ScheduledRankings
+		}
+		if _, err := s.exec(ctx, `DELETE FROM hlstats_Options WHERE keyname = ?`, LastResetKey(g)); err != nil {
+			return out, err
+		}
+		out = append(out, g)
+	}
+	return out, nil
 }
 
 // InheritingRankings returns the codes of the rankings without a schedule

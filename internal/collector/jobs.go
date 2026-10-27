@@ -206,6 +206,11 @@ func (j *Jobs) QueueScheduled(ctx context.Context, now time.Time) error {
 	for _, e := range bad {
 		j.Log.Warn("jobs: broken reset schedule, skipped", "err", e)
 	}
+	if off, err := j.Store.ForgetStoppedPeriods(ctx); err != nil {
+		return err
+	} else if len(off) > 0 {
+		j.Log.Info("jobs: reset schedule stopped", "games", strings.Join(off, ","))
+	}
 	var open []stats.Job
 	for _, st := range []string{stats.JobPending, stats.JobRunning} {
 		jobs, err := j.Store.JobsByStatus(ctx, st)

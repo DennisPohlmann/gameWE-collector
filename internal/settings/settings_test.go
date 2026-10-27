@@ -48,6 +48,7 @@ func TestWebKeysNotReported(t *testing.T) {
 		"gamewe_hof_tf2_x":          "1",
 		"gamewe_reset_schedule":     "quarter@15",
 		"gamewe_reset_mode":         "all-stats",
+		"gamewe_reset_paused":       "month",
 	}
 	for _, k := range WebKeys {
 		opts[k] = "x"

@@ -169,6 +169,31 @@ func TestIntegrationScheduledResetAll(t *testing.T) {
 	if r, err := store.ScheduledRanking(ctx, "css"); err != nil || r.Last != time.Date(2026, 11, 16, 0, 0, 0, 0, loc).Unix() || r.LastSchedule != "week" {
 		t.Errorf("css after the change: %+v, %v", r, err)
 	}
+
+	// Off (the web admin deletes the schedule and keeps it in
+	// gamewe_reset_paused): the running period is forgotten, so turning the
+	// same schedule on again weeks later starts anew instead of resetting
+	// for the time it was off.
+	exec(t, db, `DELETE FROM hlstats_Options WHERE keyname = ?`, stats.GlobalScheduleKey)
+	set("gamewe_reset_paused", "week")
+	now = time.Date(2026, 11, 19, 12, 0, 0, 0, loc)
+	if err := jobs.Poll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := store.ScheduledRanking(ctx, "css"); err != nil || r.Schedule.On() || r.Last != 0 {
+		t.Fatalf("css while off: %+v, %v", r, err)
+	}
+	set(stats.GlobalScheduleKey, "week")
+	now = time.Date(2026, 12, 9, 12, 0, 0, 0, loc) // three weeks later, a Wednesday
+	if err := jobs.Poll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if q(t, db, `SELECT COUNT(*) FROM hlstats_gamewe_jobs`) != 1 {
+		t.Error("turning the schedule on again queued a reset")
+	}
+	if r, err := store.ScheduledRanking(ctx, "css"); err != nil || r.Last != time.Date(2026, 12, 7, 0, 0, 0, 0, loc).Unix() {
+		t.Errorf("css after turning it on again: %+v, %v", r, err)
+	}
 	hub.Close(ctx)
 }
 
