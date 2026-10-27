@@ -116,7 +116,17 @@ func inactiveRun(path string, cf changeFlags, wait time.Duration, in io.Reader, 
 		if err != nil {
 			return "", err
 		}
-		moved, err := store.MoveInactive(ctx, cutoff)
+		total, err := store.InactiveCount(ctx, cutoff)
+		if err != nil {
+			return "", err
+		}
+		var last time.Time
+		moved, err := store.MoveInactiveProgress(ctx, cutoff, func(moved int64) {
+			if time.Since(last) >= collector.ProgressEvery {
+				last = time.Now()
+				fmt.Fprintln(out, collector.InactiveProgress(moved, total)+" ...")
+			}
+		})
 		if err != nil {
 			return "", fmt.Errorf("stopped after %d players (run it again to complete it): %w", moved, err)
 		}

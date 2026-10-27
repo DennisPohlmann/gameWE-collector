@@ -55,6 +55,12 @@ const inactive = `p.last_event < ? AND NOT EXISTS (SELECT 1 FROM hlstats_Livesta
 // batches of inactiveBatch. Other tables are not touched. It returns the
 // number of players moved.
 func (s *Store) MoveInactive(ctx context.Context, cutoff time.Time) (int64, error) {
+	return s.MoveInactiveProgress(ctx, cutoff, nil)
+}
+
+// MoveInactiveProgress is MoveInactive that calls progress (if not nil)
+// with the number of players moved so far after every batch but the last.
+func (s *Store) MoveInactiveProgress(ctx context.Context, cutoff time.Time, progress func(moved int64)) (int64, error) {
 	var moved, after int64
 	for {
 		ids, err := s.inactiveIDs(ctx, cutoff, after)
@@ -65,6 +71,9 @@ func (s *Store) MoveInactive(ctx context.Context, cutoff time.Time) (int64, erro
 		moved += n
 		if err != nil || len(ids) < inactiveBatch {
 			return moved, err
+		}
+		if progress != nil {
+			progress(moved)
 		}
 		after = ids[len(ids)-1]
 	}

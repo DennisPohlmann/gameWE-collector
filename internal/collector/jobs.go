@@ -257,12 +257,14 @@ func (j *Jobs) lock(ctx context.Context) (func(), error) {
 // MinActivity days before now (and not online) to hlstats_PlayersInactive,
 // under the job lock.
 func (j *Jobs) MoveInactive(ctx context.Context, now time.Time) error {
-	_, err := j.moveInactive(ctx, now)
+	_, err := j.moveInactive(ctx, now, 0)
 	return err
 }
 
-// moveInactive is MoveInactive with its result for the job row.
-func (j *Jobs) moveInactive(ctx context.Context, now time.Time) (string, error) {
+// moveInactive is MoveInactive with its result for the job row; for a
+// queued job (id not 0) it writes the progress into the row, so the
+// command that queued it can show it.
+func (j *Jobs) moveInactive(ctx context.Context, now time.Time, id int64) (string, error) {
 	release, err := j.lock(ctx)
 	if err != nil {
 		return "", err
@@ -275,11 +277,36 @@ func (j *Jobs) moveInactive(ctx context.Context, now time.Time) (string, error) 
 	if warn != "" {
 		j.Log.Warn("jobs: " + warn)
 	}
-	n, err := j.Store.MoveInactive(ctx, cutoff)
+	var progress func(int64)
+	if id != 0 {
+		total, err := j.Store.InactiveCount(ctx, cutoff)
+		if err != nil {
+			return "", err
+		}
+		var last time.Time
+		progress = func(moved int64) {
+			if time.Since(last) < ProgressEvery {
+				return
+			}
+			last = time.Now()
+			if err := j.Store.JobProgress(ctx, id, InactiveProgress(moved, total)); err != nil {
+				j.Log.Warn("jobs: storing the progress failed", "job", id, "err", err)
+			}
+		}
+	}
+	n, err := j.Store.MoveInactiveProgress(ctx, cutoff, progress)
 	if n > 0 || err != nil {
 		j.Log.Info("jobs: inactive players moved to hlstats_PlayersInactive", "players", n, "days", days)
 	}
 	return InactiveResult(n, days), err
+}
+
+// ProgressEvery is how often a long job reports its progress.
+const ProgressEvery = 5 * time.Second
+
+// InactiveProgress is the progress text of a move of inactive players.
+func InactiveProgress(moved, total int64) string {
+	return fmt.Sprintf("%d of %d players moved so far", moved, total)
 }
 
 // InactiveResult is the result text of a move of inactive players.
@@ -290,7 +317,7 @@ func InactiveResult(moved int64, days int) string {
 // do runs a claimed job and stores its result.
 func (j *Jobs) do(ctx context.Context, job stats.Job) {
 	if job.Type == stats.JobInactive {
-		res, err := j.moveInactive(ctx, j.now())
+		res, err := j.moveInactive(ctx, j.now(), job.ID)
 		if err != nil {
 			j.Log.Error("jobs: moving inactive players failed", "job", job.ID, "err", err)
 			j.finish(ctx, job, stats.JobFailed, err.Error())

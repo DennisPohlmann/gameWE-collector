@@ -197,6 +197,7 @@ func queueJob(ctx context.Context, store *stats.Store, typ, game, mode string, w
 		return err
 	}
 	fmt.Fprintf(out, "queued as job %d for the running collector, waiting ...\n", id)
+	watch := &jobWatch{out: out, id: id}
 	deadline := time.Now().Add(wait)
 	for time.Now().Before(deadline) {
 		time.Sleep(2 * time.Second)
@@ -210,6 +211,8 @@ func queueJob(ctx context.Context, store *stats.Store, typ, game, mode string, w
 			return nil
 		case stats.JobFailed:
 			return fmt.Errorf("job %d failed: %s", id, job.Result)
+		case stats.JobRunning:
+			watch.update(job, nil, time.Now())
 		case stats.JobPending:
 			// The collector stopped after the heartbeat: take the job back
 			// (only while nobody claimed it) and reset here.
@@ -218,6 +221,11 @@ func queueJob(ctx context.Context, store *stats.Store, typ, game, mode string, w
 				return err
 			}
 			if time.Since(beat) < stats.HeartbeatFresh {
+				open, err := store.ListJobs(ctx, stats.JobFilter{Statuses: []string{stats.JobPending, stats.JobRunning}, Limit: 100, OldestFirst: true})
+				if err != nil {
+					return err
+				}
+				watch.update(job, open, time.Now())
 				continue
 			}
 			ok, err := store.ClaimJob(ctx, id, stats.JobPending, time.Now())
@@ -245,6 +253,88 @@ func queueJob(ctx context.Context, store *stats.Store, typ, game, mode string, w
 	}
 	return fmt.Errorf("job %d not finished after %v (still queued or running, the collector goes on with it; see gamewe jobs -queue)", id, wait)
 }
+
+// jobNoteEvery is how often jobWatch says that a job still waits or runs
+// when nothing else changed.
+const jobNoteEvery = 15 * time.Second
+
+// jobWatch tells the user what a queued job does while queueJob waits:
+// its place in the queue, when the collector started it, its progress
+// and, every jobNoteEvery without news, how long it waits or runs.
+type jobWatch struct {
+	out    io.Writer
+	id     int64
+	status string    // shown last
+	text   string    // queue or progress shown last
+	since  time.Time // start of the wait or of the run
+	shown  time.Time // last line
+}
+
+// update shows what changed in job; open are the pending and running jobs,
+// oldest first (only looked at while job is pending).
+func (w *jobWatch) update(job stats.Job, open []stats.Job, now time.Time) {
+	switch job.Status {
+	case stats.JobPending:
+		q := queueText(job.ID, open)
+		if w.status != job.Status {
+			w.since = now
+		}
+		switch {
+		case w.status != job.Status || q != w.text:
+			w.say(now, "job %d waits for the collector: %s", w.id, q)
+		case now.Sub(w.shown) >= jobNoteEvery:
+			w.say(now, "job %d still waiting (%s) ...", w.id, dur(now.Sub(w.since)))
+		}
+		w.status, w.text = job.Status, q
+	case stats.JobRunning:
+		if w.status != job.Status {
+			w.since = now
+			if job.StartedAt > 0 {
+				w.since = time.Unix(job.StartedAt, 0)
+			}
+			w.say(now, "job %d started in the collector at %s, running ...", w.id, w.since.Format("15:04:05"))
+			w.status, w.text = job.Status, job.Result
+			return
+		}
+		switch {
+		case job.Result != "" && job.Result != w.text:
+			w.say(now, "job %d running (%s): %s", w.id, dur(now.Sub(w.since)), job.Result)
+		case now.Sub(w.shown) >= jobNoteEvery:
+			w.say(now, "job %d still running (%s) ...", w.id, dur(now.Sub(w.since)))
+		}
+		w.text = job.Result
+	}
+}
+
+func (w *jobWatch) say(now time.Time, format string, a ...any) {
+	fmt.Fprintf(w.out, format+"\n", a...)
+	w.shown = now
+}
+
+// queueText describes the jobs ahead of job id in open: "next in line" or
+// "2 jobs ahead: 7 reset css (running), 8 inactive (pending)".
+func queueText(id int64, open []stats.Job) string {
+	var ahead []string
+	for _, j := range open {
+		if j.ID < id {
+			ahead = append(ahead, strings.TrimSpace(fmt.Sprintf("%d %s %s", j.ID, j.Type, j.Game))+" ("+j.Status+")")
+		}
+	}
+	switch len(ahead) {
+	case 0:
+		return "next in line"
+	case 1:
+		return "1 job ahead: " + ahead[0]
+	}
+	text := fmt.Sprintf("%d jobs ahead: ", len(ahead))
+	if len(ahead) > 3 {
+		return text + strings.Join(ahead[:3], ", ") + ", ..."
+	}
+	return text + strings.Join(ahead, ", ")
+}
+
+// dur is d rounded to seconds ("1m20s").
+func dur(d time.Duration) string { return max(d, 0).Round(time.Second).String() }
 
 // listJobs writes the jobs that match f (gamewe jobs, reset -list,
 // inactive -list).

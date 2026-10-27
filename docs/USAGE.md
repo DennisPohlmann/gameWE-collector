@@ -476,8 +476,12 @@ minutes, then exit code 1 and nothing changed). So a cron run of
 twice. `gamewe reset`, `gamewe inactive` and `gamewe halloffame run` hand the job
 to a running collector (heartbeat less than 2 minutes old) through
 `hlstats_gamewe_jobs` and wait for its result; without one they run it
-themselves. After `-wait` (default 10 minutes) the command gives up waiting
-with exit code 1, but the collector goes on with the job.
+themselves. While they wait they say what happens: the place in the queue
+and the jobs ahead, when the collector started the job, its progress (a
+move of inactive players writes "N of M players moved so far" into the job
+every 5 s; run here, it prints the same) and, every 15 s without news, how
+long it waits or runs. After `-wait` (default 10 minutes) the command gives
+up waiting with exit code 1, but the collector goes on with the job.
 
 The queue and the results:
 

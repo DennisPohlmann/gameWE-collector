@@ -169,6 +169,38 @@ func TestMigrateJobCommands(t *testing.T) {
 	out, code = gw(t, bin, "jobs", "-type", "bogus", "-config", cfg)
 	expect(t, out, code, 2, `-type "bogus"`)
 
+	// A running job shows its progress; the result replaces it.
+	id, err := store.AddJob(ctx, stats.JobReset, "css", "all", "test", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JobProgress(ctx, id, "not yet running"); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := store.ClaimJob(ctx, id, stats.JobPending, time.Now()); err != nil || !ok {
+		t.Fatalf("claim: %v %v", ok, err)
+	}
+	if err := store.JobProgress(ctx, id, "5 of 9 players moved so far"); err != nil {
+		t.Fatal(err)
+	}
+	out, code = gw(t, bin, "jobs", "-queue", "-config", cfg)
+	expect(t, out, code, 0, "running", "5 of 9 players moved so far")
+	if err := store.FinishJob(ctx, id, stats.JobDone, "finished", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JobProgress(ctx, id, "late"); err != nil {
+		t.Fatal(err)
+	}
+	if j, err := store.Job(ctx, id); err != nil || j.Result != "finished" {
+		t.Errorf("result %q (%v), want finished", j.Result, err)
+	}
+	out, code = gw(t, bin, "jobs", "-queue", "-config", cfg)
+	expect(t, out, code, 0, "TYPE")
+	if strings.Contains(out, "finished") {
+		t.Errorf("jobs -queue shows a finished job:\n%s", out)
+	}
+	sql(`DELETE FROM hlstats_gamewe_jobs WHERE id = ?`, id)
+
 	// db purge also deletes the finished jobs older than 30 days.
 	sql(`UPDATE hlstats_gamewe_jobs SET requested_at = ?`, time.Now().Add(-31*24*time.Hour).Unix())
 	out, code = gw(t, bin, "db", "purge", "-older-than", "7", "-dry-run", "-config", cfg)

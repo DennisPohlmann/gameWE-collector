@@ -157,6 +157,12 @@ func (s *Store) ClaimJob(ctx context.Context, id int64, from string, at time.Tim
 	return n == 1, err
 }
 
+// JobProgress stores text as the result of a running job, so the command
+// that queued it can show how far it is; FinishJob replaces it.
+func (s *Store) JobProgress(ctx context.Context, id int64, text string) error {
+	return s.run(ctx, step{`UPDATE hlstats_gamewe_jobs SET result = ? WHERE id = ? AND status = ?`, []any{clip(text, 255), id, JobRunning}})
+}
+
 // FinishJob stores the end of a job (done or failed) and its result.
 func (s *Store) FinishJob(ctx context.Context, id int64, status, result string, at time.Time) error {
 	if len(result) > 1024 {
