@@ -95,8 +95,6 @@ func TestLint(t *testing.T) {
 		{name: "all inputs off", in: lintBase + "listen:\n  udp:\n    enabled: false\n", want: []wantFinding{{SevError, "listen.udp.enabled", "both off"}}},
 		{name: "all inputs off, http explicitly", in: lintBase + "listen:\n  http:\n    enabled: false\n  udp:\n    enabled: false\n",
 			want: []wantFinding{{SevError, "listen.udp.enabled", "enable at least one input"}}},
-		{name: "-listen switches udp on", in: lintBase + "listen:\n  udp:\n    enabled: false\n", opt: LintOptions{Listen: "127.0.0.1:27500"}, clean: true},
-		{name: "-listen invalid", in: lintBase, opt: LintOptions{Listen: "nowhere"}, want: []wantFinding{{SevError, "-listen", "IP:port"}}},
 		{name: "udp port out of range", in: lintBase + "listen:\n  udp:\n    port: 70000\n", want: []wantFinding{{SevError, "listen.udp.port", "out of range"}}},
 		{name: "old form port 0", in: lintBase + "listen:\n  port: 0\n", want: []wantFinding{{SevError, "listen.port", "out of range"}}},
 		{name: "udp port 0 is the default", in: lintBase + "listen:\n  udp:\n    port: 0\n", want: []wantFinding{{SevWarning, "listen.udp.port", "default port 41337"}}},

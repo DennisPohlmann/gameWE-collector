@@ -44,9 +44,9 @@ import (
 const usage = `gameWE - collector %s
 
 Usage:
-  gamewe run      [-config FILE] [-listen IP:PORT] [-log-level LEVEL] [-reload DURATION]
+  gamewe run      [-config FILE] [-log-level LEVEL] [-reload DURATION]
                                    start the collector (used by systemd)
-  gamewe config test [-config FILE] [-listen IP:PORT]
+  gamewe config test [-config FILE]
                                    check the config file without starting anything (no port,
                                    no database connection): every error and warning, exit
                                    code 1 on errors; also gamewe --config-test, -t, run -t
@@ -299,10 +299,12 @@ func runCmd(args []string) error {
 	if rest, ok := testFlag(args); ok {
 		return configTestCmd(rest) // gamewe run -t: check, do not start
 	}
-	var listen, level string
+	if err := removedFlags(args); err != nil {
+		return err
+	}
+	var level string
 	var reload time.Duration
 	cfg, err := loadConfig("run", args, func(fs *flag.FlagSet) {
-		fs.StringVar(&listen, "listen", "", "UDP address for game-server logs, overrides listen.udp in the config and switches UDP on (IP:port)")
 		fs.StringVar(&level, "log-level", "info", "debug, info, warn or error")
 		fs.DurationVar(&reload, "reload", time.Minute, "how often hlstats_Servers and hlstats_Options are re-read")
 	})
@@ -409,10 +411,8 @@ func runCmd(args []string) error {
 		return ""
 	}}
 	hub.Geo = auto
-	udpOn := cfg.Listen.UDPEnabled || listen != ""
-	if listen == "" {
-		listen = cfg.Listen.UDP()
-	}
+	udpOn := cfg.Listen.UDPEnabled
+	listen := cfg.Listen.UDP()
 	lh := cfg.Listen.HTTP
 	rs := cfg.Features.RconStatus
 	every, _ := rs.Every() // checked by config.Validate
@@ -422,7 +422,7 @@ func runCmd(args []string) error {
 	siEvery, _ := si.Every() // checked by config.Validate
 	hub.Monitor = collector.MonitorConfig{Status: rs.Enabled, StatusInterval: every, LogAddress: la.Enabled, LogInterval: laEvery,
 		ServerInfo: si.Enabled, InfoInterval: siEvery,
-		PublicAddress: cfg.Listen.PublicAddress, ListenPort: listenPort(listen, cfg.Listen.Port), NoUDP: !udpOn,
+		PublicAddress: cfg.Listen.PublicAddress, ListenPort: cfg.Listen.Port, NoUDP: !udpOn,
 		HTTP: lh.Enabled && la.HTTP, HTTPPublicURL: lh.PublicURL, HTTPPort: lh.Port, HTTPToken: lh.Token}
 	hub.Source2Hits = cfg.Features.CS2Hitgroups.Enabled
 	sb := cfg.Features.SourceBans
@@ -1025,14 +1025,6 @@ func (d awardsDoc) Rows() [][]string {
 		out = append(out, []string{a.Game, a.Type, a.Code, itoa(a.WinnerID), a.Winner, itoa(a.Count)})
 	}
 	return out
-}
-
-// listenPort is the port of the -listen address, or def.
-func listenPort(listen string, def int) int {
-	if ap, err := netip.ParseAddrPort(listen); err == nil {
-		return int(ap.Port())
-	}
-	return def
 }
 
 // gameServers opens the database and returns the game servers that match

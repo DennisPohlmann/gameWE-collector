@@ -237,8 +237,8 @@ admin. Nothing is updated automatically; see
 It opens no port, does not connect to the database and changes nothing, so it
 is safe on a running system and before a restart. `gamewe --config-test`,
 `gamewe -t` and `gamewe run -t` (or `run --config-test`) are the same command;
-it takes `-config FILE` and the flags of `run` that change the configuration
-(`-listen IP:PORT`, and `-log-level` and `-reload`, which are only checked).
+it takes `-config FILE` and the flags `-log-level` and `-reload` of `run`, which
+are only checked.
 Run it as the user of the collector (`sudo -u gamewe ...`): whether a file is
 readable is checked for the user running the test.
 

@@ -49,12 +49,13 @@ All keys are optional.
 | `enabled` | `true` | receive UDP logs; `false` closes the UDP port and stops `logaddress_add` |
 | `address` | `0.0.0.0` | IP to listen on (`0.0.0.0` = all IPv4, `::` = all) |
 | `port` | `41337` | UDP port |
-| `public_address` | – | `ip:port` the game servers send their logs to, registered with `logaddress_add` (`features.log_address`). Default: the collector's address of the RCON connection to the game server, with `port` (or the port of `-listen`). Set it when the servers reach the collector at another address (NAT, several IPs). |
+| `public_address` | – | `ip:port` the game servers send their logs to, registered with `logaddress_add` (`features.log_address`). Default: the collector's address of the RCON connection to the game server, with `port`. Set it when the servers reach the collector at another address (NAT, several IPs). |
 
 The older form, `address`, `port` and `public_address` directly under `listen`,
 is still read as the UDP input. Using it together with `listen.udp` is an error.
-`gamewe run -listen IP:PORT` overrides the UDP `address` and `port` and switches
-UDP on, e.g. for a test.
+The inputs (UDP and HTTP, on or off, address and port) are set only here; the
+former `-listen` flag of `gamewe run` is gone, and `run` and `config test` stop
+with exit code 2 when it is given.
 
 #### listen.http
 
@@ -201,7 +202,6 @@ downloaded on start.
 | Flag | Default | Meaning |
 |------|---------|---------|
 | `-config` | `/etc/gamewe/collector/config.yaml` | config file |
-| `-listen` | `listen:` in the config | UDP address, overrides the config |
 | `-log-level` | `info` | `debug`, `info`, `warn`, `error` (to stderr / the journal) |
 | `-reload` | `1m` | how often `hlstats_Servers` and `hlstats_Options` are re-read |
 

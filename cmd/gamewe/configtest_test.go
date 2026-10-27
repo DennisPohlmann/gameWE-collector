@@ -25,7 +25,7 @@ func TestTestFlag(t *testing.T) {
 		{[]string{"-config", "c.yaml"}, []string{"-config", "c.yaml"}, false},
 		{[]string{"-t"}, []string{}, true},
 		{[]string{"-config", "c.yaml", "--config-test"}, []string{"-config", "c.yaml"}, true},
-		{[]string{"-config-test=true", "-listen", "127.0.0.1:1"}, []string{"-listen", "127.0.0.1:1"}, true},
+		{[]string{"-config-test=true", "-log-level", "debug"}, []string{"-log-level", "debug"}, true},
 		{[]string{"--config-test=false", "-config", "c.yaml"}, []string{"-config", "c.yaml"}, false},
 		{[]string{"--", "-t"}, []string{"--", "-t"}, false},
 	}
@@ -135,7 +135,9 @@ func TestConfigTestCommand(t *testing.T) {
 		{[]string{"-t", "-config", good}, 0, "syntax is ok"},
 		{[]string{"config", "test", "-config", good}, 0, "test is successful"},
 		{[]string{"run", "-t", "-config", good}, 0, "test is successful"},
-		{[]string{"run", "--config-test", "-config", bad, "-listen", "127.0.0.1:41337"}, 0, "test is successful"},
+		{[]string{"run", "--config-test", "-config", bad, "-listen", "127.0.0.1:41337"}, 2, ""}, // -listen is gone
+		{[]string{"run", "-config", good, "-listen=127.0.0.1:41337"}, 2, ""},
+		{[]string{"config", "test", "-config", good, "--listen", "127.0.0.1:41337"}, 2, ""},
 		{[]string{"config", "test", "-config", bad}, 1, "[error] listen.udp.enabled: udp and http are both off"},
 		{[]string{"-o", "json", "config", "test", "-config", bad}, 1, `"severity": "error"`},
 		{[]string{"config", "test", "-config", filepath.Join(t.TempDir(), "missing.yaml")}, 1, "cannot read the file"},
@@ -156,6 +158,22 @@ func TestConfigTestCommand(t *testing.T) {
 		}
 		if code != c.code || !strings.Contains(string(out), c.out) {
 			t.Errorf("%v: exit code %d, output %q; want %d and %q", c.args, code, out, c.code, c.out)
+		}
+	}
+}
+
+// -listen is gone: run and config test refuse it and name the config keys.
+func TestRemovedFlags(t *testing.T) {
+	for _, args := range [][]string{{"-listen", "1.2.3.4:5"}, {"-config", "c.yaml", "--listen=1.2.3.4:5"}} {
+		err := removedFlags(args)
+		var ee exitError
+		if !errors.As(err, &ee) || ee.code != 2 || !strings.Contains(ee.Error(), "listen.udp") {
+			t.Errorf("%v: %v, want exit code 2 naming listen.udp", args, err)
+		}
+	}
+	for _, args := range [][]string{{"-config", "c.yaml"}, {"-log-level", "debug"}, {"--", "-listen"}} {
+		if err := removedFlags(args); err != nil {
+			t.Errorf("%v: %v, want nil", args, err)
 		}
 	}
 }

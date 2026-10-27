@@ -36,16 +36,13 @@ const (
 // Finding is one result of Lint.
 type Finding struct {
 	Severity Severity
-	Key      string // config key (listen.http.port), a flag (-listen) or "" for the whole file
+	Key      string // config key (listen.http.port), a flag (-reload) or "" for the whole file
 	Line     int    // line in the file, 0 if the key is not in it
 	Msg      string // what is wrong and what to do; never a secret value
 }
 
 // LintOptions are the inputs of Lint besides the file.
 type LintOptions struct {
-	// Listen is -listen of gamewe run (IP:port): it overrides the UDP
-	// address and port and switches UDP on.
-	Listen string
 	// GeoIPDefault is the GeoIP database used when geoip.path is empty.
 	GeoIPDefault string
 }
@@ -131,7 +128,6 @@ type linter struct {
 	set        map[string]bool // key paths present in the file
 	findings   []Finding
 	udpForm    bool // the file has listen.udp (not the older keys under listen)
-	listenFlag bool // -listen overrides the UDP address
 }
 
 func (l *linter) add(sev Severity, key, format string, args ...any) {
@@ -157,15 +153,10 @@ func (l *linter) line(key string) int {
 }
 
 // udpKey turns the key of the UDP input as Validate names it
-// (listen.port) into the one of the file (listen.udp.port) or the flag.
+// (listen.port) into the one of the file (listen.udp.port).
 func (l *linter) udpKey(key string) string {
 	switch key {
-	case "listen.address", "listen.port":
-		if l.listenFlag {
-			return "-listen"
-		}
-		fallthrough
-	case "listen.public_address":
+	case "listen.address", "listen.port", "listen.public_address":
 		if l.udpForm {
 			return "listen.udp." + strings.TrimPrefix(key, "listen.")
 		}
@@ -233,15 +224,6 @@ func (l *linter) lint(data []byte, opt LintOptions) Report {
 	}
 	for _, p := range cfg.finish() {
 		l.errorf(p.Key, "%s", p.Msg)
-	}
-	if opt.Listen != "" {
-		l.listenFlag = true
-		ap, err := netip.ParseAddrPort(opt.Listen)
-		if err != nil {
-			l.errorf("-listen", "%q must be IP:port", opt.Listen)
-		} else {
-			cfg.Listen.Address, cfg.Listen.Port, cfg.Listen.UDPEnabled = ap.Addr().String(), int(ap.Port()), true
-		}
 	}
 	for _, p := range cfg.Problems() {
 		key := l.udpKey(p.Key)
@@ -473,9 +455,6 @@ func (l *linter) listeners(cfg Config) {
 
 // portKey is the port key next to an address key.
 func portKey(addrKey string) string {
-	if addrKey == "-listen" {
-		return addrKey
-	}
 	return strings.TrimSuffix(addrKey, "address") + "port"
 }
 

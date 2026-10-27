@@ -17,7 +17,7 @@ import (
 	"gamewe-collector/internal/geoip"
 )
 
-const configUsage = `gamewe config test [-config FILE] [-listen IP:PORT] [-o text|json|yaml]
+const configUsage = `gamewe config test [-config FILE] [-o text|json|yaml]
   check the config file the way gamewe run loads it, without starting
   anything: no port is opened, no database connection, no migration (that
   is gamewe check). Also: gamewe --config-test, gamewe -t, gamewe run -t.
@@ -63,12 +63,29 @@ func testFlag(args []string) ([]string, bool) {
 	return args, false
 }
 
+// removedFlags refuses the flags of gamewe run that are gone, with what to
+// use instead (the flag package would only say "not defined").
+func removedFlags(args []string) error {
+	for _, a := range args {
+		if a == "--" {
+			break
+		}
+		name, _, _ := strings.Cut(strings.TrimLeft(a, "-"), "=")
+		if strings.HasPrefix(a, "-") && name == "listen" {
+			return exitError{2, "-listen was removed: set listen.udp (enabled, address, port) in the config file"}
+		}
+	}
+	return nil
+}
+
 // configTestCmd is gamewe config test (--config-test, -t): it takes the
 // flags of gamewe run that change the configuration and checks them too.
 func configTestCmd(args []string) error {
+	if err := removedFlags(args); err != nil {
+		return err
+	}
 	fs := flag.NewFlagSet("config test", flag.ExitOnError)
 	path := fs.String("config", config.DefaultPath, "path to the YAML config file")
-	listen := fs.String("listen", "", "as for gamewe run: UDP address (IP:port) that overrides listen.udp and switches UDP on")
 	level := fs.String("log-level", "info", "as for gamewe run (only checked)")
 	reload := fs.Duration("reload", time.Minute, "as for gamewe run (only checked)")
 	addOutputFlag(fs)
@@ -79,7 +96,7 @@ func configTestCmd(args []string) error {
 	if err := needList(false); err != nil {
 		return err
 	}
-	rep := configTest(*path, config.LintOptions{Listen: *listen, GeoIPDefault: geoip.DefaultPath}, *level, *reload)
+	rep := configTest(*path, config.LintOptions{GeoIPDefault: geoip.DefaultPath}, *level, *reload)
 	doc := newConfigTestDoc(*path, rep)
 	if structured() {
 		if err := emit(os.Stdout, doc); err != nil {
