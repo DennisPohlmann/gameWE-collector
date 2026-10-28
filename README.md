@@ -59,7 +59,9 @@ Details per game: [docs/GAMES.md](docs/GAMES.md).
 
 Database, collector and web on one Docker host, ready in a few minutes. Every
 `change-me` is a placeholder: replace it with your own password (no `'`, `\`
-or `$`), the same value everywhere it appears.
+or `$`), the same value everywhere it appears. The database only listens on
+`127.0.0.1` and in the Docker network; the admin login is signed with a
+random secret (step 4), never with a value from this page.
 
 | Port | Container | For |
 |------|-----------|-----|
@@ -133,7 +135,13 @@ docker logs gamewe-collector    # "database migrated", "listening for game serve
 
 **4. Web**
 
+`ADMIN_SECRET` signs the admin logins: a random value of at least 32
+characters, created once and kept, also when you recreate the container
+(a new one signs everybody out and makes stored TOTP keys unusable):
+
 ```bash
+openssl rand -hex 32 > ~/gamewe/admin-secret && chmod 600 ~/gamewe/admin-secret
+
 docker run -d --name gamewe-web --restart unless-stopped \
   --network gamewe \
   -p 3000:3000 \
@@ -144,24 +152,30 @@ docker run -d --name gamewe-web --restart unless-stopped \
   -e DB_PASSWORD=change-me-web \
   -e DB_ADMIN_USER=gamewe_web_admin \
   -e DB_ADMIN_PASSWORD=change-me-web-admin \
-  -e ADMIN_SECRET=change-me-change-me-change-me-change-me \
+  -e ADMIN_SECRET="$(cat ~/gamewe/admin-secret)" \
   -e TZ=Europe/Berlin \
   ghcr.io/dennispohlmann/gamewe-web:latest
-
 ```
-
-`ADMIN_SECRET` signs the admin login: at least 32 characters, e.g. from
-`openssl rand -hex 32`; keep it when you recreate the container.
 
 **Or all in one with Docker Compose** (instead of steps 1 to 4):
 [`docker-compose.quickstart.yml`](docker-compose.quickstart.yml) (the same
 file in gameWE-collector and gameWE-web) starts database, collector and web
 in one go. The database users and the collector's config are written into
-the file itself, so nothing else is needed:
+the file itself; the passwords and the admin secret come from a `.env` file
+next to it with random values (the file has no defaults and does not start
+without them):
 
 ```bash
+mkdir -p ~/gamewe && cd ~/gamewe
 curl -O https://raw.githubusercontent.com/DennisPohlmann/gameWE-collector/main/docker-compose.quickstart.yml
-$EDITOR docker-compose.quickstart.yml        # replace every change-me
+cat > .env <<EOF
+DB_ROOT_PASSWORD=$(openssl rand -hex 16)
+COLLECTOR_PASSWORD=$(openssl rand -hex 16)
+WEB_PASSWORD=$(openssl rand -hex 16)
+WEB_ADMIN_PASSWORD=$(openssl rand -hex 16)
+ADMIN_SECRET=$(openssl rand -hex 32)
+EOF
+chmod 600 .env
 docker compose -f docker-compose.quickstart.yml up -d
 docker compose -f docker-compose.quickstart.yml logs collector   # "database migrated", "listening for game server logs"
 ```

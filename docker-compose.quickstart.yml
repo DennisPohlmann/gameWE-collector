@@ -1,8 +1,17 @@
-# gameWE quick start: database, collector and web in one Compose project,
-# without any other file. The same file is in gameWE-collector and gameWE-web.
+# gameWE quick start: database, collector and web in one Compose project.
+# The same file is in gameWE-collector and gameWE-web.
 #
-#   1. Change every change-me below (or set the variables in the shell or in
-#      a .env file next to this file, e.g. COLLECTOR_PASSWORD=...).
+#   1. Random passwords and the admin secret, in .env next to this file
+#      (Compose reads it; there are no default values, so the start fails
+#      without them):
+#        cat > .env <<EOF
+#        DB_ROOT_PASSWORD=$(openssl rand -hex 16)
+#        COLLECTOR_PASSWORD=$(openssl rand -hex 16)
+#        WEB_PASSWORD=$(openssl rand -hex 16)
+#        WEB_ADMIN_PASSWORD=$(openssl rand -hex 16)
+#        ADMIN_SECRET=$(openssl rand -hex 32)
+#        EOF
+#        chmod 600 .env
 #   2. docker compose -f docker-compose.quickstart.yml up -d
 #   3. docker compose -f docker-compose.quickstart.yml exec web node scripts/create-admin.mjs admin
 #      (prints the password of the new admin user once)
@@ -25,7 +34,8 @@
 # The database users are created once, at the first start with an empty
 # volume (configs: db-init). The collector creates the tables at its first
 # start and migrates them after an update (database.auto_migrate).
-# Passwords must not contain ' \ or $.
+# Passwords of your own must not contain ' \ or $. Keep ADMIN_SECRET when
+# you recreate the containers: it signs the admin logins and the TOTP keys.
 name: gamewe
 
 services:
@@ -33,7 +43,7 @@ services:
     image: mariadb:12.3
     restart: unless-stopped
     environment:
-      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-change-me-root}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in .env}
       MARIADB_AUTO_UPGRADE: "1"
     ports:
       - "127.0.0.1:3306:3306"
@@ -78,11 +88,11 @@ services:
       DB_HOST: db
       DB_NAME: gamewe
       DB_USER: gamewe_web
-      DB_PASSWORD: ${WEB_PASSWORD:-change-me-web}
+      DB_PASSWORD: ${WEB_PASSWORD:?set WEB_PASSWORD in .env}
       DB_ADMIN_USER: gamewe_web_admin
-      DB_ADMIN_PASSWORD: ${WEB_ADMIN_PASSWORD:-change-me-web-admin}
-      # Signs the admin login, at least 32 characters: openssl rand -hex 32
-      ADMIN_SECRET: ${ADMIN_SECRET:-change-me-change-me-change-me-change-me}
+      DB_ADMIN_PASSWORD: ${WEB_ADMIN_PASSWORD:?set WEB_ADMIN_PASSWORD in .env}
+      # Signs the admin login, at least 32 random characters: openssl rand -hex 32
+      ADMIN_SECRET: ${ADMIN_SECRET:?set ADMIN_SECRET in .env (openssl rand -hex 32)}
       TZ: Europe/Berlin
     # Own design templates and map pictures (docs/INSTALLATION.md of the web):
     # volumes:
@@ -101,10 +111,10 @@ configs:
   db-init:
     content: |
       CREATE DATABASE gamewe CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-      CREATE USER 'gamewe'@'%' IDENTIFIED BY '${COLLECTOR_PASSWORD:-change-me-collector}';
+      CREATE USER 'gamewe'@'%' IDENTIFIED BY '${COLLECTOR_PASSWORD:?set COLLECTOR_PASSWORD in .env}';
       GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX ON gamewe.* TO 'gamewe'@'%' WITH GRANT OPTION;
-      CREATE USER 'gamewe_web'@'%' IDENTIFIED BY '${WEB_PASSWORD:-change-me-web}';
-      CREATE USER 'gamewe_web_admin'@'%' IDENTIFIED BY '${WEB_ADMIN_PASSWORD:-change-me-web-admin}';
+      CREATE USER 'gamewe_web'@'%' IDENTIFIED BY '${WEB_PASSWORD:?set WEB_PASSWORD in .env}';
+      CREATE USER 'gamewe_web_admin'@'%' IDENTIFIED BY '${WEB_ADMIN_PASSWORD:?set WEB_ADMIN_PASSWORD in .env}';
       GRANT SELECT ON gamewe.* TO 'gamewe_web_admin'@'%';
   # The collector's config file (all settings: docs/CONFIG.md of the collector).
   collector:
@@ -118,7 +128,7 @@ configs:
         port: 3306
         name: gamewe
         user: gamewe
-        password: "${COLLECTOR_PASSWORD:-change-me-collector}"
+        password: "${COLLECTOR_PASSWORD:?set COLLECTOR_PASSWORD in .env}"
 
 volumes:
   db:
