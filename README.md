@@ -148,40 +148,85 @@ docker run -d --name gamewe-web --restart unless-stopped \
   -e TZ=Europe/Berlin \
   ghcr.io/dennispohlmann/gamewe-web:latest
 
-docker exec gamewe-web node scripts/create-admin.mjs admin   # prints the admin password once
 ```
 
 `ADMIN_SECRET` signs the admin login: at least 32 characters, e.g. from
 `openssl rand -hex 32`; keep it when you recreate the container.
 
-**5. Open it and add the game servers**
-
-Open `http://<docker host>:3000`, sign in at `http://<docker host>:3000/admin`
-with `admin` and the printed password, and add your game servers: Rankings,
-pick the game's ranking, "Add server" (address, game port, RCON password).
-The collector picks them up within a minute. Then add to each game server's `server.cfg`:
-
-```
-log on
-logaddress_add <docker host>:41337
-```
-
-Counter-Strike 2 sends its logs over HTTP instead: see
-[Counter-Strike 2](https://github.com/DennisPohlmann/gameWE-collector/blob/main/docs/GAMES.md#counter-strike-2)
-in the collector's docs (`listen.http`, TCP port 41338).
-
-**The same with Docker Compose:**
-[`docker-compose.quickstart.yml`](docker-compose.quickstart.yml) (in both
-repositories) starts database, collector and web in one go. The database
-users and the collector's config are written into the file itself, so
-nothing else is needed:
+**Or all in one with Docker Compose** (instead of steps 1 to 4):
+[`docker-compose.quickstart.yml`](docker-compose.quickstart.yml) (the same
+file in gameWE-collector and gameWE-web) starts database, collector and web
+in one go. The database users and the collector's config are written into
+the file itself, so nothing else is needed:
 
 ```bash
 curl -O https://raw.githubusercontent.com/DennisPohlmann/gameWE-collector/main/docker-compose.quickstart.yml
 $EDITOR docker-compose.quickstart.yml        # replace every change-me
 docker compose -f docker-compose.quickstart.yml up -d
-docker compose -f docker-compose.quickstart.yml exec web node scripts/create-admin.mjs admin
+docker compose -f docker-compose.quickstart.yml logs collector   # "database migrated", "listening for game server logs"
 ```
+
+**5. Admin user, rankings and servers**
+
+Create the first admin user; it prints the password once:
+
+```bash
+docker exec -it gamewe-web node scripts/create-admin.mjs admin
+# Compose: docker compose -f docker-compose.quickstart.yml exec web node scripts/create-admin.mjs admin
+```
+
+Open `http://<docker host>:3000` and sign in at `http://<docker host>:3000/admin`
+with `admin` and that password. One ranking per game is already there (`css`,
+`cs2`, `csgo`, `tf`, `dods`, `l4d2`, `cstrike`, ... ; `gamewe game list`
+shows all). Then add your game servers, in the web admin or with the
+collector's command line; both write the same database and the collector
+picks the change up within a minute.
+
+- **Web admin:** Rankings, pick the game's ranking (or create your own, e.g.
+  "CS:S Public", copying a game's weapons and actions), "Add server": address,
+  game port, RCON password.
+- **Command line** (the `gamewe` binary in the collector container; it asks
+  before it changes something):
+
+  ```bash
+  # an own ranking, with the weapons, actions, awards and ranks of css (optional)
+  docker exec -it gamewe-collector /opt/gamewe/collector/bin/gamewe game add css1 "CS:S Public" -template css
+  # the game server: its address and game port, the ranking, the RCON password
+  docker exec -it gamewe-collector /opt/gamewe/collector/bin/gamewe server add 203.0.113.7:27015 -game css1 -name "Public" -rcon-password change-me-rcon
+  docker exec -it gamewe-collector /opt/gamewe/collector/bin/gamewe server list
+  # Compose: docker compose -f docker-compose.quickstart.yml exec collector /opt/gamewe/collector/bin/gamewe ...
+  ```
+
+Everything else (points, awards, in-game commands, design, users) is set
+in the web admin.
+
+**6. Game servers: send the logs to the collector**
+
+Add to the `server.cfg` of each game server (`<docker host>` is the address
+the game server reaches the collector at):
+
+```
+log on
+logaddress_add <docker host>:41337      // the collector's address and UDP port
+rcon_password "change-me-rcon"          // the same as in the web admin / server add
+```
+
+and restart the map or the server. With the RCON password stored, the
+collector also checks every minute that it is registered as log address
+and adds itself (`logaddress_add`, `log on`) when it is missing; the lines
+in `server.cfg` keep it there after a restart. The first log lines show up
+in `docker logs gamewe-collector`, the players on the website. For in-game
+commands (`!rank`, `!top10`, ...) and more statistics install the gameWE
+plugin for the engine (see gameWE components below). Optional: a log secret
+against faked log packets, `sv_logsecret` (collector docs, CONFIG.md).
+
+Counter-Strike 2 sends its logs over HTTP: add to the collector's config
+(`listen:` in `~/gamewe/collector.yaml` or in the Compose file) an
+`http:` part with `enabled: true` and `port: 41338`, restart the collector,
+open TCP 41338 for the game servers and use
+`logaddress_add_http "http://<docker host>:41338/27015"` (the game port at
+the end) instead of `logaddress_add`; details in
+[Counter-Strike 2](https://github.com/DennisPohlmann/gameWE-collector/blob/main/docs/GAMES.md#counter-strike-2).
 
 For production put a reverse proxy with TLS in front of the web (bind it
 to `127.0.0.1:3000:3000`), keep the collector's config file private

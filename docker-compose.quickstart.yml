@@ -7,8 +7,9 @@
 #   3. docker compose -f docker-compose.quickstart.yml exec web node scripts/create-admin.mjs admin
 #      (prints the password of the new admin user once)
 #   4. Open http://<this host>:3000 (admin area: http://<this host>:3000/admin),
-#      add your game servers under Admin -> Servers and let them send their
-#      logs to UDP port 41337 of this host (README, Quick start with Docker).
+#      add your game servers (Rankings -> the game's ranking -> Add server) and
+#      let them send their logs to UDP port 41337 of this host (README, Quick
+#      start with Docker).
 #
 # Ports:
 #   41337/udp  collector, logs of the game servers (host network, see below)
