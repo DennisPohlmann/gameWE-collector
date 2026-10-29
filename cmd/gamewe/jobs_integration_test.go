@@ -133,6 +133,9 @@ func TestMigrateJobCommands(t *testing.T) {
 	jobs := &collector.Jobs{Store: store, Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Version: "9.8.7",
 		Lock: func(ctx context.Context) (func(), error) { return database.JobLock(ctx, db, time.Minute, nil) }}
 	jctx, cancel := context.WithCancel(ctx)
+	if err := jobs.Beat(jctx, true); err != nil {
+		t.Fatal(err)
+	}
 	loop := make(chan struct{})
 	go func() {
 		defer close(loop)
