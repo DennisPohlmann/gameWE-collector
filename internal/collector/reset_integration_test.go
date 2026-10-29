@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"gamewe-collector/internal/database"
+	"gamewe-collector/internal/settings"
 	"gamewe-collector/internal/stats"
 )
 
@@ -241,6 +242,9 @@ func TestIntegrationResetJob(t *testing.T) {
 		t.Errorf("tf players after the recovered reset: %d with 0 kills, want 2", n)
 	}
 	// the heartbeat
+	if err := jobs.Beat(ctx, true); err != nil {
+		t.Fatal(err)
+	}
 	if beat, err := store.LastHeartbeat(ctx); err != nil || time.Since(beat) > time.Minute {
 		t.Errorf("heartbeat %v %v", beat, err)
 	}
@@ -331,5 +335,56 @@ func TestIntegrationPlayerOwnReset(t *testing.T) {
 	}
 	if _, err := store.ActionID(ctx, "tf", "planted_the_bomb"); err != stats.ErrNotFound {
 		t.Errorf("ActionID of another game: %v", err)
+	}
+}
+
+// The heartbeat goes on while a job runs or waits for the job lock, so the
+// web admin and gamewe reset do not take a busy collector for a stopped one.
+func TestIntegrationHeartbeatDuringJob(t *testing.T) {
+	db := testDB(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	store := stats.NewStore(db, settings.NewLive(settings.Defaults()))
+	if _, err := store.AddJob(ctx, stats.JobInactive, "", "", "test", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	locked, release := make(chan struct{}), make(chan struct{})
+	jobs := &Jobs{Store: store, Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Version: "9.9.9", beatEvery: 50 * time.Millisecond,
+		Lock: func(ctx context.Context) (func(), error) {
+			close(locked)
+			select { // a job that takes long
+			case <-release:
+			case <-ctx.Done():
+			}
+			return func() {}, nil
+		}}
+	done := make(chan struct{})
+	go func() { defer close(done); jobs.Run(ctx) }()
+	defer func() { cancel(); <-done }()
+	defer close(release)
+	select {
+	case <-locked:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the job did not start")
+	}
+	if err := store.SetOption(ctx, stats.HeartbeatKey, "1"); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		beat, err := store.LastHeartbeat(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if time.Since(beat) < time.Minute {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no heartbeat while the job runs: %v", beat)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if n := q(t, db, `SELECT COUNT(*) FROM hlstats_Options WHERE keyname = ? AND value = ?`, stats.VersionKey, "9.9.9"); n != 1 {
+		t.Errorf("version written %d times, want 1", n)
 	}
 }

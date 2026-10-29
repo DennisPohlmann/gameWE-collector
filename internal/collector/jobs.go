@@ -46,7 +46,8 @@ type Jobs struct {
 	// the plan for the web admin.
 	ResetClock string
 
-	lastBeat     time.Time
+	beatEvery    time.Duration // tests; 0: stats.HeartbeatInterval
+	lastPlan     time.Time
 	lastSchedule time.Time
 	lastPrune    time.Time
 	lastInactive time.Time
@@ -78,9 +79,12 @@ func (j *Jobs) now() time.Time {
 }
 
 // Run first completes jobs left running by a stopped collector, then polls
-// every JobPoll until ctx is done.
+// every JobPoll until ctx is done. The heartbeat has its own loop (Beat),
+// so a long job (a reset, the daily awards, the move of inactive players or
+// the wait for the job lock) does not make the collector look stopped.
 func (j *Jobs) Run(ctx context.Context) {
 	j.lastInactive = j.now() // the first move at the next daily time, not at start
+	go j.beatLoop(ctx)
 	if err := j.Recover(ctx); err != nil {
 		j.Log.Error("jobs: recovering running jobs failed", "err", err)
 	}
@@ -112,24 +116,54 @@ func (j *Jobs) Recover(ctx context.Context) error {
 	return nil
 }
 
-// Poll writes the heartbeat when due, removes old jobs and runs the
-// pending ones, oldest first. A second job for a game that has one pending
-// or running already is refused.
+// beatLoop writes the heartbeat now and every HeartbeatInterval until ctx
+// is done, apart from the jobs.
+func (j *Jobs) beatLoop(ctx context.Context) {
+	every := j.beatEvery
+	if every <= 0 {
+		every = stats.HeartbeatInterval
+	}
+	t := time.NewTicker(every)
+	defer t.Stop()
+	var versionWritten bool
+	for {
+		if err := j.Beat(ctx, !versionWritten); err != nil && ctx.Err() == nil {
+			j.Log.Error("jobs", "err", err)
+		} else {
+			versionWritten = true
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
+}
+
+// Beat writes the heartbeat and, with version, the collector's version
+// (Version, when set).
+func (j *Jobs) Beat(ctx context.Context, version bool) error {
+	if version && j.Version != "" {
+		if err := j.Store.SetVersion(ctx, j.Version); err != nil {
+			return fmt.Errorf("version: %w", err)
+		}
+	}
+	if err := j.Store.Heartbeat(ctx, j.now()); err != nil {
+		return fmt.Errorf("heartbeat: %w", err)
+	}
+	return nil
+}
+
+// Poll writes when the daily jobs run next (each HeartbeatInterval),
+// removes old jobs and runs the pending ones, oldest first. A second job
+// for a game that has one pending or running already is refused.
 func (j *Jobs) Poll(ctx context.Context) error {
 	now := j.now()
-	if now.Sub(j.lastBeat) >= stats.HeartbeatInterval {
-		if j.lastBeat.IsZero() && j.Version != "" {
-			if err := j.Store.SetVersion(ctx, j.Version); err != nil {
-				return fmt.Errorf("version: %w", err)
-			}
-		}
-		if err := j.Store.Heartbeat(ctx, now); err != nil {
-			return fmt.Errorf("heartbeat: %w", err)
-		}
+	if now.Sub(j.lastPlan) >= stats.HeartbeatInterval {
 		if err := j.writePlan(ctx, j.Plan(now)); err != nil {
 			return fmt.Errorf("plan: %w", err)
 		}
-		j.lastBeat = now
+		j.lastPlan = now
 	}
 	if now.Sub(j.lastPrune) >= time.Hour {
 		if err := j.Store.DeleteOldJobs(ctx, now.Add(-stats.JobKeep)); err != nil {
