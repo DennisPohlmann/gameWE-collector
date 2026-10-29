@@ -193,6 +193,60 @@ func TestParseDate(t *testing.T) {
 	}
 }
 
+// Every list format becomes a time in the collector's zone, so the bans
+// sort by their real date.
+func TestParseDateOrder(t *testing.T) {
+	loc := time.FixedZone("test", 2*3600)
+	at := func(y, m, d, h, mi, s int) time.Time { return time.Date(y, time.Month(m), d, h, mi, s, 0, loc) }
+	for _, c := range []struct {
+		in       string
+		dayFirst bool
+		want     time.Time
+	}{
+		{"2026-10-01T12:00:00Z", false, time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)},
+		{"2026-10-01T12:00:00", false, at(2026, 10, 1, 12, 0, 0)},
+		{"28.05.2026, 03:15", false, at(2026, 5, 28, 3, 15, 0)},
+		{"26.10.2026, 17:48 ", false, at(2026, 10, 26, 17, 48, 0)},
+		{"2026-05-28 03:15:09", false, at(2026, 5, 28, 3, 15, 9)},
+		{"01-02-20 10:00", false, at(2020, 1, 2, 10, 0, 0)}, // SourceBans' default "m-d-y H:i"
+		{"01-02-20 10:00", true, at(2020, 2, 1, 10, 0, 0)},
+		{"05/28/2026 3:15 PM", false, at(2026, 5, 28, 15, 15, 0)},
+		{"05/28/2026 12:05 am", false, at(2026, 5, 28, 0, 5, 0)},
+		{"14 Jun 2026, 19:17", false, at(2026, 6, 14, 19, 17, 0)},
+		{"Jun 14, 2026 19:17", false, at(2026, 6, 14, 19, 17, 0)},
+		{"Sunday, June 14th 2026", false, at(2026, 6, 14, 0, 0, 0)},
+		{"28.05.2026", false, at(2026, 5, 28, 0, 0, 0)},
+	} {
+		got, ok := ParseDateOrder(c.in, loc, c.dayFirst)
+		if !ok || !got.Equal(c.want) {
+			t.Errorf("%q (day first %v): %v %v, want %v", c.in, c.dayFirst, got, ok, c.want)
+		}
+	}
+	for _, s := range []string{"", "Not applicable", "31.02.2026, 10:00", "28.13.2026", "28.05.2026, 25:00", "13/28/2026",
+		"05/28/2026 13:15 PM", "05-28/2026", "1 Foo 2026", "12:00", "28.05.1989", strings.Repeat("x", 300), strings.Repeat("0", 95) + " 28.05.2026"} {
+		if got, ok := ParseDateOrder(s, loc, false); ok {
+			t.Errorf("%q read as %v", s, got)
+		}
+	}
+}
+
+func TestDayFirst(t *testing.T) {
+	for _, c := range []struct {
+		dates []string
+		want  bool
+	}{
+		{[]string{"05/06/26 10:00", "28/05/26 03:15"}, true},
+		{[]string{"05/06/26 10:00", "05/28/26 03:15"}, false},
+		{[]string{"05-06-26 10:00"}, false},
+		{[]string{"28.05.2026, 03:15", "2026-05-28 03:15"}, false},
+		{nil, false},
+	} {
+		if got := DayFirst(c.dates); got != c.want {
+			t.Errorf("%q: %v, want %v", c.dates, got, c.want)
+		}
+	}
+}
+
 func TestPrivate(t *testing.T) {
 	for _, s := range []string{"127.0.0.1", "10.1.2.3", "192.168.0.1", "172.16.5.4", "100.64.0.1", "169.254.1.1", "::1", "fd00::1", "fe80::1", "::ffff:10.0.0.1", "0.0.0.0", "192.0.2.10", "2001:db8::1"} {
 		if !Private(netip.MustParseAddr(s)) {

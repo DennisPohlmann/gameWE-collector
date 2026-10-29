@@ -313,23 +313,151 @@ var (
 	}
 )
 
+// maxDateLen bounds the date text that is read; a longer one is no date.
+const maxDateLen = 100
+
+var (
+	reDateClock   = regexp.MustCompile(`(?i)(\d{1,2}):(\d\d)(?::(\d\d))?\s*([ap]\.?m\.?)?`)
+	reDateYMD     = regexp.MustCompile(`\b(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})\b`)
+	reDateDMY     = regexp.MustCompile(`\b(\d{1,2})([-/.])(\d{1,2})([-/.])(\d{4}|\d{2})\b`)
+	reDateDMonY   = regexp.MustCompile(`(?i)\b(\d{1,2})(?:st|nd|rd|th)?\.?\s+([a-z]{3,9})\.?,?\s+(\d{4})\b`)
+	reDateMonDY   = regexp.MustCompile(`(?i)\b([a-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b`)
+	reDateNumeric = regexp.MustCompile(`\b(\d{1,2})[-/](\d{1,2})[-/]\d{2,4}\b`)
+	months        = []string{"jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"}
+)
+
 // ParseDate reads the date of a ban in loc (the time zone the SourceBans
-// installation shows, normally the collector's): ISO 8601, SB++ 1.8
-// "02.01.2006, 15:04" and the other common SourceBans formats.
+// installation shows, normally the collector's), with the month first in
+// "05/06/26" (ParseDateOrder).
 func ParseDate(s string, loc *time.Location) (time.Time, bool) {
+	return ParseDateOrder(s, loc, false)
+}
+
+// ParseDateOrder reads the date of a ban as the list shows it: ISO 8601
+// (SB++ 2026) or a text in the PHP date() format the SourceBans admin set:
+// "m-d-y H:i" by default, often "d.m.Y, H:i" (SB++ 1.8) or "Y-m-d H:i:s",
+// also "05/28/2026 3:15 PM" and month names ("14 Jun 2026", "Jun 14,
+// 2026"). Dates with dots put the day first, with dashes or slashes only
+// when dayFirst is set (DayFirst over the whole list). A date that does
+// not exist (31.02.) or cannot be read gives false.
+func ParseDateOrder(s string, loc *time.Location, dayFirst bool) (time.Time, bool) {
 	s = strings.TrimSpace(s)
-	if s == "" {
+	if s == "" || len(s) > maxDateLen {
 		return time.Time{}, false
+	}
+	if loc == nil {
+		loc = time.Local
 	}
 	if t, err := time.Parse(time.RFC3339, s); err == nil {
 		return t, true
 	}
-	for _, f := range []string{"02.01.2006, 15:04", "02.01.2006 15:04", "2006-01-02 15:04:05", "2006-01-02 15:04", "01-02-06 15:04", "02-01-2006 15:04"} {
-		if t, err := time.ParseInLocation(f, s, loc); err == nil {
-			return t, true
+	if t, err := time.ParseInLocation("2006-01-02T15:04:05", s, loc); err == nil {
+		return t, true
+	}
+	h, mi, sec := 0, 0, 0
+	rest := s
+	if m := reDateClock.FindStringSubmatchIndex(s); m != nil {
+		rest = s[:m[0]] + " " + s[m[1]:]
+		h, _ = strconv.Atoi(s[m[2]:m[3]])
+		mi, _ = strconv.Atoi(s[m[4]:m[5]])
+		if m[6] >= 0 {
+			sec, _ = strconv.Atoi(s[m[6]:m[7]])
+		}
+		if m[8] >= 0 {
+			if h < 1 || h > 12 {
+				return time.Time{}, false
+			}
+			switch strings.ToLower(s[m[8] : m[8]+1]) {
+			case "p":
+				if h < 12 {
+					h += 12
+				}
+			case "a":
+				if h == 12 {
+					h = 0
+				}
+			}
 		}
 	}
-	return time.Time{}, false
+	y, mo, d, ok := dateParts(rest, dayFirst)
+	if !ok || h > 23 || mi > 59 || sec > 59 {
+		return time.Time{}, false
+	}
+	t := time.Date(y, time.Month(mo), d, h, mi, sec, 0, loc)
+	// 31.02. and the like roll over into the next month: not a date.
+	if t.Year() != y || int(t.Month()) != mo || t.Day() != d {
+		return time.Time{}, false
+	}
+	return t, true
+}
+
+// DayFirst tells whether the numeric dates of a list put the day first:
+// once one of them can only be read that way ("28/05/26"). Dates with dots
+// and with the year first are always clear; without a hint the month comes
+// first, as in SourceBans' default format.
+func DayFirst(dates []string) bool {
+	dayFirst := false
+	for _, s := range dates {
+		if len(s) > maxDateLen {
+			continue
+		}
+		m := reDateNumeric.FindStringSubmatch(s)
+		if m == nil {
+			continue
+		}
+		a, _ := strconv.Atoi(m[1])
+		b, _ := strconv.Atoi(m[2])
+		if b > 12 {
+			return false
+		}
+		if a > 12 {
+			dayFirst = true
+		}
+	}
+	return dayFirst
+}
+
+// dateParts reads year, month and day from the date part of a text.
+func dateParts(s string, dayFirst bool) (y, m, d int, ok bool) {
+	check := func(y, m, d int) (int, int, int, bool) {
+		if y < 1990 || y > 2100 || m < 1 || m > 12 || d < 1 || d > 31 {
+			return 0, 0, 0, false
+		}
+		return y, m, d, true
+	}
+	num := func(v string) int { n, _ := strconv.Atoi(v); return n }
+	if r := reDateYMD.FindStringSubmatch(s); r != nil {
+		return check(num(r[1]), num(r[2]), num(r[3]))
+	}
+	if r := reDateDMY.FindStringSubmatch(s); r != nil {
+		if r[2] != r[4] {
+			return 0, 0, 0, false
+		}
+		year := num(r[5])
+		if len(r[5]) == 2 {
+			year += 2000
+		}
+		a, b := num(r[1]), num(r[3])
+		if r[2] == "." || dayFirst {
+			return check(year, b, a)
+		}
+		return check(year, a, b)
+	}
+	month := func(v string) int {
+		for i, n := range months {
+			if strings.EqualFold(v[:3], n) {
+				return i + 1
+			}
+		}
+		return 0
+	}
+	if r := reDateDMonY.FindStringSubmatch(s); r != nil && month(r[2]) > 0 {
+		return check(num(r[3]), month(r[2]), num(r[1]))
+	}
+	if r := reDateMonDY.FindStringSubmatch(s); r != nil && month(r[1]) > 0 {
+		return check(num(r[3]), month(r[1]), num(r[2]))
+	}
+	return 0, 0, 0, false
 }
 
 // ---------------------------------------------------------------- parsing

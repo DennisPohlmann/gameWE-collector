@@ -183,6 +183,11 @@ func (w *BanWatch) handle(ctx context.Context, it banItem) {
 func (w *BanWatch) running(bans []sourcebans.Ban, now time.Time) (stats.Ban, bool) {
 	var best stats.Ban
 	found := false
+	dates := make([]string, len(bans))
+	for i, b := range bans {
+		dates[i] = b.Date
+	}
+	dayFirst := sourcebans.DayFirst(dates)
 	for _, b := range bans {
 		if !b.State.Running() {
 			continue
@@ -192,7 +197,7 @@ func (w *BanWatch) running(bans []sourcebans.Ban, now time.Time) (stats.Ban, boo
 			loc = time.Local
 		}
 		sb := stats.Ban{Type: stats.BanTypeSourceBans, Reason: b.Reason}
-		if t, ok := sourcebans.ParseDate(b.Date, loc); ok && !t.After(now.Add(time.Hour)) {
+		if t, ok := sourcebans.ParseDateOrder(b.Date, loc, dayFirst); ok && !t.After(now.Add(time.Hour)) {
 			sb.BannedAt = t
 		}
 		if m, ok := sourcebans.LengthMinutes(b.Length); ok && m > 0 {

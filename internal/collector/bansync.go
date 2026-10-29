@@ -338,6 +338,13 @@ func RunningSourceBans(list []sourcebans.Ban, loc *time.Location, now time.Time)
 	if loc == nil {
 		loc = time.Local
 	}
+	// Whether "05/06/26" puts the day first shows only in some dates of the
+	// list, so it is decided once for all of them.
+	dates := make([]string, len(list))
+	for i, b := range list {
+		dates[i] = b.Date
+	}
+	dayFirst := sourcebans.DayFirst(dates)
 	by := map[uint64]stats.SourceBan{}
 	var order []uint64
 	for _, b := range list {
@@ -349,7 +356,7 @@ func RunningSourceBans(list []sourcebans.Ban, loc *time.Location, now time.Time)
 			continue
 		}
 		sb := stats.SourceBan{SteamID64: id, Reason: b.Reason, Admin: b.Admin}
-		if t, ok := sourcebans.ParseDate(b.Date, loc); ok && !t.After(now.Add(time.Hour)) {
+		if t, ok := sourcebans.ParseDateOrder(b.Date, loc, dayFirst); ok && !t.After(now.Add(time.Hour)) {
 			sb.Created = t
 		}
 		if m, ok := sourcebans.LengthMinutes(b.Length); ok && m > 0 && b.State != sourcebans.Permanent {

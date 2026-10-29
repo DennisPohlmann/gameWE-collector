@@ -367,6 +367,25 @@ func TestRunningSourceBans(t *testing.T) {
 	}
 }
 
+// "05/06/26" counts as day first when another date of the list can only
+// be read that way, also for a ban whose own date would fit both.
+func TestRunningSourceBansDayFirst(t *testing.T) {
+	now := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
+	list := []sourcebans.Ban{
+		{Steam: "1:5", Reason: "a", Length: "Permanent", Date: "05/06/26 10:00", State: sourcebans.Permanent},
+		{Steam: "1:6", Reason: "b", Length: "Permanent", Date: "28/05/26 03:15", State: sourcebans.Expired},
+	}
+	got := RunningSourceBans(list, time.UTC, now)
+	if len(got) != 1 || !got[0].Created.Equal(time.Date(2026, 6, 5, 10, 0, 0, 0, time.UTC)) {
+		t.Errorf("day first: %+v", got)
+	}
+	list[1].Date = "05/28/26 03:15"
+	got = RunningSourceBans(list, time.UTC, now)
+	if len(got) != 1 || !got[0].Created.Equal(time.Date(2026, 5, 6, 10, 0, 0, 0, time.UTC)) {
+		t.Errorf("month first: %+v", got)
+	}
+}
+
 // A completely read list replaces the SourceBans rows (lifted bans go);
 // a failed read changes nothing. A player's record whose ban left the list
 // ends (back in the ranking when the record took the player out).
