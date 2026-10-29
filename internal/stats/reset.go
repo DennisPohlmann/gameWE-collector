@@ -104,8 +104,9 @@ func zeroCols(cols []string) string {
 }
 
 // resetSteps lists the tables of a reset (mode as from ResetMode),
-// dependent rows first: the tables may be MyISAM (no transactions), so an
-// interrupted reset is completed by running it again.
+// dependent rows first: the steps run without a transaction (the MariaDB
+// tables were MyISAM until schema version 19), so an interrupted reset is
+// completed by running it again.
 func resetSteps(mode string) []resetStep {
 	byGame := func(g string, _, _ int) []any { return []any{g} }
 	byGid := func(_ string, id, _ int) []any { return []any{id} }

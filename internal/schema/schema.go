@@ -51,6 +51,7 @@ func Grants(dialect string) string { return file(dialect, "grants.sql") }
 type Table struct {
 	Name    string // as written in the schema (mixed case)
 	Create  string // the CREATE TABLE statement (MySQL: with its keys)
+	Engine  string // MySQL: the storage engine (InnoDB; MEMORY for hlstats_Livestats); "" on PostgreSQL
 	Columns []Column
 	Indexes []Index
 }
@@ -93,7 +94,7 @@ var (
 	reMyCreate = regexp.MustCompile("^CREATE TABLE `([^`]+)` \\($")
 	reMyCol    = regexp.MustCompile("^  `([^`]+)` (.*?),?$")
 	reMyKey    = regexp.MustCompile("^  ((PRIMARY KEY)|UNIQUE KEY `([^`]+)`|KEY `([^`]+)`) \\((.*?)\\)( USING \\w+)?,?$")
-	reMyEnd    = regexp.MustCompile("^\\) ENGINE=")
+	reMyEnd    = regexp.MustCompile("^\\) ENGINE=(\\w+)")
 	reKeyCol   = regexp.MustCompile("`([^`]+)`(\\(\\d+\\))?")
 )
 
@@ -114,6 +115,7 @@ func parseMySQL(sql string) ([]Table, error) {
 		create = append(create, line)
 		switch m := reMyKey.FindStringSubmatch(line); {
 		case reMyEnd.MatchString(line):
+			t.Engine = reMyEnd.FindStringSubmatch(line)[1]
 			t.Create = strings.TrimSuffix(strings.Join(create, "\n"), ";")
 			t = nil
 		case m != nil:

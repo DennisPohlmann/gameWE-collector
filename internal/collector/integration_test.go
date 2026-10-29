@@ -30,6 +30,7 @@ import (
 
 	"gamewe-collector/internal/config"
 	"gamewe-collector/internal/database"
+	"gamewe-collector/internal/schema"
 	"gamewe-collector/internal/settings"
 	"gamewe-collector/internal/stats"
 )
@@ -63,9 +64,26 @@ func testDB(t *testing.T) *database.DB {
 	if err := database.CheckTables(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	for _, tbl := range append(database.Tables, "hlstats_Options", "hlstats_gamewe_jobs", "hlstats_gamewe_hall_of_fame") {
+	// Every table of the schema (also those the collector does not list in
+	// database.Tables, such as hlstats_Players_Resets): a row left from an
+	// earlier run would be found again once the ids start at 1 again.
+	all, err := schema.Tables(db.Type)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tb := range all {
+		tbl := tb.Name
 		if _, err := db.Exec("DELETE FROM " + tbl); err != nil {
 			t.Fatal(err)
+		}
+		// InnoDB keeps the AUTO_INCREMENT counter over a DELETE (MyISAM
+		// started again at the highest id); the small ids (teams, roles)
+		// would run out over many test runs. Back to 1 (the tables are
+		// empty; the collector user may ALTER).
+		if !db.Postgres() {
+			if _, err := db.Exec("ALTER TABLE " + tbl + " AUTO_INCREMENT = 1"); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	for _, q := range []string{

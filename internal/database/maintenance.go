@@ -198,8 +198,9 @@ func PurgeTables(dialect string) ([]string, error) {
 	return out, nil
 }
 
-// purgeChunk is how many rows one DELETE removes on MariaDB, so that a
-// MyISAM table is locked only shortly at a time.
+// purgeChunk is how many rows one DELETE removes on MariaDB, so that one
+// statement locks few rows (and a MyISAM table, before schema version 19,
+// only shortly) at a time.
 const purgeChunk = 20_000
 
 // Purge deletes the events before before from PurgeTables (dry: only
@@ -250,8 +251,8 @@ func Purge(ctx context.Context, db *DB, before time.Time, dry bool) ([]TableRows
 }
 
 // Optimize gives the space of deleted rows back and renews the statistics
-// of the tables (MariaDB: OPTIMIZE TABLE, which locks a MyISAM table while
-// it runs; PostgreSQL: VACUUM ANALYZE). progress is called before each
+// of the tables (MariaDB: OPTIMIZE TABLE, which rebuilds an InnoDB table
+// and locks a MyISAM one while it runs; PostgreSQL: VACUUM ANALYZE). progress is called before each
 // table.
 func Optimize(ctx context.Context, db *DB, tables []string, progress func(table string)) error {
 	conn, err := db.Conn(ctx)

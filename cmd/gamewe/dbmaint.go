@@ -406,7 +406,7 @@ func dbOptimizeCmd(args []string, c dbIO) error {
 	}
 	fmt.Fprintf(c.out, "%s of %d tables of the database %s\n", verb, len(own), cfg.Database.Name)
 	if !db.Postgres() {
-		fmt.Fprintln(c.out, "OPTIMIZE TABLE locks each MyISAM table while it is rebuilt: the collector waits meanwhile (best at a quiet time).")
+		fmt.Fprintln(c.out, "OPTIMIZE TABLE rebuilds each table (and locks it on MyISAM): the collector waits meanwhile (best at a quiet time).")
 	}
 	if cf.dryRun {
 		for _, t := range own {

@@ -495,7 +495,9 @@ type conv struct {
 
 // bulkTables are the big tables whose indexes are built once after the
 // copy (MyISAM DISABLE KEYS / ENABLE KEYS: about four times faster than
-// row by row). They have no unique indexes, which DISABLE KEYS leaves on.
+// row by row; on InnoDB, the engine since schema version 19, MariaDB only
+// warns and the batched inserts index as they go). They have no unique
+// indexes, which DISABLE KEYS leaves on.
 var bulkTables = func() map[string]bool {
 	m := map[string]bool{"hlstats_server_load": true, "hlstats_Players_History": true}
 	for _, t := range eventTables {

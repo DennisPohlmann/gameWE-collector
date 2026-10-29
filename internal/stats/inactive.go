@@ -113,8 +113,9 @@ func (s *Store) inactiveIDs(ctx context.Context, cutoff time.Time, after int64) 
 	return ids, rows.Err()
 }
 
-// moveInactive moves one batch in a transaction (PostgreSQL; the MyISAM
-// tables of MariaDB have none, there every statement stands alone). The
+// moveInactive moves one batch in a transaction (PostgreSQL; on MariaDB
+// every statement stands alone, as the tables were MyISAM until schema
+// version 19). The
 // order keeps every state in between valid, also after a crash: a player
 // is in hlstats_Players, or in hlstats_PlayersInactive, or for a moment in
 // both with identical rows (hlstats_Players wins, as in Player). The

@@ -72,6 +72,21 @@ func TestTablesBothDialects(t *testing.T) {
 	if j < 0 || frags.Columns[j].Def != "smallint(5) unsigned NOT NULL DEFAULT 0" {
 		t.Errorf("server_id: %+v", frags.Columns)
 	}
+	// MariaDB: every table is InnoDB, except the live table, which is MEMORY.
+	for _, tb := range my {
+		want := "InnoDB"
+		if tb.Name == "hlstats_Livestats" {
+			want = "MEMORY"
+		}
+		if tb.Engine != want {
+			t.Errorf("%s: engine %q", tb.Name, tb.Engine)
+		}
+	}
+	for _, tb := range pg {
+		if tb.Engine != "" {
+			t.Errorf("%s: PostgreSQL engine %q", tb.Name, tb.Engine)
+		}
+	}
 }
 
 // The schema only creates; the seed only adds missing rows, so both can run

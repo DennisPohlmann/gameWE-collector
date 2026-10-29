@@ -97,6 +97,51 @@ type catalog struct {
 	columns map[string]map[string]bool
 	indexes map[string]map[string]bool
 	rows    map[string]int64
+	engines map[string]string            // MySQL: the storage engine per table, lower case ("innodb", "myisam", "memory")
+	types   map[string]map[string]string // the type per column as columnType writes it
+}
+
+// columnType is the type of a column definition, comparable between the
+// schema and information_schema: lower case, without the display width of
+// an integer ("tinyint(3) unsigned" and "tinyint unsigned" are the same;
+// MySQL 8 drops the width, MariaDB keeps it). The MySQL schema gives
+// "smallint(5) unsigned NOT NULL AUTO_INCREMENT", information_schema
+// "smallint(5) unsigned"; PostgreSQL "integer GENERATED ..." and "integer".
+func columnType(def string) string {
+	t := strings.ToLower(strings.TrimSpace(def))
+	for _, stop := range []string{" not null", " null", " default", " auto_increment", " generated", " collate", " character set", " on update"} {
+		if i := strings.Index(t, stop); i >= 0 {
+			t = t[:i]
+		}
+	}
+	for _, in := range []string{"tinyint", "smallint", "mediumint", "bigint", "int"} {
+		if rest, ok := strings.CutPrefix(t, in+"("); ok {
+			if _, after, ok := strings.Cut(rest, ")"); ok {
+				t = in + after
+			}
+			break
+		}
+	}
+	return strings.TrimSpace(t)
+}
+
+// needsType reports whether the column has another type than the schema's
+// definition def, as far as the database told its type.
+func (c catalog) needsType(table, col, def string) bool {
+	have := c.types[strings.ToLower(table)][strings.ToLower(col)]
+	return have != "" && have != columnType(def)
+}
+
+// needsEngine reports whether the table is on another storage engine than
+// the schema wants: only on MySQL, only towards InnoDB (a table the schema
+// keeps on MEMORY, hlstats_Livestats, is never converted), and only when
+// the database told its engine.
+func (c catalog) needsEngine(t schema.Table) bool {
+	if !strings.EqualFold(t.Engine, "InnoDB") {
+		return false
+	}
+	have := c.engines[strings.ToLower(t.Name)]
+	return have != "" && have != "innodb"
 }
 
 func (c catalog) hasColumn(table, col string) bool {
@@ -118,17 +163,26 @@ func (c catalog) rowsOf(table string) int64 {
 // index names) are the code's names (Prefix.Logical); the tables of another
 // prefix are left out.
 func readCatalog(ctx context.Context, q querier, postgres bool, p Prefix) (catalog, error) {
-	c := catalog{tables: map[string]bool{}, columns: map[string]map[string]bool{}, indexes: map[string]map[string]bool{}, rows: map[string]int64{}}
+	c := catalog{tables: map[string]bool{}, columns: map[string]map[string]bool{}, indexes: map[string]map[string]bool{}, rows: map[string]int64{}, engines: map[string]string{}, types: map[string]map[string]string{}}
+	// A column comes as "<name> <type>" (two values per row, as the others).
+	column := func(t, v string) {
+		col, typ, _ := strings.Cut(v, " ")
+		set(c.columns, t)[col] = true
+		if c.types[t] == nil {
+			c.types[t] = map[string]string{}
+		}
+		c.types[t][col] = columnType(typ)
+	}
 	type query struct {
 		sql   string
 		add   func(a, b string)
 		index bool // b is an index name
 	}
 	queries := []query{
-		{`SELECT TABLE_NAME, '' FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE'`,
-			func(t, _ string) { c.tables[t] = true }, false},
-		{`SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()`,
-			func(t, col string) { set(c.columns, t)[col] = true }, false},
+		{`SELECT TABLE_NAME, COALESCE(ENGINE, '') FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE'`,
+			func(t, e string) { c.tables[t] = true; c.engines[t] = e }, false},
+		{`SELECT TABLE_NAME, CONCAT(COLUMN_NAME, ' ', COLUMN_TYPE) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()`,
+			column, false},
 		{`SELECT DISTINCT TABLE_NAME, INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE()`,
 			func(t, ix string) { set(c.indexes, t)[ix] = true }, true},
 		{`SELECT TABLE_NAME, COALESCE(TABLE_ROWS, -1) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE'`,
@@ -138,8 +192,8 @@ func readCatalog(ctx context.Context, q querier, postgres bool, p Prefix) (catal
 		queries = []query{
 			{`SELECT table_name, '' FROM information_schema.tables WHERE table_schema = current_schema() AND table_type = 'BASE TABLE'`,
 				func(t, _ string) { c.tables[t] = true }, false},
-			{`SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = current_schema()`,
-				func(t, col string) { set(c.columns, t)[col] = true }, false},
+			{`SELECT table_name, column_name || ' ' || data_type FROM information_schema.columns WHERE table_schema = current_schema()`,
+				column, false},
 			{`SELECT tablename, indexname FROM pg_indexes WHERE schemaname = current_schema()`,
 				func(t, ix string) { set(c.indexes, t)[ix] = true }, true},
 			{`SELECT c.relname, CAST(c.reltuples AS bigint) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -309,8 +363,8 @@ func plan(ctx context.Context, q querier, dialect string, pfx Prefix) (*Plan, er
 				kind: stepRecord, rec: &m, note: "existing " + p.Kind + " database"})
 			continue
 		}
-		if m.Sync || len(m.Drop) > 0 {
-			steps := syncSteps(tables, cat, pg, m.Sync && !synced, m.Drop)
+		if m.Sync || len(m.Drop) > 0 || len(m.Widen) > 0 {
+			steps := syncSteps(tables, cat, pg, m.Sync && !synced, m.Drop, m.Widen)
 			synced = synced || m.Sync
 			for i := range steps {
 				steps[i].Version, steps[i].Name = m.Version, m.Name
@@ -344,7 +398,7 @@ func plan(ctx context.Context, q querier, dialect string, pfx Prefix) (*Plan, er
 	}
 	if !synced && len(p.Missing) > 0 {
 		// All versions are applied, but something was removed by hand.
-		p.Steps = append(p.Steps, syncSteps(tables, cat, pg, true, nil)...)
+		p.Steps = append(p.Steps, syncSteps(tables, cat, pg, true, nil, allWiden())...)
 		for i := range p.Steps {
 			if p.Steps[i].Name == "" {
 				p.Steps[i].Name = "repair"
@@ -386,6 +440,8 @@ func missing(tables []schema.Table, cat catalog, pg bool) []Requirement {
 		for _, c := range t.Columns {
 			if !cat.hasColumn(t.Name, c.Name) {
 				out = append(out, Requirement{Table: t.Name, Column: c.Name})
+			} else if widened(t.Name, c.Name) && cat.needsType(t.Name, c.Name, c.Def) {
+				out = append(out, Requirement{Table: t.Name, Column: c.Name, Type: columnType(c.Def)})
 			}
 		}
 		for _, ix := range t.Indexes {
@@ -396,14 +452,41 @@ func missing(tables []schema.Table, cat catalog, pg bool) []Requirement {
 				out = append(out, Requirement{Table: t.Name, Index: ix.Name})
 			}
 		}
+		if !pg && cat.needsEngine(t) {
+			out = append(out, Requirement{Table: t.Name, Engine: t.Engine})
+		}
+	}
+	return out
+}
+
+// widened reports whether a migration widens the column (Migration.Widen):
+// only those columns are compared with the schema's type.
+func widened(table, col string) bool {
+	for _, m := range Migrations {
+		for _, w := range m.Widen {
+			if strings.EqualFold(w.Table, table) && strings.EqualFold(w.Column, col) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// allWiden are the Widen columns of every migration, for the repair.
+func allWiden() []WidenColumn {
+	var out []WidenColumn
+	for _, m := range Migrations {
+		out = append(out, m.Widen...)
 	}
 	return out
 }
 
 // syncSteps returns one step per table: create it, or add its missing
 // columns and indexes (MySQL: in one ALTER TABLE, so a table is rebuilt only
-// once) and drop the replaced indexes.
-func syncSteps(tables []schema.Table, cat catalog, pg, sync bool, drops []DropIndex) []Step {
+// once), widen the columns of widen that still have their old type, drop
+// the replaced indexes and (MySQL) move the table to the schema's storage
+// engine (InnoDB) in the same ALTER TABLE.
+func syncSteps(tables []schema.Table, cat catalog, pg, sync bool, drops []DropIndex, widen []WidenColumn) []Step {
 	var out []Step
 	for _, t := range tables {
 		lt := strings.ToLower(t.Name)
@@ -411,6 +494,17 @@ func syncSteps(tables []schema.Table, cat catalog, pg, sync bool, drops []DropIn
 		for _, d := range drops {
 			if strings.EqualFold(d.Table, t.Name) && cat.hasIndex(t.Name, indexName(pg, t.Name, d.Index)) {
 				dropHere = append(dropHere, d)
+			}
+		}
+		var widenHere []schema.Column
+		for _, w := range widen {
+			if !strings.EqualFold(w.Table, t.Name) {
+				continue
+			}
+			for _, c := range t.Columns {
+				if strings.EqualFold(c.Name, w.Column) && cat.needsType(t.Name, c.Name, c.Def) {
+					widenHere = append(widenHere, c)
+				}
 			}
 		}
 		if !cat.tables[lt] {
@@ -459,6 +553,16 @@ func syncSteps(tables []schema.Table, cat catalog, pg, sync bool, drops []DropIn
 				}
 			}
 		}
+		var widenedCols []string
+		for _, c := range widenHere {
+			widenedCols = append(widenedCols, c.Name+" (from "+cat.types[lt][strings.ToLower(c.Name)]+" to "+columnType(c.Def)+")")
+			if pg {
+				// The type alone: the identity and NOT NULL stay.
+				pgStmts = append(pgStmts, fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s TYPE %s", t.Name, c.Name, columnType(c.Def)))
+			} else {
+				clauses = append(clauses, "MODIFY COLUMN `"+c.Name+"` "+c.Def)
+			}
+		}
 		var dropped []string
 		for _, d := range dropHere {
 			// The replacement exists, or is added now (sync) or by the
@@ -478,18 +582,29 @@ func syncSteps(tables []schema.Table, cat catalog, pg, sync bool, drops []DropIn
 				clauses = append(clauses, "DROP KEY `"+d.Index+"`")
 			}
 		}
-		if len(addCols)+len(addIdx)+len(dropped) == 0 {
+		engine := ""
+		if sync && !pg && cat.needsEngine(t) {
+			engine = t.Engine
+			clauses = append(clauses, "ENGINE="+engine)
+		}
+		if len(addCols)+len(addIdx)+len(widenedCols)+len(dropped) == 0 && engine == "" {
 			continue
 		}
 		var what []string
 		if len(addCols) > 0 {
 			what = append(what, "add columns "+strings.Join(addCols, ", "))
 		}
+		if len(widenedCols) > 0 {
+			what = append(what, "widen columns "+strings.Join(widenedCols, ", "))
+		}
 		if len(addIdx) > 0 {
 			what = append(what, "add indexes "+strings.Join(addIdx, ", "))
 		}
 		if len(dropped) > 0 {
 			what = append(what, "drop indexes "+strings.Join(dropped, ", "))
+		}
+		if engine != "" {
+			what = append(what, "convert from "+cat.engines[lt]+" to "+engine)
 		}
 		s := Step{What: "alter table " + t.Name + ": " + strings.Join(what, "; "), Table: t.Name, Rows: cat.rowsOf(t.Name), kind: stepExec}
 		s.Slow = s.Rows >= SlowRows
@@ -756,7 +871,7 @@ func releaseRunLock(conn *sql.Conn, postgres bool, p Prefix) {
 
 // slowNote is the warning before a step on a big table.
 func slowNote(rows int64) string {
-	return fmt.Sprintf("NOTE: the table has about %d rows; it is locked while it is rebuilt or indexed, this can take minutes (about 3 s per million rows on MariaDB). Make sure you have a current backup.", rows)
+	return fmt.Sprintf("NOTE: the table has about %d rows; it is locked while it is rebuilt or indexed, this can take minutes (about 3 s per million rows on MariaDB for an index, 10 to 30 s per million rows for a move to InnoDB). Make sure you have a current backup.", rows)
 }
 
 // SlowNote is the warning for a slow step, for the plan output.

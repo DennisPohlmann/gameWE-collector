@@ -27,6 +27,10 @@ type Migration struct {
 	// Drop are indexes that newer ones replace; each is dropped only when
 	// its replacement exists (or is added in the same step).
 	Drop []DropIndex
+	// Widen are columns whose type grew in internal/schema (e.g. an id from
+	// tinyint to smallint); each gets the schema's definition when its type
+	// still differs. Only for types every value of the old type fits in.
+	Widen []WidenColumn
 	// Seed adds the missing reference data (internal/schema seed.sql).
 	Seed bool
 	// RankingAwards are award codes that rankings (games whose realgame is
@@ -54,6 +58,11 @@ type RetiredOption struct {
 // DropIndex is an index that ReplacedBy makes superfluous.
 type DropIndex struct {
 	Table, Index, ReplacedBy string
+}
+
+// WidenColumn is a column that takes the schema's (wider) type.
+type WidenColumn struct {
+	Table, Column string
 }
 
 // Migrations are all versions, oldest first. Version 1 is the baseline: on
@@ -176,6 +185,26 @@ var Migrations = []Migration{
 			"and the ranking positions no longer sort or read every player of the ranking",
 		Sync: true,
 	},
+	{
+		Version: 19, Name: "innodb",
+		Desc: "MariaDB: every table moves from MyISAM to InnoDB (row locks instead of table locks: a long read of the web no longer " +
+			"holds back the collector's writes; hlstats_Livestats stays MEMORY); indexes game_time (game_id, timestamp_id) on " +
+			"hlstats_Events_Chat, server_time (server_id, timestamp) on hlstats_server_load (replaces server_id) and " +
+			"map_time (map, timestamp_id) on hlstats_Events_Frags (replaces map) for the web's chat, load graphs and map pages, " +
+			"player_time (playerId, timestamp_id; replaces playerId) and map_action (map, actionId, playerId) on " +
+			"hlstats_Events_PlayerActions and player_team (playerId, team; replaces playerId) on hlstats_Events_ChangeTeam for the " +
+			"player events, map and teams pages; " +
+			"the ids of hlstats_Teams and hlstats_Roles grow from tinyint to smallint (InnoDB does not give the ids of deleted " +
+			"rows back: 255 would run out)",
+		Sync: true,
+		Drop: []DropIndex{
+			{Table: "hlstats_server_load", Index: "server_id", ReplacedBy: "server_time"},
+			{Table: "hlstats_Events_Frags", Index: "map", ReplacedBy: "map_time"},
+			{Table: "hlstats_Events_PlayerActions", Index: "playerId", ReplacedBy: "player_time"},
+			{Table: "hlstats_Events_ChangeTeam", Index: "playerId", ReplacedBy: "player_team"},
+		},
+		Widen: []WidenColumn{{Table: "hlstats_Teams", Column: "teamId"}, {Table: "hlstats_Roles", Column: "roleId"}},
+	},
 }
 
 // Latest is the newest schema version this collector knows.
@@ -193,6 +222,9 @@ func (m Migration) Checksum() string {
 	}
 	if m.BotsPerRanking {
 		b = fmt.Appendf(b, "|bots-per-ranking")
+	}
+	if len(m.Widen) > 0 {
+		b = fmt.Appendf(b, "|%v", m.Widen)
 	}
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])

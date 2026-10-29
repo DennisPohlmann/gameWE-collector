@@ -467,3 +467,146 @@ func TestMigrateOwnerRights(t *testing.T) {
 	t.Logf("warnings: %v", res.Warnings)
 	upToDate(t, db)
 }
+
+// A gameWE database of collector 0.x on MariaDB: every table MyISAM, the
+// indexes of version 18. Migration 19 moves the tables to InnoDB (the live
+// table stays MEMORY), adds the new indexes and drops the replaced ones.
+func TestMigrateMyISAM(t *testing.T) {
+	migrateTest(t)
+	ctx := context.Background()
+	db := newTestDB(t, "mig_myisam", false)
+	if db.Postgres() {
+		t.Skip("storage engines are a MariaDB matter")
+	}
+	admin := adminIn(t, "mig_myisam")
+	old := strings.ReplaceAll(schema.Schema(db.Type), "ENGINE=InnoDB", "ENGINE=MyISAM")
+	old = strings.Replace(old, "KEY `map_time` (`map`,`timestamp_id`)", "KEY `map` (`map`)", 1)
+	old = strings.Replace(old, "KEY `server_time` (`server_id`,`timestamp`)", "KEY `server_id` (`server_id`)", 1)
+	old = strings.Replace(old, "KEY `player_time` (`playerId`,`timestamp_id`),\n  KEY `map_action` (`map`,`actionId`,`playerId`)", "KEY `playerId` (`playerId`)", 1)
+	old = strings.Replace(old, "KEY `player_team` (`playerId`,`team`)", "KEY `playerId` (`playerId`)", 1)
+	old = strings.Replace(old, "`teamId` smallint(5) unsigned NOT NULL AUTO_INCREMENT", "`teamId` tinyint(3) unsigned NOT NULL AUTO_INCREMENT", 1)
+	old = strings.Replace(old, "`roleId` smallint(5) unsigned NOT NULL AUTO_INCREMENT", "`roleId` tinyint(3) unsigned NOT NULL AUTO_INCREMENT", 1)
+	old = strings.Replace(old, "  KEY `timestamp_id` (`timestamp_id`),\n  KEY `game_time` (`game_id`,`timestamp_id`)\n) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;\nCREATE TABLE `hlstats_Events_Connects`",
+		"  KEY `timestamp_id` (`timestamp_id`)\n) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;\nCREATE TABLE `hlstats_Events_Connects`", 1)
+	if strings.Count(old, "ENGINE=MyISAM") < 50 || strings.Contains(old, "map_time") || strings.Contains(old, "server_time") || strings.Contains(old, "map_action") || strings.Contains(old, "player_team") || strings.Count(old, "tinyint(3) unsigned NOT NULL AUTO_INCREMENT") != 3 {
+		t.Fatal("the old schema was not made")
+	}
+	for _, s := range []string{old, schema.Seed(db.Type), schema.Grants(db.Type)} {
+		if err := RunTestScript(ctx, admin, s); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Versions 1 to 18 are applied; the players and frags have rows.
+	if _, err := admin.Exec(admin.Q(versionTableSQL(db.Type))); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range Migrations[:18] {
+		if _, err := admin.Exec(admin.Q(`INSERT INTO `+MigrationsTable+` (version, name, applied_at, checksum, note) VALUES (?, ?, 1, ?, 'test')`), m.Version, m.Name, m.Checksum()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, q := range []string{
+		`INSERT INTO hlstats_Players (playerId, game, skill) VALUES (4711, 'css', 1234)`,
+		`INSERT INTO hlstats_Events_Frags (timestamp_id, game_id, killerId, victimId, weapon, headshot, map) VALUES (1000, 1, 4711, 4712, 1, 1, 7)`,
+		`INSERT INTO hlstats_server_load (server_id, timestamp, act_players) VALUES (1, 1000, 3)`,
+	} {
+		if _, err := admin.Exec(admin.Q(q)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	engines := func() map[string]string {
+		rows, err := db.Query(`SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		out := map[string]string{}
+		for rows.Next() {
+			var n, e string
+			rows.Scan(&n, &e)
+			out[strings.ToLower(n)] = strings.ToLower(e)
+		}
+		return out
+	}
+	if e := engines(); e[db.Prefix.Table("hlstats_players")] != "myisam" {
+		t.Fatalf("before: %v", e)
+	}
+	p, err := PlanMigrations(ctx, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Current != 18 || len(p.Pending) != 1 || p.Pending[0].Version != 19 {
+		t.Fatalf("plan: current %d, pending %v", p.Current, p.Pending)
+	}
+	var converts, livestats, widen int
+	for _, r := range p.Missing {
+		if r.Engine != "" {
+			converts++
+		}
+		if r.Table == "hlstats_Livestats" {
+			livestats++
+		}
+		if r.Type != "" {
+			widen++
+			if r.Type != "smallint unsigned" || (r.Column != "teamId" && r.Column != "roleId") {
+				t.Errorf("widen: %v", r)
+			}
+		}
+	}
+	if converts < 50 || livestats != 0 || widen != 2 {
+		t.Errorf("missing: %d conversions, %d on the live table, %d to widen: %v", converts, livestats, widen, p.Missing)
+	}
+	var frags, teams string
+	for _, s := range p.Steps {
+		switch s.Table {
+		case db.Prefix.Table("hlstats_Events_Frags"):
+			frags = s.What
+		case db.Prefix.Table("hlstats_Teams"):
+			teams = s.What
+		}
+	}
+	if !strings.Contains(frags, "add indexes map_time") || !strings.Contains(frags, "drop indexes map (replaced by map_time)") || !strings.Contains(frags, "convert from myisam to InnoDB") {
+		t.Errorf("frags step: %q", frags)
+	}
+	if !strings.Contains(teams, "widen columns teamId (from tinyint unsigned to smallint unsigned)") || !strings.Contains(teams, "convert from myisam to InnoDB") {
+		t.Errorf("teams step: %q", teams)
+	}
+	mustMigrate(t, db)
+	upToDate(t, db)
+	for n, e := range engines() {
+		want := "innodb"
+		switch n {
+		case db.Prefix.Table("hlstats_livestats"):
+			want = "memory"
+		case MigrationsTable:
+			continue
+		}
+		if e != want {
+			t.Errorf("%s: %s", n, e)
+		}
+	}
+	cat, _ := readCatalog(ctx, db, false, db.Prefix)
+	for _, ix := range [][2]string{{"hlstats_Events_Frags", "map_time"}, {"hlstats_server_load", "server_time"}, {"hlstats_Events_Chat", "game_time"},
+		{"hlstats_Events_PlayerActions", "player_time"}, {"hlstats_Events_PlayerActions", "map_action"}, {"hlstats_Events_ChangeTeam", "player_team"}} {
+		if !cat.hasIndex(ix[0], ix[1]) {
+			t.Errorf("%s lacks %s", ix[0], ix[1])
+		}
+	}
+	if cat.hasIndex("hlstats_Events_Frags", "map") || cat.hasIndex("hlstats_server_load", "server_id") || cat.hasIndex("hlstats_Events_PlayerActions", "playerId") || cat.hasIndex("hlstats_Events_ChangeTeam", "playerId") {
+		t.Error("a replaced index is still there")
+	}
+	for _, c := range [][2]string{{"hlstats_teams", "teamid"}, {"hlstats_roles", "roleid"}} {
+		if got := cat.types[c[0]][c[1]]; got != "smallint unsigned" {
+			t.Errorf("%s.%s: %q", c[0], c[1], got)
+		}
+	}
+	// The widened id takes values past the old limit.
+	if _, err := admin.Exec(admin.Q(`INSERT INTO hlstats_Teams (teamId, game, code, name) VALUES (300, 'css', 'wide', 'Wide')`)); err != nil {
+		t.Error(err)
+	}
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM hlstats_Events_Frags WHERE killerId = 4711 AND map = 7`).Scan(&n); err != nil || n != 1 {
+		t.Errorf("frag row: %d, %v", n, err)
+	}
+	webRights(t, "mig_myisam")
+}

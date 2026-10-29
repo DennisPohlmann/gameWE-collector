@@ -154,9 +154,11 @@ What it does:
   character set (an old latin1 database stays latin1). The only indexes it
   removes are ones a newer index replaces, after the new one exists.
 - On MariaDB all changes of one table are one `ALTER TABLE` (the table is
-  rebuilt once). MyISAM locks the table meanwhile: stop the collector first.
-  Steps on tables with 500,000 rows or more are marked in the plan; measured
-  on MariaDB: about 3 s per million rows. On PostgreSQL each version runs in
+  rebuilt once), including the move of a table to InnoDB (version 19). The
+  table is locked meanwhile: stop the collector first. Steps on tables with
+  500,000 rows or more are marked in the plan; measured on MariaDB: about
+  3 s per million rows for an index, 10 to 30 s per million rows for the
+  move to InnoDB (the table is copied). On PostgreSQL each version runs in
   one transaction.
 - Every step is idempotent: a migration that stopped half way (power cut,
   Ctrl-C) is simply run again. Two runs at the same time are serialized by a
@@ -196,6 +198,7 @@ What it does:
 | 16 | `hall-of-fame-edit` | column `hlstats_gamewe_hall_of_fame.removed` (0 or 1): entries an admin took out of the hall of fame; `gamewe_web_admin` may update this column only (UPDATE (`removed`)). Places 4 and 5 that the collector now stores move up ([USAGE.md](USAGE.md#scheduled-resets-and-the-hall-of-fame)) |
 | 17 | `event-indexes` | indexes for large databases (e.g. after an import of old players and events): `game_time` (game_id, timestamp_id) on `hlstats_Events_Connects`, `_Entries`, `_Disconnects`, `_ChangeTeam`, `_ChangeRole`, `_ChangeName`, `_PlayerActions`, `_PlayerPlayerActions`, `_TeamBonuses`, `_Frags`, `_Suicides` and `_Teamkills` (the web's latest events of a ranking and its events page read the newest rows of one ranking), `game_activity` (game, hideranking, last_event, playerId) on `hlstats_PlayersInactive` (the web's list of inactive players); no data changes. On MariaDB with MyISAM each table is rebuilt and locked while its index is added: a few seconds per million rows, during which the collector does not record yet |
 | 18 | `player-indexes` | indexes for large rankings: `game_skill` (game, hideranking, skill, playerId) and `game_activity` (game, hideranking, last_event, playerId) on `hlstats_Players` (the web's player list sorted by points or by last seen, the player map and the ranking positions read only the rows they show instead of sorting every player of the ranking); no data changes. On MariaDB with MyISAM `hlstats_Players` is rebuilt and locked while the indexes are added: a few seconds per 100,000 players, during which the collector does not record yet |
+| 19 | `innodb` | **MariaDB: every table moves from MyISAM to InnoDB** (`ALTER TABLE ... ENGINE=InnoDB`, one per table; `hlstats_Livestats` stays MEMORY; PostgreSQL: nothing to convert). InnoDB locks rows, not tables: a long read of the web (a ranking, the start page) no longer holds back the collector's writes of points and kills, and the writes no longer hold back every reader behind them (see "Large databases" below for the settings). Also the indexes `game_time` (game_id, timestamp_id) on `hlstats_Events_Chat` (the chat page of a ranking), `server_time` (server_id, timestamp) on `hlstats_server_load` (replaces `server_id`; the load graphs) `map_time` (map, timestamp_id) on `hlstats_Events_Frags` (replaces `map`; the map pages), `player_time` (playerId, timestamp_id; replaces `playerId`) and `map_action` (map, actionId, playerId) on `hlstats_Events_PlayerActions` (a player's events page, the GunGame wins of the map pages) and `player_team` (playerId, team; replaces `playerId`) on `hlstats_Events_ChangeTeam` (the teams page); measured on a copy of a live database: player events 562 → 54 ms, map page 249 → 151 ms, teams 124 → 62 ms. The ids of `hlstats_Teams` (`teamId`) and `hlstats_Roles` (`roleId`) grow from tinyint (at most 255) to smallint (65,535): InnoDB does not give the ids of deleted rows back, so a ranking's teams and roles added and removed over the years would run out of them (`MODIFY COLUMN` in the table's `ALTER TABLE`; PostgreSQL: `integer`). No data changes. The move copies every table: 10 to 30 s per million rows, the whole database needs about its size again as free disk space (`SELECT ROUND(SUM(data_length + index_length) / 1048576) AS mb FROM information_schema.TABLES WHERE table_schema = 'gamewe';`), and the collector does not record meanwhile. A table that is InnoDB already (converted by hand) is left alone; a table an admin keeps on MyISAM on purpose is converted anyway at the next migration |
 
 The SQL files of older packages (`/opt/gamewe/collector/doc/schema/hlstatsx.sql`,
 `init/01_schema.sql`, `02_seed.sql`, `03_grants.sql` and the PostgreSQL
@@ -377,10 +380,11 @@ with `client_encoding UTF8` and `timezone UTC`.
 
 ## No transactions
 
-The MariaDB tables are MyISAM, so there are no transactions and no row locks. The
-collector therefore changes every counter with a relative update
+The collector changes every counter with a relative update
 (`kills = kills + 1`), which is atomic per statement, so several servers can
-write at the same time without losing counts. The integration test checks this
+write at the same time without losing counts; it uses no transactions across
+statements (the tables were MyISAM until schema version 19, which has none,
+and InnoDB tables are written the same way, in autocommit mode). The integration test checks this
 with 400 concurrent kills from two servers. One event can consist of several
 statements. If the database fails in the middle, an event can be stored
 partially. The error is logged. On PostgreSQL the collector works the same
@@ -388,25 +392,29 @@ way (every statement on its own), so both databases hold the same data.
 
 ## Large databases (MariaDB settings)
 
-With hundreds of thousands of players and millions of event rows (e.g. an
-imported HLstatsX database) two MariaDB settings matter, because the tables
-are MyISAM:
+Since schema version 19 the tables are InnoDB (`gamewe db migrate` moves
+them; `hlstats_Livestats` stays MEMORY). With hundreds of thousands of
+players and millions of event rows (e.g. an imported HLstatsX database) one
+MariaDB setting matters most:
 
-- `key_buffer_size` is MyISAM's index cache (`innodb_buffer_pool_size` does
-  not help MyISAM). Give it at least the size of the indexes, as far as the
-  memory allows: `SELECT ROUND(SUM(index_length)/1048576) AS index_mb FROM
+- `innodb_buffer_pool_size` is InnoDB's cache for data and indexes. Give it
+  the size of the database as far as the memory allows (on a server that
+  only runs the database 50 to 70 % of the RAM): `SELECT
+  ROUND(SUM(data_length + index_length)/1048576) AS mb FROM
   information_schema.TABLES WHERE table_schema = 'gamewe';`. If
-  `Key_reads / Key_read_requests` (`SHOW GLOBAL STATUS LIKE 'Key_read%';`)
-  stays above 1 %, it is too small.
-- `concurrent_insert = ALWAYS` lets the collector's INSERTs run while the
-  web reads a table, also when the table has gaps from deleted rows
-  (`gamewe db purge`); with the default `AUTO` they wait for the reads.
+  `Innodb_buffer_pool_reads / Innodb_buffer_pool_read_requests` (`SHOW
+  GLOBAL STATUS LIKE 'Innodb_buffer_pool_read%';`) stays above 1 %, it is
+  too small.
+- `innodb_log_file_size` (MariaDB 10.5+: one file) of 256M to 1G keeps the
+  collector's many small writes from waiting for checkpoints.
+- `key_buffer_size` (MyISAM's index cache) is no longer needed for gameWE:
+  32M is enough for MariaDB's own tables.
 
-The collector's UPDATEs of `hlstats_Players` (points, kills after every
-frag) still wait for a read of that table, and every read behind them waits
-too. So the web should not read all players of a ranking per page view: the
-migrations `event-indexes` (17) and `player-indexes` (18) add the indexes
-its pages use, and it keeps the counts over all players for a while.
+InnoDB locks rows, not tables, so the web's reads and the collector's writes
+no longer wait for each other. The web still keeps its counts over all
+players for a while and reads through the indexes of the migrations
+`event-indexes` (17), `player-indexes` (18) and `innodb` (19), so the
+database does less work per page view.
 
 Both go into the `[mysqld]` section of the server configuration (e.g.
 `/etc/mysql/mariadb.conf.d/50-server.cnf` or `/etc/my.cnf.d/server.cnf`),
@@ -414,9 +422,14 @@ then restart MariaDB:
 
 ```ini
 [mysqld]
-key_buffer_size   = 512M
-concurrent_insert = ALWAYS
+innodb_buffer_pool_size = 2G
+innodb_log_file_size    = 512M
+key_buffer_size         = 32M
 ```
+
+A database still on MyISAM (collector before 1.0, migration 19 not run yet)
+needs `key_buffer_size` at least the size of its indexes and
+`concurrent_insert = ALWAYS` instead.
 
 ## TLS on the server
 

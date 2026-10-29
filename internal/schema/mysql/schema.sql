@@ -33,7 +33,7 @@ CREATE TABLE `hlstats_Actions` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `game` (`game`,`code`),
   KEY `code` (`code`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Awards` (
   `awardId` mediumint(8) unsigned NOT NULL AUTO_INCREMENT,
   `awardType` enum('W','O') NOT NULL DEFAULT 'W',
@@ -46,7 +46,7 @@ CREATE TABLE `hlstats_Awards` (
   PRIMARY KEY (`awardId`),
   UNIQUE KEY `game` (`game`,`code`),
   KEY `name` (`name`(250))
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Awards_History` (
   `id` mediumint(8) unsigned NOT NULL AUTO_INCREMENT,
   `award_id` mediumint(8) unsigned DEFAULT NULL,
@@ -57,7 +57,7 @@ CREATE TABLE `hlstats_Awards_History` (
   KEY `winner_id` (`winner_id`),
   KEY `date` (`date`,`award_id`),
   KEY `award_id` (`award_id`,`date`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_ClanTags` (
   `id` mediumint(8) unsigned NOT NULL AUTO_INCREMENT,
   `pattern` varchar(250) NOT NULL DEFAULT '',
@@ -67,7 +67,7 @@ CREATE TABLE `hlstats_ClanTags` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `pattern` (`pattern`),
   KEY `pattern_length` (`pattern_length`,`sort_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Clans` (
   `clanId` mediumint(8) unsigned NOT NULL AUTO_INCREMENT,
   `tag` varchar(128) NOT NULL DEFAULT '',
@@ -78,7 +78,7 @@ CREATE TABLE `hlstats_Clans` (
   PRIMARY KEY (`clanId`),
   KEY `game` (`game`),
   KEY `tag` (`tag`,`game`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Definition_Ranks_Ribbons` (
   `id` mediumint(8) unsigned NOT NULL AUTO_INCREMENT,
   `definition_type` varchar(10) NOT NULL DEFAULT 'ranks',
@@ -91,7 +91,7 @@ CREATE TABLE `hlstats_Definition_Ranks_Ribbons` (
   `restriction_type` varchar(16) NOT NULL DEFAULT 'kills',
   PRIMARY KEY (`id`),
   UNIQUE KEY `game_and_definition` (`game_code`,`definition_type`,`name`,`code`) USING HASH
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Definition_Ribbons_Classes` (
   `id` mediumint(8) unsigned NOT NULL AUTO_INCREMENT,
   `game_code` varchar(10) NOT NULL DEFAULT 'valve',
@@ -101,7 +101,7 @@ CREATE TABLE `hlstats_Definition_Ribbons_Classes` (
   `class` mediumint(8) unsigned DEFAULT 0,
   PRIMARY KEY (`id`),
   UNIQUE KEY `game` (`game_code`,`class`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Events_Admin` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
   `game_id` tinyint(3) unsigned NOT NULL DEFAULT 0,
@@ -109,7 +109,7 @@ CREATE TABLE `hlstats_Events_Admin` (
   `type` varchar(255) NOT NULL DEFAULT 'Unknown',
   `message` mediumtext NOT NULL,
   `playerName` varchar(255) NOT NULL DEFAULT ''
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Events_ChangeName` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
   `game_id` tinyint(3) unsigned NOT NULL DEFAULT 0,
@@ -120,7 +120,7 @@ CREATE TABLE `hlstats_Events_ChangeName` (
   KEY `playerId` (`playerId`),
   KEY `timestamp_id` (`timestamp_id`),
   KEY `game_time` (`game_id`,`timestamp_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Events_ChangeRole` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
   `game_id` tinyint(3) unsigned NOT NULL DEFAULT 0,
@@ -130,7 +130,7 @@ CREATE TABLE `hlstats_Events_ChangeRole` (
   KEY `playerId` (`playerId`),
   KEY `timestamp_id` (`timestamp_id`),
   KEY `game_time` (`game_id`,`timestamp_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Events_ChangeTeam` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
   `game_id` tinyint(3) unsigned NOT NULL DEFAULT 0,
@@ -138,11 +138,11 @@ CREATE TABLE `hlstats_Events_ChangeTeam` (
   `map` smallint(5) unsigned NOT NULL DEFAULT 0,
   `playerId` mediumint(8) unsigned NOT NULL DEFAULT 0,
   `team` tinyint(3) unsigned NOT NULL DEFAULT 0,
-  KEY `playerId` (`playerId`),
+  KEY `player_team` (`playerId`,`team`),
   KEY `timestamp_id` (`timestamp_id`),
   KEY `server_id` (`server_id`,`timestamp_id`),
   KEY `game_time` (`game_id`,`timestamp_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Events_Chat` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
   `game_id` tinyint(3) unsigned NOT NULL DEFAULT 0,
@@ -152,8 +152,9 @@ CREATE TABLE `hlstats_Events_Chat` (
   `message` varchar(4096) NOT NULL DEFAULT '',
   KEY `playerId` (`playerId`),
   KEY `server_id` (`server_id`),
-  KEY `timestamp_id` (`timestamp_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
+  KEY `timestamp_id` (`timestamp_id`),
+  KEY `game_time` (`game_id`,`timestamp_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Events_Connects` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
   `game_id` tinyint(3) unsigned NOT NULL DEFAULT 0,
@@ -166,7 +167,7 @@ CREATE TABLE `hlstats_Events_Connects` (
   KEY `ipAddress` (`ipAddress`),
   KEY `timestamp_id` (`timestamp_id`),
   KEY `game_time` (`game_id`,`timestamp_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Events_Disconnects` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
   `game_id` tinyint(3) unsigned NOT NULL DEFAULT 0,
@@ -177,7 +178,7 @@ CREATE TABLE `hlstats_Events_Disconnects` (
   KEY `timestamp_id` (`timestamp_id`),
   KEY `server_id` (`server_id`,`timestamp_id`),
   KEY `game_time` (`game_id`,`timestamp_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Events_Entries` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
   `game_id` tinyint(3) unsigned NOT NULL DEFAULT 0,
@@ -188,7 +189,7 @@ CREATE TABLE `hlstats_Events_Entries` (
   KEY `timestamp_id` (`timestamp_id`),
   KEY `server_id` (`server_id`,`timestamp_id`),
   KEY `game_time` (`game_id`,`timestamp_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Events_Frags` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
   `game_id` tinyint(3) unsigned NOT NULL DEFAULT 0,
@@ -207,10 +208,10 @@ CREATE TABLE `hlstats_Events_Frags` (
   KEY `timestamp_id` (`timestamp_id`),
   KEY `killer_time` (`killerId`,`timestamp_id`),
   KEY `victim_time` (`victimId`,`timestamp_id`),
-  KEY `map` (`map`),
+  KEY `map_time` (`map`,`timestamp_id`),
   KEY `server_id` (`server_id`,`timestamp_id`),
   KEY `game_time` (`game_id`,`timestamp_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Events_Latency` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
   `game_id` tinyint(3) unsigned NOT NULL DEFAULT 0,
@@ -221,7 +222,7 @@ CREATE TABLE `hlstats_Events_Latency` (
   KEY `playerId` (`playerId`),
   KEY `timestamp_id` (`timestamp_id`),
   KEY `time_player` (`timestamp_id`,`playerId`,`ping`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Events_Locations` (
   `day` smallint(5) unsigned NOT NULL DEFAULT 0,
   `map` smallint(5) unsigned NOT NULL DEFAULT 0,
@@ -232,7 +233,7 @@ CREATE TABLE `hlstats_Events_Locations` (
   KEY `map` (`map`),
   KEY `playerId` (`playerId`),
   KEY `day` (`day`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Events_PlayerActions` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
   `game_id` tinyint(3) unsigned NOT NULL DEFAULT 0,
@@ -242,11 +243,12 @@ CREATE TABLE `hlstats_Events_PlayerActions` (
   `actionId` smallint(5) unsigned NOT NULL DEFAULT 0,
   `bonus` smallint(6) NOT NULL DEFAULT 0,
   KEY `timestamp_id` (`timestamp_id`),
-  KEY `playerId` (`playerId`),
+  KEY `player_time` (`playerId`,`timestamp_id`),
+  KEY `map_action` (`map`,`actionId`,`playerId`),
   KEY `server_id` (`server_id`,`timestamp_id`),
   KEY `time_action` (`timestamp_id`,`actionId`,`playerId`),
   KEY `game_time` (`game_id`,`timestamp_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Events_PlayerPlayerActions` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
   `game_id` tinyint(3) unsigned NOT NULL DEFAULT 0,
@@ -261,7 +263,7 @@ CREATE TABLE `hlstats_Events_PlayerPlayerActions` (
   KEY `victimId` (`victimId`),
   KEY `server_id` (`server_id`,`timestamp_id`),
   KEY `game_time` (`game_id`,`timestamp_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Events_Rcon` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
   `game_id` tinyint(3) unsigned NOT NULL DEFAULT 0,
@@ -271,7 +273,7 @@ CREATE TABLE `hlstats_Events_Rcon` (
   `password` varchar(255) NOT NULL DEFAULT '',
   `command` varchar(255) NOT NULL DEFAULT '',
   KEY `timestamp_id` (`timestamp_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Events_Suicides` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
   `game_id` tinyint(3) unsigned NOT NULL DEFAULT 0,
@@ -283,7 +285,7 @@ CREATE TABLE `hlstats_Events_Suicides` (
   KEY `timestamp_id` (`timestamp_id`),
   KEY `server_id` (`server_id`,`timestamp_id`),
   KEY `game_time` (`game_id`,`timestamp_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Events_TeamBonuses` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
   `game_id` tinyint(3) unsigned NOT NULL DEFAULT 0,
@@ -296,7 +298,7 @@ CREATE TABLE `hlstats_Events_TeamBonuses` (
   KEY `playerId` (`playerId`),
   KEY `server_id` (`server_id`,`timestamp_id`),
   KEY `game_time` (`game_id`,`timestamp_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Events_Teamkills` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
   `game_id` tinyint(3) unsigned NOT NULL DEFAULT 0,
@@ -309,7 +311,7 @@ CREATE TABLE `hlstats_Events_Teamkills` (
   KEY `victimId` (`victimId`),
   KEY `server_id` (`server_id`,`timestamp_id`),
   KEY `game_time` (`game_id`,`timestamp_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Games` (
   `id` tinyint(3) unsigned NOT NULL AUTO_INCREMENT,
   `code` char(10) NOT NULL DEFAULT '',
@@ -321,13 +323,13 @@ CREATE TABLE `hlstats_Games` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `code` (`code`),
   KEY `display_id` (`display_id`,`code`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_HostGroups` (
   `id` mediumint(8) unsigned NOT NULL AUTO_INCREMENT,
   `pattern` varchar(255) NOT NULL DEFAULT '',
   `name` varchar(255) NOT NULL DEFAULT '',
   PRIMARY KEY (`id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Livestats` (
   `player_id` mediumint(8) unsigned NOT NULL DEFAULT 0,
   `server_id` smallint(5) unsigned NOT NULL DEFAULT 0,
@@ -386,12 +388,12 @@ CREATE TABLE `hlstats_Maps` (
   `rounds` int(10) unsigned NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   UNIQUE KEY `game` (`game`,`map`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Options` (
   `keyname` varchar(128) NOT NULL DEFAULT '',
   `value` varchar(255) NOT NULL DEFAULT '',
   PRIMARY KEY (`keyname`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_PlayerNames` (
   `playerId` mediumint(8) unsigned NOT NULL DEFAULT 0,
   `name` varchar(128) NOT NULL DEFAULT '',
@@ -411,14 +413,14 @@ CREATE TABLE `hlstats_PlayerNames` (
   `losses` mediumint(8) unsigned NOT NULL DEFAULT 0,
   UNIQUE KEY `playerId` (`playerId`,`name`),
   KEY `name` (`name`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_PlayerUniqueIds` (
   `playerId` mediumint(8) unsigned NOT NULL DEFAULT 0,
   `uniqueId` varchar(64) NOT NULL DEFAULT '',
   `game` varchar(10) NOT NULL DEFAULT '',
   PRIMARY KEY (`playerId`),
   UNIQUE KEY `uniqueId` (`uniqueId`,`game`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Players` (
   `playerId` mediumint(8) unsigned NOT NULL AUTO_INCREMENT,
   `last_event` int(10) unsigned NOT NULL DEFAULT 0,
@@ -465,7 +467,7 @@ CREATE TABLE `hlstats_Players` (
   KEY `kills` (`kills`),
   KEY `game_skill` (`game`,`hideranking`,`skill`,`playerId`),
   KEY `game_activity` (`game`,`hideranking`,`last_event`,`playerId`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_PlayersInactive` (
   `playerId` mediumint(8) unsigned NOT NULL,
   `last_event` int(10) unsigned NOT NULL DEFAULT 0,
@@ -509,7 +511,7 @@ CREATE TABLE `hlstats_PlayersInactive` (
   KEY `game_id` (`game_id`,`hideranking`),
   KEY `clan` (`clan`),
   KEY `game_activity` (`game`,`hideranking`,`last_event`,`playerId`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Players_Actions` (
   `player_id` mediumint(8) unsigned NOT NULL,
   `yearweek_id` mediumint(8) unsigned NOT NULL,
@@ -521,7 +523,7 @@ CREATE TABLE `hlstats_Players_Actions` (
   UNIQUE KEY `player_id` (`player_id`,`yearweek_id`,`game_id`,`action_id`),
   KEY `action_id` (`action_id`,`count`),
   KEY `game_id` (`game_id`,`count`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Players_Actions_History_Months` (
   `player_id` mediumint(8) unsigned NOT NULL,
   `year_id` smallint(5) unsigned NOT NULL,
@@ -532,7 +534,7 @@ CREATE TABLE `hlstats_Players_Actions_History_Months` (
   `points` int(11) NOT NULL DEFAULT 0,
   UNIQUE KEY `player_id` (`player_id`,`year_id`,`month_id`,`game_id`,`action_id`),
   KEY `action_id` (`action_id`,`count`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Players_Bans` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
   `player_id` mediumint(8) unsigned NOT NULL DEFAULT 0,
@@ -551,7 +553,7 @@ CREATE TABLE `hlstats_Players_Bans` (
   UNIQUE KEY `ban` (`player_id`,`ban_type`,`banned_at`),
   KEY `game` (`game`,`active`,`banned_at`),
   KEY `active` (`active`,`checked_at`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Players_Data` (
   `playerId` mediumint(8) unsigned NOT NULL,
   `first_connect` int(10) unsigned NOT NULL DEFAULT 0,
@@ -575,7 +577,7 @@ CREATE TABLE `hlstats_Players_Data` (
   KEY `first_connect` (`first_connect`),
   KEY `location_id` (`location_id`),
   KEY `connect_type` (`connect_type`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Players_History` (
   `playerId` mediumint(8) unsigned NOT NULL DEFAULT 0,
   `eventTime` date NOT NULL DEFAULT '0000-00-00',
@@ -606,7 +608,7 @@ CREATE TABLE `hlstats_Players_History` (
   `damage` int(10) unsigned NOT NULL DEFAULT 0,
   UNIQUE KEY `playerId` (`playerId`,`eventTime`,`game`),
   KEY `eventTime` (`eventTime`,`game`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Players_Locations` (
   `id` mediumint(8) unsigned NOT NULL AUTO_INCREMENT,
   `city` varchar(255) NOT NULL DEFAULT '',
@@ -620,7 +622,7 @@ CREATE TABLE `hlstats_Players_Locations` (
   KEY `flag` (`flag`(250)),
   KEY `country` (`country`(250)),
   KEY `city` (`city`(250))
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Players_Maps` (
   `player_id` mediumint(8) unsigned NOT NULL,
   `yearweek_id` mediumint(8) unsigned NOT NULL,
@@ -653,7 +655,7 @@ CREATE TABLE `hlstats_Players_Maps` (
   UNIQUE KEY `player_id` (`player_id`,`yearweek_id`,`game_id`,`map_id`),
   KEY `map_id` (`map_id`,`kills`),
   KEY `game_id` (`game_id`,`kills`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Players_Maps_History_Months` (
   `player_id` mediumint(8) unsigned NOT NULL,
   `year_id` smallint(5) unsigned NOT NULL,
@@ -686,12 +688,12 @@ CREATE TABLE `hlstats_Players_Maps_History_Months` (
   `flags_captured` smallint(5) unsigned NOT NULL DEFAULT 0,
   UNIQUE KEY `player_id` (`player_id`,`year_id`,`month_id`,`game_id`,`map_id`),
   KEY `map_id` (`map_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Players_Resets` (
   `player_id` mediumint(8) unsigned NOT NULL,
   `timestamp` int(10) unsigned NOT NULL,
   KEY `player_id` (`player_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Players_Roles` (
   `player_id` mediumint(8) unsigned NOT NULL,
   `yearweek_id` mediumint(8) unsigned NOT NULL,
@@ -716,7 +718,7 @@ CREATE TABLE `hlstats_Players_Roles` (
   `losses` smallint(5) unsigned NOT NULL DEFAULT 0,
   UNIQUE KEY `player_id` (`player_id`,`yearweek_id`,`game_id`,`role_id`),
   KEY `role_id` (`role_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Players_Roles_History_Months` (
   `player_id` mediumint(8) unsigned NOT NULL,
   `year_id` smallint(5) unsigned NOT NULL,
@@ -742,7 +744,7 @@ CREATE TABLE `hlstats_Players_Roles_History_Months` (
   `losses` smallint(5) unsigned NOT NULL DEFAULT 0,
   UNIQUE KEY `player_id` (`player_id`,`year_id`,`month_id`,`game_id`,`role_id`),
   KEY `role_id` (`role_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Players_Teams` (
   `player_id` mediumint(8) unsigned NOT NULL,
   `yearweek_id` mediumint(8) unsigned NOT NULL,
@@ -767,7 +769,7 @@ CREATE TABLE `hlstats_Players_Teams` (
   `losses` smallint(5) unsigned NOT NULL DEFAULT 0,
   UNIQUE KEY `player_id` (`player_id`,`yearweek_id`,`game_id`,`team_id`),
   KEY `team_id` (`team_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Players_Teams_History_Months` (
   `player_id` mediumint(8) unsigned NOT NULL,
   `year_id` smallint(5) unsigned NOT NULL,
@@ -793,7 +795,7 @@ CREATE TABLE `hlstats_Players_Teams_History_Months` (
   `losses` smallint(5) unsigned NOT NULL DEFAULT 0,
   UNIQUE KEY `player_id` (`player_id`,`year_id`,`month_id`,`game_id`,`team_id`),
   KEY `team_id` (`team_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Players_Weapons` (
   `player_id` mediumint(8) unsigned NOT NULL,
   `yearweek_id` mediumint(8) unsigned NOT NULL,
@@ -817,7 +819,7 @@ CREATE TABLE `hlstats_Players_Weapons` (
   UNIQUE KEY `player_id` (`player_id`,`yearweek_id`,`game_id`,`weapon_id`),
   KEY `weapon_id` (`weapon_id`,`kills`),
   KEY `game_id` (`game_id`,`kills`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Players_Weapons_History_Months` (
   `player_id` mediumint(8) unsigned NOT NULL,
   `year_id` smallint(5) unsigned NOT NULL,
@@ -840,9 +842,9 @@ CREATE TABLE `hlstats_Players_Weapons_History_Months` (
   `rightleg` smallint(5) unsigned NOT NULL DEFAULT 0,
   UNIQUE KEY `player_id` (`player_id`,`year_id`,`month_id`,`game_id`,`weapon_id`),
   KEY `weapon_id` (`weapon_id`,`kills`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci PACK_KEYS=1;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Roles` (
-  `roleId` tinyint(3) unsigned NOT NULL AUTO_INCREMENT,
+  `roleId` smallint(5) unsigned NOT NULL AUTO_INCREMENT,
   `game` varchar(10) NOT NULL DEFAULT 'valve',
   `code` varchar(128) NOT NULL DEFAULT '',
   `name` varchar(255) NOT NULL DEFAULT '',
@@ -860,7 +862,7 @@ CREATE TABLE `hlstats_Roles` (
   `custom_wins` bigint(20) unsigned NOT NULL DEFAULT 0,
   PRIMARY KEY (`roleId`),
   UNIQUE KEY `game` (`game`,`code`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Servers` (
   `serverId` smallint(5) unsigned NOT NULL AUTO_INCREMENT,
   `address` varchar(32) NOT NULL DEFAULT '',
@@ -917,7 +919,7 @@ CREATE TABLE `hlstats_Servers` (
   KEY `game` (`game`),
   KEY `display_id` (`display_id`,`serverId`),
   KEY `account_id` (`account_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Style` (
   `keyname` varchar(32) NOT NULL DEFAULT '',
   `def` varchar(255) NOT NULL DEFAULT '',
@@ -929,9 +931,9 @@ CREATE TABLE `hlstats_Style` (
   `light_grey` varchar(255) NOT NULL DEFAULT '',
   `white` varchar(255) NOT NULL DEFAULT '',
   PRIMARY KEY (`keyname`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Teams` (
-  `teamId` tinyint(3) unsigned NOT NULL AUTO_INCREMENT,
+  `teamId` smallint(5) unsigned NOT NULL AUTO_INCREMENT,
   `game` varchar(10) NOT NULL DEFAULT 'valve',
   `code` varchar(128) NOT NULL DEFAULT '',
   `name` varchar(255) NOT NULL DEFAULT '',
@@ -949,7 +951,7 @@ CREATE TABLE `hlstats_Teams` (
   `custom_wins` bigint(20) unsigned NOT NULL DEFAULT 0,
   PRIMARY KEY (`teamId`),
   UNIQUE KEY `game` (`game`,`code`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Trend` (
   `timestamp` int(11) NOT NULL DEFAULT 0,
   `game` char(10) NOT NULL DEFAULT '',
@@ -960,14 +962,14 @@ CREATE TABLE `hlstats_Trend` (
   `act_slots` smallint(5) unsigned NOT NULL DEFAULT 0,
   `max_slots` smallint(5) unsigned NOT NULL DEFAULT 0,
   KEY `timestamp` (`timestamp`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Users` (
   `username` varchar(128) NOT NULL DEFAULT '',
   `password` varchar(255) NOT NULL DEFAULT '',
   `acclevel` int(11) NOT NULL DEFAULT 0,
   `playerId` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`username`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Weapons` (
   `weaponId` smallint(5) unsigned NOT NULL AUTO_INCREMENT,
   `game` varchar(10) NOT NULL DEFAULT 'valve',
@@ -979,7 +981,7 @@ CREATE TABLE `hlstats_Weapons` (
   PRIMARY KEY (`weaponId`),
   UNIQUE KEY `game` (`game`,`code`),
   KEY `code` (`code`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_gamewe_hall_of_fame` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
   `game` varchar(32) NOT NULL DEFAULT '',
@@ -1008,7 +1010,7 @@ CREATE TABLE `hlstats_gamewe_hall_of_fame` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `slot` (`game`,`period_start`,`place`),
   KEY `player` (`player_id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_gamewe_jobs` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
   `job_type` varchar(32) NOT NULL DEFAULT 'reset',
@@ -1022,7 +1024,7 @@ CREATE TABLE `hlstats_gamewe_jobs` (
   `result` varchar(1024) NOT NULL DEFAULT '',
   PRIMARY KEY (`id`),
   KEY `status` (`status`,`id`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_server_load` (
   `server_id` smallint(5) unsigned NOT NULL DEFAULT 0,
   `timestamp` int(11) NOT NULL DEFAULT 0,
@@ -1033,7 +1035,7 @@ CREATE TABLE `hlstats_server_load` (
   `cpu` smallint(5) unsigned NOT NULL DEFAULT 0,
   `fps` smallint(5) unsigned NOT NULL DEFAULT 0,
   `uptime` smallint(5) unsigned NOT NULL DEFAULT 0,
-  KEY `server_id` (`server_id`),
+  KEY `server_time` (`server_id`,`timestamp`),
   KEY `timestamp` (`timestamp`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

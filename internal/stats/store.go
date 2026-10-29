@@ -6,10 +6,11 @@
 // and internal/schema/postgres/schema.sql.
 //
 // SQL is written once with ? placeholders; the few dialect differences go
-// through ignore, upsert, insertID and skillSet. The MariaDB tables are
-// MyISAM (no transactions), so every counter is changed with relative
-// updates (x = x + ?), which are atomic per statement in both databases and
-// let several servers write concurrently.
+// through ignore, upsert, insertID and skillSet. The store uses no
+// transactions (the MariaDB tables were MyISAM, without any, until schema
+// version 19), so every counter is changed with relative updates
+// (x = x + ?), which are atomic per statement in both databases and let
+// several servers write concurrently.
 package stats
 
 import (

@@ -491,7 +491,7 @@ func migrate(ctx context.Context, db *database.DB, d config.Database, f migrateF
 	}
 	if p.Kind != database.KindEmpty { // a new database has nothing to back up
 		// A running collector writes into the tables a migration changes
-		// (MyISAM tables are locked while they change): stop it first.
+		// (a table is locked while it is rebuilt): stop it first.
 		if err := refuseRunning(ctx, db, promptOut(out), "migrate"); err != nil {
 			return err
 		}
