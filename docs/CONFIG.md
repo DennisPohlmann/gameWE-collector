@@ -344,7 +344,9 @@ The other `gamewe_*` keys the web admin writes are settings of the web frontend
 (`gamewe_page_size`, site, header, SEO, map (including the satellite view
 and the CARTO and Esri keys), voice and TeamSpeak settings, the operator's
 details of the privacy page `gamewe_privacy_*`, the header links
-`gamewe_link_<n>` and the admins' TOTP secrets `gamewe_totp_<hash>`); the
+`gamewe_link_<n>`, the switch that shows the TeamSpeak password
+`gamewe_ts_password_reveal`, the admins' TOTP secrets `gamewe_totp_<hash>`
+and their API tokens `gamewe_apitoken_<hash>`); the
 collector ignores them and `gamewe check` does not report them. Neither does
 it report the job plan the collector writes itself (`gamewe_next_awards`,
 `gamewe_next_inactive`, `gamewe_next_resets`, `gamewe_next_reset_<game>`). One exception: the collector reads the web's

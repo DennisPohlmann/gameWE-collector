@@ -215,7 +215,7 @@ var WebKeys = []string{
 	"gamewe_voice_type", "gamewe_discord_guild", "gamewe_discord_invite",
 	"gamewe_ts_host", "gamewe_ts_port", "gamewe_ts_query_port", "gamewe_ts_query_user", "gamewe_ts_query_password",
 	"gamewe_ts_password", "gamewe_ts_name", "gamewe_ts_link", "gamewe_ts_display", "gamewe_ts_country",
-	"gamewe_ts_show_clients", "gamewe_update_check",
+	"gamewe_ts_show_clients", "gamewe_ts_password_reveal", "gamewe_update_check",
 	"gamewe_default_lang", "gamewe_steam_profiles", "gamewe_steam_api_key",
 	"gamewe_privacy_name", "gamewe_privacy_address", "gamewe_privacy_email",
 }
@@ -236,7 +236,7 @@ func gameCode(g string) bool {
 // otherKey reports gamewe_* keys that are not collector settings but are
 // expected in hlstats_Options: web settings, header link slots
 // (gamewe_link_<n>), web admin TOTP secrets (gamewe_totp_<hash>, pending
-// gamewe_totpp_<hash>), the operator's free text of the privacy page
+// gamewe_totpp_<hash>), the admins' API tokens (gamewe_apitoken_<hash>), the operator's free text of the privacy page
 // (gamewe_privacy_text_<n>), the scheduled ranking resets and hall of fame per
 // game (gamewe_reset_schedule_<game>, gamewe_reset_mode_<game>,
 // gamewe_reset_last_<game>, gamewe_hof_<game>) and of all rankings
@@ -275,6 +275,9 @@ func otherKey(k string) bool {
 		if h, ok := strings.CutPrefix(k, p); ok {
 			return len(h) == 32 && strings.Trim(h, "0123456789abcdef") == ""
 		}
+	}
+	if h, ok := strings.CutPrefix(k, "gamewe_apitoken_"); ok {
+		return len(h) == 48 && strings.Trim(h, "0123456789abcdef") == ""
 	}
 	return false
 }
