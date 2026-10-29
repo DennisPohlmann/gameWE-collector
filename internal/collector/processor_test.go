@@ -222,6 +222,7 @@ func TestBotsDoNotChangeSkill(t *testing.T) {
 	p, st := newTestProcessor(t)
 	s := settings.Defaults()
 	s.BotsPoints = map[string]bool{"css": false, "tf": true}
+	s.BotsStats = map[string]bool{"css": true}
 	p.set.Set(s)
 	ctx, now := context.Background(), time.Now()
 	for _, l := range []string{
@@ -251,7 +252,8 @@ func TestBotsDoNotChangeSkill(t *testing.T) {
 	}
 
 	// With gamewe_bot_points_css = 1 (or without the key) the same kill counts.
-	p.set.Set(settings.Defaults())
+	s.BotsPoints = nil
+	p.set.Set(s)
 	if err := p.Handle(ctx, `"K<2><STEAM_1:0:1><CT>" killed "Bot Bob<9><BOT><TERRORIST>" with "ak47" (headshot)`, now); err != nil {
 		t.Fatal(err)
 	}
@@ -262,31 +264,48 @@ func TestBotsDoNotChangeSkill(t *testing.T) {
 	}
 }
 
-// With gamewe_bot_kills_<game> = 0 a kill of a bot is stored but not counted
-// in the killer's kills; deaths by bots and kills of players still count.
-func TestBotKillsNotCounted(t *testing.T) {
-	p, st := newTestProcessor(t)
-	s := settings.Defaults()
-	s.BotsKills = map[string]bool{"css": false}
-	p.set.Set(s)
-	ctx, now := context.Background(), time.Now()
-	for _, l := range []string{
+// Without gamewe_bot_stats_<game> (the default) a kill of a bot is stored
+// but not counted in the killer's kills, and a death by a bot not in the
+// victim's deaths; kills of players still count, and so do the points and,
+// with gamewe_bot_kills_<game> (the default), the career rank. With
+// gamewe_bot_stats_<game> = 1 kills with bots count like any other;
+// gamewe_bot_kills_<game> = 0 leaves them out of the career rank.
+func TestBotStats(t *testing.T) {
+	lines := []string{
 		`"K<2><STEAM_1:0:1><CT>" killed "Bot Bob<9><BOT><TERRORIST>" with "ak47" (headshot)`,
 		`"K<2><STEAM_1:0:1><CT>" killed "V<3><STEAM_1:0:2><TERRORIST>" with "ak47"`,
 		`"Bot Bob<9><BOT><TERRORIST>" killed "K<2><STEAM_1:0:1><CT>" with "glock"`,
+	}
+	for _, c := range []struct {
+		name                       string
+		stats, career              map[string]bool
+		kills, deaths, careerKills int
+	}{
+		{"defaults", nil, nil, 1, 0, 2},
+		{"stats on", map[string]bool{"css": true}, nil, 2, 1, 2},
+		{"career off", nil, map[string]bool{"css": false}, 1, 0, 1},
+		{"stats on, career off", map[string]bool{"css": true}, map[string]bool{"css": false}, 2, 1, 1},
 	} {
-		if err := p.Handle(ctx, l, now); err != nil {
-			t.Fatal(err)
+		p, st := newTestProcessor(t)
+		s := settings.Defaults()
+		s.BotsStats, s.BotsKills = c.stats, c.career
+		p.set.Set(s)
+		ctx, now := context.Background(), time.Now()
+		for _, l := range lines {
+			if err := p.Handle(ctx, l, now); err != nil {
+				t.Fatal(err)
+			}
 		}
-	}
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	k, b := st.players[[2]string{"css", "0:1"}], st.players[[2]string{"css", "BOT:Bot Bob"}]
-	if k.kills != 1 || k.deaths != 1 || b.kills != 1 || b.deaths != 1 || len(st.kills) != 3 {
-		t.Errorf("K kills %d deaths %d, bot kills %d deaths %d, %d kills stored; want 1 1 1 1 3", k.kills, k.deaths, b.kills, b.deaths, len(st.kills))
-	}
-	if k.skill == 1000 {
-		t.Error("bot points are on: the kill of the bot must still give points")
+		st.mu.Lock()
+		k, b := st.players[[2]string{"css", "0:1"}], st.players[[2]string{"css", "BOT:Bot Bob"}]
+		if k.kills != c.kills || k.deaths != c.deaths || k.careerKills != c.careerKills || b.kills != 1 || b.deaths != 1 || len(st.kills) != 3 {
+			t.Errorf("%s: K kills %d deaths %d career %d, bot kills %d deaths %d, %d kills stored; want %d %d %d 1 1 3", c.name,
+				k.kills, k.deaths, k.careerKills, b.kills, b.deaths, len(st.kills), c.kills, c.deaths, c.careerKills)
+		}
+		if k.skill == 1000 {
+			t.Errorf("%s: bot points are on: the kill of the bot must still give points", c.name)
+		}
+		st.mu.Unlock()
 	}
 }
 
@@ -315,6 +334,12 @@ func TestBotSettingsPerRanking(t *testing.T) {
 	}
 	if s.BotKills("css") {
 		t.Error("gamewe_bot_kills_css = 0 not read")
+	}
+	if s.BotStats("css") || s.BotStats("tf") {
+		t.Error("bot stats default: want off")
+	}
+	if s, _ := settings.FromOptions(map[string]string{"gamewe_bot_stats_css": "1"}); !s.BotStats("css") || s.BotStats("tf") {
+		t.Error("gamewe_bot_stats_css = 1 not read")
 	}
 	if _, warn := settings.FromOptions(map[string]string{"gamewe_rank_bots_css": "maybe"}); len(warn) != 1 {
 		t.Errorf("invalid value: warnings %q", warn)

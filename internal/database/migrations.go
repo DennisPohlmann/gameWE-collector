@@ -45,6 +45,9 @@ type Migration struct {
 	// (gamewe_rank_bots, gamewe_ignore_bots) to every ranking
 	// (gamewe_rank_bots_<game>, gamewe_bot_points_<game>) and deletes it.
 	BotsPerRanking bool
+	// CareerKills fills hlstats_Players.career_kills (and the inactive
+	// players') from kills, which the career rank read until then.
+	CareerKills bool
 }
 
 // RetiredOption is an hlstats_Options key to delete: always when IfValue is
@@ -205,6 +208,12 @@ var Migrations = []Migration{
 		},
 		Widen: []WidenColumn{{Table: "hlstats_Teams", Column: "teamId"}, {Table: "hlstats_Roles", Column: "roleId"}},
 	},
+	{
+		Version: 20, Name: "career-kills",
+		Desc: "column career_kills on hlstats_Players and hlstats_PlayersInactive: the kills of the career rank, which count " +
+			"kills of bots by gamewe_bot_kills_<game> while kills follows gamewe_bot_stats_<game>; filled from kills",
+		Sync: true, CareerKills: true,
+	},
 }
 
 // Latest is the newest schema version this collector knows.
@@ -225,6 +234,9 @@ func (m Migration) Checksum() string {
 	}
 	if len(m.Widen) > 0 {
 		b = fmt.Appendf(b, "|%v", m.Widen)
+	}
+	if m.CareerKills {
+		b = fmt.Appendf(b, "|career-kills")
 	}
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
@@ -312,5 +324,14 @@ func botsPerRankingSQL(postgres bool) []string {
 		write("gamewe_rank_bots_", ranked),
 		write("gamewe_bot_points_", `CASE WHEN `+l4d+` THEN '1' ELSE `+ranked+` END`),
 		`DELETE FROM hlstats_Options WHERE keyname IN ('gamewe_rank_bots', 'gamewe_ignore_bots')`,
+	}
+}
+
+// careerKillsSQL fills career_kills from kills where it is still 0, so a
+// second run changes nothing. Only constants.
+func careerKillsSQL() []string {
+	return []string{
+		`UPDATE hlstats_Players SET career_kills = kills WHERE career_kills = 0 AND kills > 0`,
+		`UPDATE hlstats_PlayersInactive SET career_kills = kills WHERE career_kills = 0 AND kills > 0`,
 	}
 }

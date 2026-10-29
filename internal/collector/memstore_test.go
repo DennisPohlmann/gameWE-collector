@@ -64,6 +64,7 @@ type memPlayer struct {
 	id                         int64
 	game, uid, name            string
 	skill, kills, deaths, wins int
+	careerKills                int
 	hide                       int // hideranking
 }
 
@@ -397,7 +398,12 @@ func (m *memStore) RecordKill(_ context.Context, ev stats.Ev, k stats.Kill) (sta
 		if !k.NoKillCount {
 			kp.kills++
 		}
-		vp.deaths++
+		if !k.NoCareerKill {
+			kp.careerKills++
+		}
+		if !k.NoDeathCount {
+			vp.deaths++
+		}
 	}
 	m.kills = append(m.kills, memKill{ev.Srv.ID, ev.Srv.Game, kp.uid, vp.uid, k.Weapon, k.Teamkill, k.Headshot})
 	return r, nil

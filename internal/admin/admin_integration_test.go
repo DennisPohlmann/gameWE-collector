@@ -318,14 +318,14 @@ func TestAdminGameBots(t *testing.T) {
 		t.Fatal("zz_bot not listed")
 		return Game{}
 	}
-	if g := find(); !g.RankBots || !g.BotPoints || !g.BotKills {
-		t.Errorf("defaults: %+v, want bots ranked with points", g)
+	if g := find(); !g.RankBots || !g.BotPoints || !g.BotKills || g.BotStats {
+		t.Errorf("defaults: %+v, want bots ranked with points and career kills, not in the stats", g)
 	}
 
 	var out bytes.Buffer
 	a := &Admin{DB: db, Out: &out}
 	no, yes := false, true
-	if err := a.SetGame(ctx, "zz_bot", GameFields{RankBots: &no, BotPoints: &no, BotKills: &no}); err != nil {
+	if err := a.SetGame(ctx, "zz_bot", GameFields{RankBots: &no, BotPoints: &no, BotKills: &no, BotStats: &yes}); err != nil {
 		t.Fatal(err)
 	}
 	for _, p := range players {
@@ -333,7 +333,7 @@ func TestAdminGameBots(t *testing.T) {
 			t.Errorf("rank-bots off: %s %s hideranking %d, want %d", p.game, p.uid, got, p.want)
 		}
 	}
-	if g := find(); g.RankBots || g.BotPoints || g.BotKills {
+	if g := find(); g.RankBots || g.BotPoints || g.BotKills || !g.BotStats {
 		t.Errorf("after set: %+v", g)
 	}
 	if !strings.Contains(out.String(), "1 bots of zz_bot hidden") {
@@ -352,8 +352,8 @@ func TestAdminGameBots(t *testing.T) {
 			t.Errorf("rank-bots on: %s %s hideranking %d, want %d", p.game, p.uid, got, want)
 		}
 	}
-	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Options WHERE keyname IN ('gamewe_rank_bots_zz_bot', 'gamewe_bot_points_zz_bot', 'gamewe_bot_kills_zz_bot')`); n != 3 {
-		t.Errorf("%d option rows, want 3", n)
+	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Options WHERE keyname IN ('gamewe_rank_bots_zz_bot', 'gamewe_bot_points_zz_bot', 'gamewe_bot_kills_zz_bot', 'gamewe_bot_stats_zz_bot')`); n != 4 {
+		t.Errorf("%d option rows, want 4", n)
 	}
 	// game set -block-vac: off by default, stored per ranking, no player changes.
 	if find().BlockVAC {

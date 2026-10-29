@@ -379,12 +379,12 @@ FROM hlstats_Maps_Counts WHERE map <> ''`, "hlstats_Maps", []string{"game", "map
     LEAST(p.headshots, 16777215), LEAST(GREATEST(p.last_skill_change, -8388608), 8388607),
     LEAST(GREATEST(p.kill_streak, 0), 65535), LEAST(GREATEST(p.death_streak, 0), 255),
     IF(p.kills > 0, LEAST(ROUND(p.headshots / p.kills, 2), 999.99), 0),
-    ROUND(LEAST(p.kills / GREATEST(p.deaths, 1), 99999.99), 2)
+    ROUND(LEAST(p.kills / GREATEST(p.deaths, 1), 99999.99), 2), LEAST(p.kills, 16777215)
 FROM hlstats_Players p`,
 				table: "hlstats_Players",
 				cols: []string{"playerId", "last_event", "connection_time", "clan", "kills",
 					"deaths", "suicides", "skill", "shots", "hits", "team_kills", "game", "game_id", "hideranking",
-					"headshots", "last_skill_change", "kill_streak", "death_streak", "hpk", "kpd"},
+					"headshots", "last_skill_change", "kill_streak", "death_streak", "hpk", "kpd", "career_kills"},
 				row: func(ctx context.Context, c *conv, v []*string) ([]any, bool, error) {
 					game := c.textKey(v[11], "hlstats_Players")
 					gid, err := c.id(ctx, "game", game, "")

@@ -52,8 +52,7 @@ variant are listed in [PostgreSQL](#postgresql) at the end.
   when the player comes back.
 - **Bots** (always recorded; per ranking, `hlstats_Options`
   `gamewe_rank_bots_<game>`, `gamewe_bot_points_<game>` and
-  `gamewe_bot_kills_<game>`, all 1 when
-  missing): uniqueId `BOT:<name>`, so one
+  `gamewe_bot_kills_<game>` 1 when missing, `gamewe_bot_stats_<game>` 0): uniqueId `BOT:<name>`, so one
   row per bot name and game. They are in the live view, `act_players` (and
   `act_bots`) and their own statistics. With `gamewe_rank_bots_<game>` = 0 they
   get `hideranking` = 1 when created, and awards skip them; turning the
@@ -61,11 +60,17 @@ variant are listed in [PostgreSQL](#postgresql) at the end.
   `hideranking` 0 ↔ 1 of the ranking's existing bots (2, banned, stays). With
   `gamewe_bot_points_<game>` = 0 kills with a bot (either side) and
   player-vs-player actions with a bot change nobody's skill (stored with 0
-  points, no headshot action, no kill streak); kills and deaths are still
-  counted, also for the kill-based ranks, unless `gamewe_bot_kills_<game>` = 0:
-  then a kill of a bot is stored (frag, weapon, map, server, team, the bot's
-  death) but not added to the killer's `kills` and `headshots` (also not in
-  `hlstats_PlayerNames` and `hlstats_Players_History`). Servers of one game with the same bot names
+  points, no headshot action, no kill streak). Kills with bots count in the
+  players' stats only with `gamewe_bot_stats_<game>` = 1; with 0 (the default)
+  a kill with a bot is stored (frag, weapon, map, server, team, the bot's own
+  counts) but a kill of a bot is not added to the killer's `kills`,
+  `headshots` and `kill_streak`, and a death by a bot not to the victim's
+  `deaths`, `death_headshots` and `death_streak` (also not in
+  `hlstats_PlayerNames`, `hlstats_Players_History` and `hlstats_Livestats`);
+  Left 4 Dead counts kills of and by the AI always. `career_kills` (schema 20)
+  are the kills of the career rank: every kill but a teamkill, kills of bots
+  only with `gamewe_bot_kills_<game>` = 1 (the default); a reset sets it to 0
+  with the other counters. Servers of one game with the same bot names
   share these rows, also the live row (one per player): the bot is live on the
   server that saw it last; `act_bots` counts per server. `hlstats_Servers.players` counts the game's players without
   `hideranking = 2`.

@@ -535,7 +535,7 @@ func TestMigrateMyISAM(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Current != 18 || len(p.Pending) != 1 || p.Pending[0].Version != 19 {
+	if p.Current != 18 || len(p.Pending) != Latest()-18 || p.Pending[0].Version != 19 {
 		t.Fatalf("plan: current %d, pending %v", p.Current, p.Pending)
 	}
 	var converts, livestats, widen int

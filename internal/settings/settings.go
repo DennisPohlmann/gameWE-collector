@@ -45,11 +45,13 @@ type Settings struct {
 	CommandDisplay  string   // gamewe_command_display (panel, chat or both)
 	RawMessages     bool     // gamewe_raw_messages
 	StoreLocations  bool     // gamewe_store_locations
-	// Bot settings of each ranking (hlstats_Games.code), see RankBots and
-	// BotPoints; a ranking without a key uses true.
+	// Bot settings of each ranking (hlstats_Games.code), see RankBots,
+	// BotPoints, BotKills and BotStats; a ranking without a key uses true,
+	// for BotStats false.
 	BotsRanked    map[string]bool // gamewe_rank_bots_<game>
 	BotsPoints    map[string]bool // gamewe_bot_points_<game>
 	BotsKills     map[string]bool // gamewe_bot_kills_<game>
+	BotsStats     map[string]bool // gamewe_bot_stats_<game>
 	VACBlocked    map[string]bool // gamewe_block_vac_<game> (BlockVAC; a ranking without a key: off)
 	SteamAPIKey   Secret          // gamewe_steam_api_key (web admin, Settings → Steam; never logged)
 	GeoIPDB       string          // gamewe_geoip_db (path of a MaxMind-format city database)
@@ -86,6 +88,7 @@ func Defaults() Settings {
 func RankBotsKey(game string) string  { return "gamewe_rank_bots_" + game }
 func BotPointsKey(game string) string { return "gamewe_bot_points_" + game }
 func BotKillsKey(game string) string  { return "gamewe_bot_kills_" + game }
+func BotStatsKey(game string) string  { return "gamewe_bot_stats_" + game }
 
 // RankBots reports whether the bots of a ranking are ranked like players
 // (hideranking 0, in rankings and awards); otherwise new bots get
@@ -96,10 +99,16 @@ func (s Settings) RankBots(game string) bool { return on(s.BotsRanked, game) }
 // (either side) change skill in a ranking. Default true.
 func (s Settings) BotPoints(game string) bool { return on(s.BotsPoints, game) }
 
-// BotKills reports whether a kill of a bot counts in the killer's kills and
-// headshots (kill ranking, K/D, the kill-based ranks) in a ranking; the
-// kill itself is always stored. Default true.
+// BotKills reports whether a kill of a bot counts for the killer's career
+// rank (hlstats_Players.career_kills) in a ranking. Default true.
 func (s Settings) BotKills(game string) bool { return on(s.BotsKills, game) }
+
+// BotStats reports whether kills with a bot count in the players' stats of a
+// ranking: a kill of a bot in the killer's kills, headshots and kill streak,
+// a death by a bot in the victim's deaths and death streak (kill ranking,
+// K/D, history, live view, the session counts). The kill itself is always
+// stored. Default false.
+func (s Settings) BotStats(game string) bool { return s.BotsStats[game] }
 
 // BlockVACKey is the option key of a ranking's VAC block.
 func BlockVACKey(game string) string { return "gamewe_block_vac_" + game }
@@ -233,7 +242,8 @@ func gameCode(g string) bool {
 // gamewe_reset_last_<game>, gamewe_hof_<game>) and of all rankings
 // (gamewe_reset_schedule, gamewe_reset_mode; gamewe_reset_paused: the
 // schedule the web admin turned off), the bot settings per game
-// (gamewe_rank_bots_<game>, gamewe_bot_points_<game>, gamewe_bot_kills_<game>), the VAC block per game
+// (gamewe_rank_bots_<game>, gamewe_bot_points_<game>, gamewe_bot_kills_<game>,
+// gamewe_bot_stats_<game>), the VAC block per game
 // (gamewe_block_vac_<game>), the collector's heartbeat, version and job
 // plan (gamewe_next_awards, gamewe_next_inactive, gamewe_next_resets,
 // gamewe_next_reset_<game>) and retired keys that the migrations delete.
@@ -256,7 +266,7 @@ func otherKey(k string) bool {
 			return n != "" && strings.Trim(n, "0123456789") == ""
 		}
 	}
-	for _, p := range []string{"gamewe_next_reset_", "gamewe_reset_schedule_", "gamewe_reset_mode_", "gamewe_reset_last_", "gamewe_hof_", "gamewe_rank_bots_", "gamewe_bot_points_", "gamewe_bot_kills_", "gamewe_block_vac_"} {
+	for _, p := range []string{"gamewe_next_reset_", "gamewe_reset_schedule_", "gamewe_reset_mode_", "gamewe_reset_last_", "gamewe_hof_", "gamewe_rank_bots_", "gamewe_bot_points_", "gamewe_bot_kills_", "gamewe_bot_stats_", "gamewe_block_vac_"} {
 		if g, ok := strings.CutPrefix(k, p); ok {
 			return gameCode(g)
 		}
@@ -326,7 +336,7 @@ func FromOptions(opts map[string]string) (Settings, []string) {
 			prefix string
 			dst    *map[string]bool
 			def    bool
-		}{{"gamewe_rank_bots_", &s.BotsRanked, true}, {"gamewe_bot_points_", &s.BotsPoints, true}, {"gamewe_bot_kills_", &s.BotsKills, true},
+		}{{"gamewe_rank_bots_", &s.BotsRanked, true}, {"gamewe_bot_points_", &s.BotsPoints, true}, {"gamewe_bot_kills_", &s.BotsKills, true}, {"gamewe_bot_stats_", &s.BotsStats, false},
 			{"gamewe_block_vac_", &s.VACBlocked, false}} {
 			g, ok := strings.CutPrefix(k, f.prefix)
 			if !ok || !gameCode(g) {

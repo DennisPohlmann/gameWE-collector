@@ -740,6 +740,12 @@ type Kill struct {
 	// (hlstats_Players, hlstats_PlayerNames, history): not for the kill
 	// ranking, K/D and the kill-based ranks.
 	NoKillCount bool
+	// NoDeathCount: the death (by a bot, gamewe_bot_stats_<game> = 0) is
+	// not counted in the victim's deaths and death headshots.
+	NoDeathCount bool
+	// NoCareerKill: the kill (of a bot, gamewe_bot_kills_<game> = 0) does
+	// not count for the killer's career rank (hlstats_Players.career_kills).
+	NoCareerKill bool
 }
 
 // fragPositions reports whether hlstats_Events_Frags has the position
@@ -835,7 +841,7 @@ func (s *Store) RecordKill(ctx context.Context, ev Ev, k Kill) (KillResult, erro
 	r.KillerSkill, r.VictimSkill = ksk+r.KillerDelta, vsk+r.VictimDelta
 	hs := boolInt(k.Headshot)
 	ks, ds := min(k.KillStreak, 65535), min(k.DeathStreak, 255)
-	counted := boolInt(!k.NoKillCount)
+	counted, died, career := boolInt(!k.NoKillCount), boolInt(!k.NoDeathCount), boolInt(!k.NoCareerKill)
 	var steps []step
 	if k.Teamkill {
 		steps = []step{
@@ -854,35 +860,40 @@ func (s *Store) RecordKill(ctx context.Context, ev Ev, k Kill) (KillResult, erro
 		// PostgreSQL always with the old ones, so this is right in both.
 		killerStep := step{`UPDATE hlstats_Players SET hpk = (headshots + ?) * 1.0 / (kills + 1),
 				kpd = (kills + 1) * 1.0 / CASE WHEN deaths > 0 THEN deaths ELSE 1 END,
-				kills = kills + 1, headshots = headshots + ?, ` + s.skillSet() + `, last_skill_change = ?,
+				kills = kills + 1, headshots = headshots + ?, career_kills = career_kills + ?, ` + s.skillSet() + `, last_skill_change = ?,
 				kill_streak = GREATEST(kill_streak, ?), last_event = ? WHERE playerId = ?`,
-			[]any{hs, hs, r.KillerDelta, r.KillerDelta, ks, ev.ts(), k.Killer.ID}}
+			[]any{hs, hs, career, r.KillerDelta, r.KillerDelta, ks, ev.ts(), k.Killer.ID}}
 		if k.NoKillCount {
-			killerStep = step{`UPDATE hlstats_Players SET ` + s.skillSet() + `, last_skill_change = ?,
-				kill_streak = GREATEST(kill_streak, ?), last_event = ? WHERE playerId = ?`,
-				[]any{r.KillerDelta, r.KillerDelta, ks, ev.ts(), k.Killer.ID}}
+			killerStep = step{`UPDATE hlstats_Players SET career_kills = career_kills + ?, ` + s.skillSet() + `, last_skill_change = ?,
+				last_event = ? WHERE playerId = ?`,
+				[]any{career, r.KillerDelta, r.KillerDelta, ev.ts(), k.Killer.ID}}
+		}
+		victimStep := step{`UPDATE hlstats_Players SET kpd = kills * 1.0 / (deaths + 1), death_hpk = (death_headshots + ?) * 1.0 / (deaths + 1),
+				deaths = deaths + 1, death_headshots = death_headshots + ?, ` + s.skillSet() + `, last_skill_change = ?,
+				death_streak = GREATEST(death_streak, ?), last_event = ? WHERE playerId = ?`,
+			[]any{hs, hs, r.VictimDelta, r.VictimDelta, ds, ev.ts(), k.Victim.ID}}
+		if k.NoDeathCount {
+			victimStep = step{`UPDATE hlstats_Players SET ` + s.skillSet() + `, last_skill_change = ?, last_event = ? WHERE playerId = ?`,
+				[]any{r.VictimDelta, r.VictimDelta, ev.ts(), k.Victim.ID}}
 		}
 		steps = []step{
 			// (the ratios of the killer: killerStep) and use the old counts plus this kill:
 			// MariaDB evaluates SET from left to right with the new values,
 			// PostgreSQL always with the old ones, so this is right in both.
 			killerStep,
-			{`UPDATE hlstats_Players SET kpd = kills * 1.0 / (deaths + 1), death_hpk = (death_headshots + ?) * 1.0 / (deaths + 1),
-				deaths = deaths + 1, death_headshots = death_headshots + ?, ` + s.skillSet() + `, last_skill_change = ?,
-				death_streak = GREATEST(death_streak, ?), last_event = ? WHERE playerId = ?`,
-				[]any{hs, hs, r.VictimDelta, r.VictimDelta, ds, ev.ts(), k.Victim.ID}},
+			victimStep,
 			s.fragInsert(ctx, ev, k, w.id, hs),
 			{`UPDATE hlstats_Servers SET kills = kills + 1, headshots = headshots + ? WHERE serverId = ?`, []any{hs, ev.Srv.ID}},
 			{`UPDATE hlstats_Weapons SET kills = kills + 1, headshots = headshots + ? WHERE weaponId = ?`, []any{hs, w.id}},
 			{`UPDATE hlstats_PlayerNames SET kills = kills + ?, headshots = headshots + ? WHERE playerId = ? AND name = ?`,
 				[]any{counted, hs * counted, k.Killer.ID, clip(k.Killer.Name, 128)}},
-			{`UPDATE hlstats_PlayerNames SET deaths = deaths + 1 WHERE playerId = ? AND name = ?`, []any{k.Victim.ID, clip(k.Victim.Name, 128)}},
-			{`UPDATE hlstats_Livestats SET kills = kills + 1, headshots = headshots + ?, ` + s.skillSet() + `, skill_change = skill_change + ?,
+			{`UPDATE hlstats_PlayerNames SET deaths = deaths + ? WHERE playerId = ? AND name = ?`, []any{died, k.Victim.ID, clip(k.Victim.Name, 128)}},
+			{`UPDATE hlstats_Livestats SET kills = kills + ?, headshots = headshots + ?, ` + s.skillSet() + `, skill_change = skill_change + ?,
 				kill_streak = GREATEST(kill_streak, ?) WHERE player_id = ? AND server_id = ?`,
-				[]any{hs, r.KillerDelta, r.KillerDelta, ks, k.Killer.ID, ev.Srv.ID}},
-			{`UPDATE hlstats_Livestats SET deaths = deaths + 1, death_headshots = death_headshots + ?, ` + s.skillSet() + `, skill_change = skill_change + ?,
+				[]any{counted, hs * counted, r.KillerDelta, r.KillerDelta, ks * counted, k.Killer.ID, ev.Srv.ID}},
+			{`UPDATE hlstats_Livestats SET deaths = deaths + ?, death_headshots = death_headshots + ?, ` + s.skillSet() + `, skill_change = skill_change + ?,
 				death_streak = GREATEST(death_streak, ?), is_dead = 1, has_bomb = 0 WHERE player_id = ? AND server_id = ?`,
-				[]any{hs, r.VictimDelta, r.VictimDelta, ds, k.Victim.ID, ev.Srv.ID}},
+				[]any{died, hs * died, r.VictimDelta, r.VictimDelta, ds * died, k.Victim.ID, ev.Srv.ID}},
 		}
 	}
 	if !k.Teamkill {
@@ -916,10 +927,10 @@ func (s *Store) RecordKill(ctx context.Context, ev Ev, k Kill) (KillResult, erro
 	if k.Teamkill {
 		return r, s.history(ctx, ev, killer, hist{teamkills: 1, skillChange: r.KillerDelta})
 	}
-	if err := s.history(ctx, ev, killer, hist{kills: counted, headshots: hs * counted, skillChange: r.KillerDelta, killStreak: ks}); err != nil {
+	if err := s.history(ctx, ev, killer, hist{kills: counted, headshots: hs * counted, skillChange: r.KillerDelta, killStreak: ks * counted}); err != nil {
 		return r, err
 	}
-	return r, s.history(ctx, ev, victim, hist{deaths: 1, skillChange: r.VictimDelta, deathStreak: ds})
+	return r, s.history(ctx, ev, victim, hist{deaths: died, skillChange: r.VictimDelta, deathStreak: ds * died})
 }
 
 // RecordSuicide costs the player suicide_penalty skill (not below zero)

@@ -85,10 +85,12 @@ type Game struct {
 	Guessed bool   `json:"realgame_guessed"`
 	Engine  string `json:"engine"`
 	Hidden  bool   `json:"hidden"`
-	// The ranking's bot settings (settings.RankBots, settings.BotPoints).
+	// The ranking's bot settings (settings.RankBots, BotPoints, BotKills,
+	// BotStats).
 	RankBots  bool `json:"rank_bots"`
 	BotPoints bool `json:"bot_points"`
 	BotKills  bool `json:"bot_kills"`
+	BotStats  bool `json:"bot_stats"`
 	// BlockVAC: players with a VAC ban on record are kicked (settings.BlockVAC).
 	BlockVAC bool   `json:"block_vac"`
 	Servers  int    `json:"servers"`
@@ -155,7 +157,8 @@ func (a *Admin) ListGames(ctx context.Context) error {
 func botsText(g Game) string {
 	r := map[bool]string{true: "ranked", false: "hidden"}[g.RankBots]
 	r += map[bool]string{true: ", points", false: ", no points"}[g.BotPoints]
-	return r + map[bool]string{true: ", kills", false: ", no kills"}[g.BotKills]
+	r += map[bool]string{true: ", career", false: ", no career"}[g.BotKills]
+	return r + map[bool]string{true: ", stats", false: ", no stats"}[g.BotStats]
 }
 
 // Games returns all games with their number of servers and players.
@@ -189,7 +192,7 @@ func (a *Admin) Games(ctx context.Context) ([]Game, error) {
 		}
 		_, engine, warn := games.Resolve(g.Realgame, g.Code)
 		g.Engine, g.Guessed, g.Hidden = engine.String(), warn != "", hidden == "1"
-		g.RankBots, g.BotPoints, g.BotKills = set.RankBots(g.Code), set.BotPoints(g.Code), set.BotKills(g.Code)
+		g.RankBots, g.BotPoints, g.BotKills, g.BotStats = set.RankBots(g.Code), set.BotPoints(g.Code), set.BotKills(g.Code), set.BotStats(g.Code)
 		g.BlockVAC = set.BlockVAC(g.Code)
 		list = append(list, g)
 	}
@@ -312,15 +315,15 @@ type GameFields struct {
 	Order          *int // hlstats_Games.display_id
 	Hidden         *bool
 	// Bot settings of the ranking (hlstats_Options gamewe_rank_bots_<game>,
-	// gamewe_bot_points_<game>, gamewe_bot_kills_<game>).
-	RankBots, BotPoints, BotKills *bool
+	// gamewe_bot_points_<game>, gamewe_bot_kills_<game>, gamewe_bot_stats_<game>).
+	RankBots, BotPoints, BotKills, BotStats *bool
 	// BlockVAC is the ranking's VAC block (gamewe_block_vac_<game>).
 	BlockVAC *bool
 }
 
 // SetGame changes the given fields of a game.
 func (a *Admin) SetGame(ctx context.Context, code string, f GameFields) error {
-	if f.Name == nil && f.Realgame == nil && f.Order == nil && f.Hidden == nil && f.RankBots == nil && f.BotPoints == nil && f.BotKills == nil && f.BlockVAC == nil {
+	if f.Name == nil && f.Realgame == nil && f.Order == nil && f.Hidden == nil && f.RankBots == nil && f.BotPoints == nil && f.BotKills == nil && f.BotStats == nil && f.BlockVAC == nil {
 		return errors.New("nothing to change")
 	}
 	g, err := a.game(ctx, code)
@@ -409,7 +412,7 @@ type botChange struct {
 
 // botChanges returns the bot settings of f that differ from the stored ones.
 func (a *Admin) botChanges(ctx context.Context, game string, f GameFields) ([]botChange, error) {
-	if f.RankBots == nil && f.BotPoints == nil && f.BotKills == nil && f.BlockVAC == nil {
+	if f.RankBots == nil && f.BotPoints == nil && f.BotKills == nil && f.BotStats == nil && f.BlockVAC == nil {
 		return nil, nil
 	}
 	opts, err := a.options(ctx)
@@ -425,7 +428,10 @@ func (a *Admin) botChanges(ctx context.Context, game string, f GameFields) ([]bo
 		out = append(out, botChange{settings.BotPointsKey(game), *f.BotPoints, map[bool]string{true: "kills with bots give points", false: "kills with bots give no points"}[*f.BotPoints]})
 	}
 	if f.BotKills != nil && *f.BotKills != set.BotKills(game) {
-		out = append(out, botChange{settings.BotKillsKey(game), *f.BotKills, map[bool]string{true: "kills of bots count as kills", false: "kills of bots do not count as kills"}[*f.BotKills]})
+		out = append(out, botChange{settings.BotKillsKey(game), *f.BotKills, map[bool]string{true: "kills of bots count for the career rank", false: "kills of bots do not count for the career rank"}[*f.BotKills]})
+	}
+	if f.BotStats != nil && *f.BotStats != set.BotStats(game) {
+		out = append(out, botChange{settings.BotStatsKey(game), *f.BotStats, map[bool]string{true: "kills with bots count in the stats", false: "kills with bots do not count in the stats"}[*f.BotStats]})
 	}
 	if f.BlockVAC != nil && *f.BlockVAC != set.BlockVAC(game) {
 		out = append(out, botChange{settings.BlockVACKey(game), *f.BlockVAC, map[bool]string{true: "players with a VAC ban on record blocked", false: "VAC block off"}[*f.BlockVAC]})

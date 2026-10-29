@@ -82,7 +82,7 @@ var (
 		"kill_streak", "death_streak", "kill_assists", "kill_assists_medic", "kills_assisted",
 		"hpk", "kpd", "sort_kpd", "death_headshots", "death_hpk", "connection_time", "rounds",
 		"survived_count", "survived", "wins", "losses", "custom_wins", "points_healed",
-		"flags_captured", "last_skill_change",
+		"flags_captured", "last_skill_change", "career_kills",
 	}
 	resetNameCounters = []string{"connection_time", "kills", "deaths", "suicides", "headshots", "shots", "hits",
 		"rounds", "survived_count", "survived", "wins", "losses"}

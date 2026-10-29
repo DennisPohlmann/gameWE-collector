@@ -464,6 +464,7 @@ CREATE TABLE hlstats_Players (
   death_hpk real NOT NULL DEFAULT 0.00,
   points_healed bigint NOT NULL DEFAULT 0,
   flags_captured integer NOT NULL DEFAULT 0,
+  career_kills integer NOT NULL DEFAULT 0,
   PRIMARY KEY (playerId)
 );
 CREATE INDEX hlstats_Players_sort_skill ON hlstats_Players (game_id, sort_skill, sort_kpd, playerId);
@@ -510,7 +511,8 @@ CREATE TABLE hlstats_PlayersInactive (
   team_killed integer NOT NULL DEFAULT 0,
   death_hpk real NOT NULL DEFAULT 0.00,
   points_healed bigint NOT NULL DEFAULT 0,
-  flags_captured integer NOT NULL DEFAULT 0
+  flags_captured integer NOT NULL DEFAULT 0,
+  career_kills integer NOT NULL DEFAULT 0
 );
 CREATE UNIQUE INDEX hlstats_PlayersInactive_playerId ON hlstats_PlayersInactive (playerId);
 CREATE INDEX hlstats_PlayersInactive_game ON hlstats_PlayersInactive (game);

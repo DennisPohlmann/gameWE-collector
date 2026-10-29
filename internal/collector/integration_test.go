@@ -823,6 +823,8 @@ func TestIntegrationBotsGeoLoad(t *testing.T) {
 		{"human skill unchanged", count(t, db, `SELECT p.skill FROM hlstats_Players p JOIN hlstats_PlayerUniqueIds u ON u.playerId = p.playerId WHERE u.uniqueId = '0:91'`), 1000},
 		// gamewe_bot_kills_css = 0: the frag is stored, the kill not counted.
 		{"human kill of the bot not counted", count(t, db, `SELECT p.kills FROM hlstats_Players p JOIN hlstats_PlayerUniqueIds u ON u.playerId = p.playerId WHERE u.uniqueId = '0:91'`), 0},
+		// gamewe_bot_kills_css = 0: not for the career rank either.
+		{"no career kill", count(t, db, `SELECT p.career_kills FROM hlstats_Players p JOIN hlstats_PlayerUniqueIds u ON u.playerId = p.playerId WHERE u.uniqueId = '0:91'`), 0},
 		{"no kill in the name's counts", count(t, db, `SELECT COALESCE(SUM(n.kills), 0) FROM hlstats_PlayerNames n JOIN hlstats_PlayerUniqueIds u ON u.playerId = n.playerId WHERE u.uniqueId = '0:91'`), 0},
 		{"frag stored", count(t, db, `SELECT COUNT(*) FROM hlstats_Events_Frags`), 1},
 		{"location row", count(t, db, `SELECT COUNT(*) FROM hlstats_Players_Locations WHERE flag = 'de' AND country = 'Germany'`), 1},

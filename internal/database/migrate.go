@@ -394,6 +394,11 @@ func plan(ctx context.Context, q querier, dialect string, pfx Prefix) (*Plan, er
 				What: "copy the global bot setting (gamewe_rank_bots) to every ranking (gamewe_rank_bots_<game>, gamewe_bot_points_<game>) and delete it",
 				kind: stepExec, stmts: botsPerRankingSQL(pg)})
 		}
+		if m.CareerKills {
+			p.Steps = append(p.Steps, Step{Version: m.Version, Name: m.Name, Table: "hlstats_Players",
+				What: "fill career_kills (the kills of the career rank) from kills",
+				kind: stepExec, stmts: careerKillsSQL()})
+		}
 		p.Steps = append(p.Steps, Step{Version: m.Version, Name: m.Name, What: "record version " + fmt.Sprint(m.Version), kind: stepRecord, rec: &m, note: "applied"})
 	}
 	if !synced && len(p.Missing) > 0 {

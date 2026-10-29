@@ -1379,6 +1379,15 @@ func (p *Processor) kill(ctx context.Context, ev stats.Ev, e logparse.Kill) erro
 	// Left 4 Dead (as HLstatsX:CE): a player's kill of the AI (a bot) is
 	// worth points for the player alone.
 	oneSided := l4d && !teamkill && stats.IsBot(v.live.UniqueID) && !stats.IsBot(k.live.UniqueID)
+	// Without bots in the stats of the ranking, a kill of a bot is not one of
+	// the killer's kills and a death by a bot not one of the victim's deaths;
+	// the career rank counts kills of bots unless the ranking turns that off.
+	// Left 4 Dead (as HLstatsX:CE): kills of and by the AI always count.
+	set, game := p.set.Get(), p.srv.info.Game
+	botStats := teamkill || l4d || set.BotStats(game)
+	noKillCount := !botStats && stats.IsBot(v.live.UniqueID)
+	noDeathCount := !botStats && stats.IsBot(k.live.UniqueID)
+	noCareerKill := !teamkill && stats.IsBot(v.live.UniqueID) && !set.BotKills(game)
 	if !teamkill {
 		// The victim's life, and with it the kill streak, ends.
 		if err := p.endStreak(ctx, ev, v); err != nil {
@@ -1387,15 +1396,19 @@ func (p *Processor) kill(ctx context.Context, ev stats.Ev, e logparse.Kill) erro
 		if !noSkill {
 			k.killStreak = k.killStreak + 1
 		}
-		k.deathStreak = 0
-		v.deathStreak = v.deathStreak + 1
+		if !noKillCount {
+			k.deathStreak = 0
+		}
+		if !noDeathCount {
+			v.deathStreak = v.deathStreak + 1
+		}
 	}
 	headshot := e.Headshot || k.headshotLines > 0
 	r, err := p.store.RecordKill(ctx, ev, stats.Kill{
 		Killer: k.live, Victim: v.live, Weapon: e.Weapon, Headshot: headshot, Teamkill: teamkill,
 		KillStreak: k.killStreak, DeathStreak: v.deathStreak, NoSkill: noSkill, OneSided: oneSided,
-		NoKillCount: !teamkill && stats.IsBot(v.live.UniqueID) && !p.set.Get().BotKills(p.srv.info.Game),
-		KillerPos:   kpos, VictimPos: vpos,
+		NoKillCount: noKillCount, NoDeathCount: noDeathCount, NoCareerKill: noCareerKill,
+		KillerPos: kpos, VictimPos: vpos,
 	})
 	if err != nil {
 		return err
@@ -1409,10 +1422,15 @@ func (p *Processor) kill(ctx context.Context, ev stats.Ev, e logparse.Kill) erro
 	if teamkill {
 		return nil
 	}
-	k.kills++
-	v.deaths++
-	k.weaponKills[e.Weapon]++
-	k.bestKill, v.bestDeath = max(k.bestKill, k.killStreak), max(v.bestDeath, v.deathStreak)
+	if !noKillCount { // the session counts, as stored
+		k.kills++
+		k.weaponKills[e.Weapon]++
+		k.bestKill = max(k.bestKill, k.killStreak)
+	}
+	if !noDeathCount {
+		v.deaths++
+		v.bestDeath = max(v.bestDeath, v.deathStreak)
+	}
 	if l4d {
 		if err := p.l4dKillAction(ctx, ev, k, v, e, noSkill); err != nil {
 			return err
@@ -1433,7 +1451,9 @@ func (p *Processor) kill(ctx context.Context, ev stats.Ev, e logparse.Kill) erro
 	// headshot) with its own reward; kill streaks are rewarded when they end
 	// (endStreak). Codes the game does not define are ignored.
 	if headshot {
-		k.headshots++
+		if !noKillCount {
+			k.headshots++
+		}
 		if k.headshotLines > 0 { // the plugin's line came first
 			k.headshotLines--
 		} else {
