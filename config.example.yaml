@@ -119,6 +119,11 @@ features:
     interval: 30m      # how often running bans are checked again (at least 5m)
     phrases: []        # further kick texts that mean a ban, e.g. ["gebannt"]
     allow_private: false # true: the ban list may be on the LAN or localhost
+  bans_sync:           # all bans of all known players for the website (hlstats_Bans): VAC and game
+    enabled: true      # bans from the Steam Web API (key: web admin, Settings -> Steam) and, with
+                       # sourcebans above, the whole SourceBans list every sourcebans.interval
+    steam_recheck: 24h # how long a player's Steam answer is used before asking again (at least 1h)
+    steam_pause: 1s    # pause between two Steam requests of 100 players (at least 1s)
   scheduled_resets:    # rankings reset on a schedule (set in the web admin or with gamewe halloffame)
     time: "00:00"      # HH:MM in timezone below: when a period ends and the next one starts
   cs2_hitgroups:       # Counter-Strike 2: hits per body part (head, neck, chest, ...) and damage

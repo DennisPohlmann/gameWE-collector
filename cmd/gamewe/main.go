@@ -81,6 +81,10 @@ Usage:
                                    features.inactive_players is off; queued for the running
                                    collector if there is one
   gamewe inactive -list            the latest moves of inactive players and their results
+  gamewe bans     [-config FILE] [--dry-run|-n] [--force|-f]
+                                   read the bans of all known players now (Steam Web API, the
+                                   whole SourceBans list) into hlstats_Bans, as the job
+                                   features.bans_sync does, also when it is off
   gamewe rcon     [-config FILE] -server ID|IP:PORT COMMAND...
                                    send an RCON command to a game server of
                                    hlstats_Servers and print the answer
@@ -192,6 +196,8 @@ func main() {
 		err = resetCmd(args)
 	case "inactive":
 		err = inactiveCmd(args)
+	case "bans":
+		err = bansCmd(args)
 	case "jobs":
 		err = jobsCmd(args)
 	case "halloffame":
@@ -495,6 +501,7 @@ func runCmd(args []string) error {
 		go banWatch.Run(ctx)
 	}
 	go vacBlock.Run(ctx)
+	go newBanSync(cfg, store, set, log).Run(ctx)
 	log.Info("features", "rcon_status", rs.Enabled, "rcon_status_every", every.String(), "log_address", la.Enabled, "log_address_every", laEvery.String(),
 		"log_address_http", la.HTTP, "log_secret", ls.Enabled, "server_info", si.Enabled, "server_info_every", siEvery.String(),
 		"daily_awards", da.Enabled, "daily_awards_at", da.Time+" "+daLoc.String(), "cs2_hitgroups", cfg.Features.CS2Hitgroups.Enabled,

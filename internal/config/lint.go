@@ -529,6 +529,9 @@ func (l *linter) unused(cfg Config) {
 		changed("features.sourcebans.interval", f.SourceBans.Interval != df.SourceBans.Interval),
 		changed("features.sourcebans.phrases", len(f.SourceBans.Phrases) > 0),
 		changed("features.sourcebans.allow_private", f.SourceBans.AllowPrivate))
+	off("features.bans_sync.enabled", !f.BansSync.Enabled,
+		changed("features.bans_sync.steam_recheck", f.BansSync.SteamRecheck != df.BansSync.SteamRecheck),
+		changed("features.bans_sync.steam_pause", f.BansSync.SteamPause != df.BansSync.SteamPause))
 	// The public addresses are only what features.log_address registers.
 	if u.UDPEnabled && u.PublicAddress != "" && !f.LogAddress.Enabled {
 		l.warnf(l.udpKey("listen.public_address"), "has no effect while features.log_address.enabled is false (nothing registers it); use it in logaddress_add by hand")

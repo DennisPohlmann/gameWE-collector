@@ -133,7 +133,12 @@ the audit summary of `security-privacy-audit`.
   by hand `gamewe inactive`)
   only moves whole rows between `hlstats_Players` and
   `hlstats_PlayersInactive` (`SELECT *`, the column order must stay equal;
-  an integration test checks it) and deletes nothing else. Migrations
+  an integration test checks it) and deletes nothing else. The bans-sync
+  job (`features.bans_sync`, `internal/collector/bansync.go`) deletes only
+  `source = 'sourcebans'` rows of `hlstats_Bans` (bans the completely read
+  list no longer shows as running, and bans whose `sb_ends` has passed)
+  and stale rows of `hlstats_Bans_Players`; a partly read list changes
+  nothing. Migrations
   only add (tables, columns, indexes, missing seed rows), are idempotent,
   never delete rows or drop tables/columns; released migrations are never
   changed. How to add one: `docs/DEVELOPMENT.md`, "Adding a migration".

@@ -107,6 +107,18 @@ permanent, running, expired, lifted). The running bans are read again the
 same way every `features.sourcebans.interval`. Nothing is sent to the game
 server; SourceBans itself kicks the player.
 
+**Bans of all players (bans-sync).** With `features.bans_sync` the
+collector asks the same Steam Web API (below) for every known account,
+100 SteamID64 per request with `features.bans_sync.steam_pause` between two
+requests, and with `features.sourcebans` it reads the whole public list of
+the ban list address page by page:
+`GET <address>index.php?p=banlist&page=N` (from 1 until a page brings no new
+ban, at most 1000 pages, 0.5 s between pages, the limits of the lookup
+above). The results go into `hlstats_Bans` and `hlstats_Bans_Players`
+(DB-SEMANTICS.md), which the website reads for its bans page, the player
+profile and its API; the website no longer asks Steam or SourceBans for
+bans itself.
+
 **Steam Web API (VAC block).** For the rankings with
 `gamewe_block_vac_<game>` = 1 the collector asks
 `GET https://api.steampowered.com/ISteamUser/GetPlayerBans/v1/?key=<key>&steamids=<SteamID64,...>`

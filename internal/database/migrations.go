@@ -214,6 +214,13 @@ var Migrations = []Migration{
 			"kills of bots by gamewe_bot_kills_<game> while kills follows gamewe_bot_stats_<game>; filled from kills",
 		Sync: true, CareerKills: true,
 	},
+	{
+		Version: 21, Name: "all-bans",
+		Desc: "tables hlstats_Bans (the bans of every known Steam account: VAC, game, community and trade bans from the Steam " +
+			"Web API, running bans of the public SourceBans list) and hlstats_Bans_Players (which players of which ranking an " +
+			"account is), filled by the collector's bans-sync job (features.bans_sync); readable by gamewe_web",
+		Sync: true,
+	},
 }
 
 // Latest is the newest schema version this collector knows.

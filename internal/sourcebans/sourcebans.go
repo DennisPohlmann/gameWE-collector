@@ -48,6 +48,7 @@ type Ban struct {
 	Reason string
 	Length string // as shown ("Permanent", "2 wk", "1 hr")
 	Date   string // as shown ("26.10.2026, 17:48", or ISO 8601)
+	Admin  string // the banning admin as shown ("" when the list hides it)
 	State  State
 }
 
@@ -141,33 +142,10 @@ func (c *Client) Lookup(ctx context.Context, base, uniqueID string) ([]Ban, erro
 		return nil, errors.New("no SourceBans address")
 	}
 	q := url.Values{"p": {"banlist"}, "advSearch": {"STEAM_0:" + acc}, "advType": {"steamid"}}
-	ctx, cancel := context.WithTimeout(ctx, Timeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"index.php?"+q.Encode(), nil)
+	html, err := c.fetch(ctx, base, q)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "gameWE collector")
-	req.Header.Set("Accept", "text/html")
-	res, err := c.client().Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close()
-	if res.StatusCode >= 300 && res.StatusCode < 400 {
-		return nil, fmt.Errorf("redirect from %s; set the final address", base)
-	}
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d from %s", res.StatusCode, base)
-	}
-	body, err := io.ReadAll(io.LimitReader(res.Body, MaxPage+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(body) > MaxPage {
-		return nil, fmt.Errorf("page larger than %d bytes", MaxPage)
-	}
-	html := string(body)
 	var out []Ban
 	for _, b := range Parse(html) {
 		if a, ok := Account(b.Steam); ok && a == acc {
@@ -178,6 +156,38 @@ func (c *Client) Lookup(ctx context.Context, base, uniqueID string) ([]Ban, erro
 		return nil, ErrUnknownTemplate
 	}
 	return out, nil
+}
+
+// fetch reads base+"index.php?"+q: no redirects, at most MaxPage bytes,
+// within Timeout.
+func (c *Client) fetch(ctx context.Context, base string, q url.Values) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, Timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"index.php?"+q.Encode(), nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "gameWE collector")
+	req.Header.Set("Accept", "text/html")
+	res, err := c.client().Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 && res.StatusCode < 400 {
+		return "", fmt.Errorf("redirect from %s; set the final address", base)
+	}
+	if res.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("HTTP %d from %s", res.StatusCode, base)
+	}
+	body, err := io.ReadAll(io.LimitReader(res.Body, MaxPage+1))
+	if err != nil {
+		return "", err
+	}
+	if len(body) > MaxPage {
+		return "", fmt.Errorf("page larger than %d bytes", MaxPage)
+	}
+	return string(body), nil
 }
 
 // ErrUnknownTemplate: the page shows Steam IDs, but no ban could be read
@@ -358,10 +368,10 @@ var (
 )
 
 func init() {
-	for _, l := range []string{"Player", "Steam ID", "Steam Community", "Invoked on", "Ban length", "Reason"} {
+	for _, l := range []string{"Player", "Steam ID", "Steam Community", "Invoked on", "Ban length", "Reason", "Admin"} {
 		detailFields[l] = regexp.MustCompile(`<span>(?:\s*<i[^>]*></i>)?\s*` + regexp.QuoteMeta(l) + `\s*</span>\s*<span[^>]*>([\s\S]*?)</span>`)
 	}
-	for _, l := range []string{"Player", "Invoked on", "Banlength", "Reason"} {
+	for _, l := range []string{"Player", "Invoked on", "Banlength", "Reason", "Banned by Admin"} {
 		classicField[l] = regexp.MustCompile(`>\s*` + regexp.QuoteMeta(l) + `\s*</td>\s*<td[^>]*>([\s\S]*?)</td>`)
 	}
 }
@@ -424,7 +434,7 @@ func parseDetail(html string) []Ban {
 			length = text(cls[2])
 		}
 		out = append(out, Ban{Steam: steam, Name: field("Player"), Reason: field("Reason"),
-			Length: reLengthNote.ReplaceAllString(length, ""), Date: field("Invoked on"), State: classState(cls, length)})
+			Length: reLengthNote.ReplaceAllString(length, ""), Date: field("Invoked on"), Admin: field("Admin"), State: classState(cls, length)})
 	}
 	return out
 }
@@ -446,7 +456,7 @@ func parseClassic(html string) []Ban {
 			length = text(cls[2])
 		}
 		out = append(out, Ban{Steam: steam, Name: field("Player"), Reason: field("Reason"),
-			Length: reLengthNote.ReplaceAllString(length, ""), Date: field("Invoked on"), State: classState(cls, length)})
+			Length: reLengthNote.ReplaceAllString(length, ""), Date: field("Invoked on"), Admin: field("Banned by Admin"), State: classState(cls, length)})
 	}
 	return out
 }

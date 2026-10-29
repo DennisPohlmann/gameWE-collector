@@ -268,6 +268,9 @@ type Features struct {
 	// (hlstats_Players_Bans) and takes them out of the ranking until the
 	// ban ends; it needs the address of the ban list (web admin).
 	SourceBans SourceBans `yaml:"sourcebans"`
+	// BansSync keeps hlstats_Bans filled with the bans of every known Steam
+	// account (Steam Web API, the whole SourceBans list) for the website.
+	BansSync BansSync `yaml:"bans_sync"`
 	// ScheduledResets is the time of day of the scheduled ranking resets
 	// (the schedules themselves are in the database, set in the web admin).
 	ScheduledResets ScheduledResets `yaml:"scheduled_resets"`
@@ -499,6 +502,52 @@ func (s SourceBans) Every() (time.Duration, error) { return interval(s.Interval)
 // collector's (global, Config.Timezone), else the server's.
 func (s SourceBans) Location(global string) (*time.Location, error) { return zone("", global) }
 
+// BansSync is the bans-sync job: the VAC, game, community and trade bans
+// of every known Steam account (active and inactive players of every
+// ranking) from the Steam Web API (key: web admin), asked again every
+// SteamRecheck with SteamPause between two requests of 100 accounts, and
+// the running bans of the whole SourceBans list every
+// features.sourcebans.interval (when features.sourcebans is on and the
+// address is set), stored in hlstats_Bans for the website. In the config
+// file it is a mapping, or just true / false.
+type BansSync struct {
+	Enabled      bool   `yaml:"enabled"`
+	SteamRecheck string `yaml:"steam_recheck"` // Go duration ("24h") or seconds
+	SteamPause   string `yaml:"steam_pause"`   // Go duration ("1s") or seconds
+}
+
+// Shortest features.bans_sync.steam_recheck and steam_pause (the Steam
+// Web API allows 100,000 requests a day).
+const (
+	MinBansRecheck = time.Hour
+	MinBansPause   = time.Second
+)
+
+// UnmarshalYAML accepts "bans_sync: true" and the mapping.
+func (b *BansSync) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode {
+		return n.Decode(&b.Enabled)
+	}
+	if n.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: features.bans_sync: want true / false or enabled, steam_recheck, steam_pause", n.Line)
+	}
+	for i := 0; i < len(n.Content); i += 2 {
+		switch k := n.Content[i].Value; k {
+		case "enabled", "steam_recheck", "steam_pause":
+		default:
+			return fmt.Errorf("line %d: features.bans_sync: unknown key %q (enabled, steam_recheck, steam_pause)", n.Content[i].Line, k)
+		}
+	}
+	type plain BansSync
+	return n.Decode((*plain)(b))
+}
+
+// Recheck returns SteamRecheck as a duration ("24h" or plain seconds).
+func (b BansSync) Recheck() (time.Duration, error) { return interval(b.SteamRecheck) }
+
+// Pause returns SteamPause as a duration ("1s" or plain seconds).
+func (b BansSync) Pause() (time.Duration, error) { return interval(b.SteamPause) }
+
 // LogSecret checks the secret (sv_logsecret) in the log packets against
 // hlstats_Servers.log_secret: a server with a stored secret must send it,
 // a server without one is not checked. The secret is set by hand (gamewe
@@ -654,7 +703,8 @@ func Defaults() Config {
 		CS2Hitgroups:    Toggle{Enabled: true},
 		UpdateCheck:     Toggle{Enabled: true},
 		InactivePlayers: InactivePlayers{Enabled: true, Time: "01:00"},
-		SourceBans:      SourceBans{Enabled: true, Interval: "30m"}}}
+		SourceBans:      SourceBans{Enabled: true, Interval: "30m"},
+		BansSync:        BansSync{Enabled: true, SteamRecheck: "24h", SteamPause: "1s"}}}
 }
 
 // Load reads, decodes and validates the YAML file at path. When the file
@@ -922,6 +972,12 @@ func (c Config) Problems() []Problem {
 	}
 	if d, err := c.Features.SourceBans.Every(); err != nil || d < MinSourceBansInterval {
 		add("features.sourcebans.interval", "%q: want a duration of at least %v, e.g. \"30m\"", c.Features.SourceBans.Interval, MinSourceBansInterval)
+	}
+	if d, err := c.Features.BansSync.Recheck(); err != nil || d < MinBansRecheck {
+		add("features.bans_sync.steam_recheck", "%q: want a duration of at least %v, e.g. \"24h\"", c.Features.BansSync.SteamRecheck, MinBansRecheck)
+	}
+	if d, err := c.Features.BansSync.Pause(); err != nil || d < MinBansPause {
+		add("features.bans_sync.steam_pause", "%q: want a duration of at least %v, e.g. \"1s\"", c.Features.BansSync.SteamPause, MinBansPause)
 	}
 	for i, p := range c.Features.SourceBans.Phrases {
 		if l := len(strings.TrimSpace(p)); l < 4 || l > 200 {

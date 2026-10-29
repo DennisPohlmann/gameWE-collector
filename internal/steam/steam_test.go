@@ -118,3 +118,14 @@ func FuzzID64(f *testing.F) {
 		}
 	})
 }
+
+func TestBusy(t *testing.T) {
+	for code, want := range map[int]bool{429: true, 500: true, 503: true, 404: false, 400: false} {
+		if got := Busy(&StatusError{Code: code}); got != want {
+			t.Errorf("%d: %v", code, got)
+		}
+	}
+	if Busy(errors.New("x")) || Busy(ErrKey) {
+		t.Error("other errors are not busy")
+	}
+}

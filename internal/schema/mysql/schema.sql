@@ -58,6 +58,41 @@ CREATE TABLE `hlstats_Awards_History` (
   KEY `date` (`date`,`award_id`),
   KEY `award_id` (`award_id`,`date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE `hlstats_Bans` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `playerId` mediumint(8) unsigned DEFAULT NULL,
+  `steamid64` bigint(20) unsigned NOT NULL,
+  `source` enum('steam','sourcebans') NOT NULL DEFAULT 'steam',
+  `banned` tinyint(1) unsigned NOT NULL DEFAULT 0,
+  `vac_banned` tinyint(1) unsigned NOT NULL DEFAULT 0,
+  `vac_bans` smallint(5) unsigned NOT NULL DEFAULT 0,
+  `game_bans` smallint(5) unsigned NOT NULL DEFAULT 0,
+  `community_banned` tinyint(1) unsigned NOT NULL DEFAULT 0,
+  `economy_ban` varchar(16) NOT NULL DEFAULT 'none',
+  `days_since_last_ban` mediumint(8) unsigned NOT NULL DEFAULT 0,
+  `last_ban` int(10) unsigned NOT NULL DEFAULT 0,
+  `sb_reason` varchar(255) NOT NULL DEFAULT '',
+  `sb_length` int(10) unsigned NOT NULL DEFAULT 0,
+  `sb_created` int(10) unsigned DEFAULT NULL,
+  `sb_ends` int(10) unsigned DEFAULT NULL,
+  `sb_admin` varchar(128) NOT NULL DEFAULT '',
+  `first_seen` int(10) unsigned NOT NULL DEFAULT 0,
+  `last_checked` int(10) unsigned NOT NULL DEFAULT 0,
+  `updated_at` int(10) unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `account` (`steamid64`,`source`),
+  KEY `playerId` (`playerId`),
+  KEY `checked` (`source`,`last_checked`),
+  KEY `banned` (`banned`,`last_ban`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE `hlstats_Bans_Players` (
+  `steamid64` bigint(20) unsigned NOT NULL,
+  `playerId` mediumint(8) unsigned NOT NULL,
+  `game` varchar(32) NOT NULL DEFAULT '',
+  PRIMARY KEY (`steamid64`,`playerId`),
+  KEY `game` (`game`,`steamid64`),
+  KEY `playerId` (`playerId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_ClanTags` (
   `id` mediumint(8) unsigned NOT NULL AUTO_INCREMENT,
   `pattern` varchar(250) NOT NULL DEFAULT '',

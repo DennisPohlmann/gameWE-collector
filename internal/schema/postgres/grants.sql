@@ -20,6 +20,8 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO gamewe_web_admin;
 GRANT SELECT ON hlstats_Actions TO gamewe_web;
 GRANT SELECT ON hlstats_Awards TO gamewe_web;
 GRANT SELECT ON hlstats_Awards_History TO gamewe_web;
+GRANT SELECT ON hlstats_Bans TO gamewe_web;
+GRANT SELECT ON hlstats_Bans_Players TO gamewe_web;
 GRANT SELECT ON hlstats_ClanTags TO gamewe_web;
 GRANT SELECT ON hlstats_Clans TO gamewe_web;
 GRANT SELECT ON hlstats_Definition_Ranks_Ribbons TO gamewe_web;

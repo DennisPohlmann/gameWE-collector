@@ -192,7 +192,7 @@ game code typed instead.
 - `--force` and `--dry-run` together are refused (exit code 2).
 
 This holds for `db migrate`, `db init`, `db grants`, `db seed`, `db purge`,
-`db optimize`, `db reset`, `db drop`, `db convert`, `reset`, `inactive`,
+`db optimize`, `db reset`, `db drop`, `db convert`, `reset`, `inactive`, `bans`,
 `awards`, `serverinfo`, `logaddress -add`, `geoip-update`, `simulate` and
 the changing `game`, `server` and `option` commands. Commands that only read
 never ask: `check`, `status`, `config test`, `db status`, `version`,
@@ -218,6 +218,7 @@ is the service and never asks; its automatic migration is
 | `gamewe reset GAME -mode player-stats\|all-stats\|all` | reset a ranking (below) |
 | `gamewe awards [-date YYYY-MM-DD]` | decide the daily awards of a day (again), also with `features.daily_awards` off |
 | `gamewe inactive` | move the inactive players to `hlstats_PlayersInactive` now, also with `features.inactive_players` off |
+| `gamewe bans` | read the bans of all known players now (Steam Web API for every due account, the whole SourceBans list) into `hlstats_Bans`, as `features.bans_sync` does, also when it is off; `--dry-run` only counts the due accounts |
 | `gamewe jobs [-queue]` | the jobs queued for the collector (resets, scheduled resets, inactive players, daily awards), their state and result ([below](#collector-jobs-by-hand-and-from-cron)) |
 | `gamewe geoip-update` | download the DB-IP database now |
 | `gamewe check-update` | ask GitHub for the latest release now and report on stderr whether it is newer (with `-o json` also the document on stdout); exit code 1 when GitHub cannot be reached. Nothing is installed ([`features.update_check`](CONFIG.md#features)) |
@@ -456,6 +457,7 @@ asks first, `--dry-run` shows what it would do, `--force` does not ask):
 |---|---|---|
 | daily awards (`features.daily_awards`), with the cleanup of ping samples older than 90 days | daily at `time` | `gamewe awards [-date YYYY-MM-DD] [-game CODE] [-tz ZONE]` (default: yesterday; the ping cleanup only without `-game`) |
 | move inactive players (`features.inactive_players`) | daily at `time` | `gamewe inactive` |
+| bans of all known players into `hlstats_Bans` (`features.bans_sync`; needs Steam and the SourceBans list besides the database) | every minute, each account every `steam_recheck`, the list every `sourcebans.interval` | `gamewe bans` (one complete pass) |
 | ranking reset queued by the web admin | every 10 s | `gamewe reset GAME -mode ... --force` ([below](#resetting-a-ranking)) |
 | scheduled ranking reset with the hall of fame, when a period of a ranking's schedule has ended | checked every minute | `gamewe halloffame run GAME` ([below](#scheduled-resets-and-the-hall-of-fame)) |
 | delete finished jobs older than 30 days | hourly | part of `gamewe db purge -older-than DAYS` |

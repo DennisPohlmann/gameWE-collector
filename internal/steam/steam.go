@@ -55,6 +55,18 @@ type Client struct {
 // ErrKey: the API refused the key (HTTP 401 or 403).
 var ErrKey = errors.New("steam web api: key refused (check gamewe_steam_api_key)")
 
+// StatusError is an answer of the API other than 200 and the refused key.
+type StatusError struct{ Code int }
+
+func (e *StatusError) Error() string { return fmt.Sprintf("steam web api: HTTP %d", e.Code) }
+
+// Busy reports whether err asks to slow down: HTTP 429 (too many requests)
+// or a server error (5xx).
+func Busy(err error) bool {
+	var se *StatusError
+	return errors.As(err, &se) && (se.Code == http.StatusTooManyRequests || se.Code >= 500)
+}
+
 // PlayerBans returns the bans of up to MaxIDs players (SteamID64), keyed
 // by SteamID64; players the API does not know are missing.
 func (c *Client) PlayerBans(ctx context.Context, key string, ids []string) (map[string]PlayerBans, error) {
@@ -96,7 +108,7 @@ func (c *Client) PlayerBans(ctx context.Context, key string, ids []string) (map[
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 		return nil, ErrKey
 	case resp.StatusCode != http.StatusOK:
-		return nil, fmt.Errorf("steam web api: HTTP %d", resp.StatusCode)
+		return nil, &StatusError{Code: resp.StatusCode}
 	}
 	var out struct {
 		Players []PlayerBans `json:"players"`
