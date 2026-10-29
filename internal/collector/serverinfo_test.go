@@ -5,6 +5,7 @@ package collector
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -54,16 +55,16 @@ func TestParseA2SInfo(t *testing.T) {
 		in   []byte
 		want stats.ServerInfo
 	}{
-		{"source linux secure", a2sSourceReply(240, 'l', 1, "9540945"), stats.ServerInfo{Version: "9540945", OS: OSLinux, VAC: VACSecure}},
-		{"cs2 windows insecure", a2sSourceReply(730, 'w', 0, "1.40.2.2"), stats.ServerInfo{Version: "1.40.2.2", OS: OSWindows, VAC: VACInsecure}},
-		{"mac", a2sSourceReply(440, 'm', 1, "8622567"), stats.ServerInfo{Version: "8622567", OS: OSMac, VAC: VACSecure}},
-		{"the ship", a2sSourceReply(2400, 'w', 1, "1.0.0.4"), stats.ServerInfo{Version: "1.0.0.4", OS: OSWindows, VAC: VACSecure}},
-		{"goldsrc version suffix", a2sSourceReply(10, 'l', 1, "1.1.2.7/Stdio"), stats.ServerInfo{Version: "1.1.2.7", OS: OSLinux, VAC: VACSecure}},
-		{"unknown env and vac", a2sSourceReply(240, 'x', 7, "1"), stats.ServerInfo{Version: "1"}},
+		{"source linux secure", a2sSourceReply(240, 'l', 1, "9540945"), stats.ServerInfo{Version: "9540945", OS: OSLinux, VAC: VACSecure, MaxPlayers: 24}},
+		{"cs2 windows insecure", a2sSourceReply(730, 'w', 0, "1.40.2.2"), stats.ServerInfo{Version: "1.40.2.2", OS: OSWindows, VAC: VACInsecure, MaxPlayers: 24}},
+		{"mac", a2sSourceReply(440, 'm', 1, "8622567"), stats.ServerInfo{Version: "8622567", OS: OSMac, VAC: VACSecure, MaxPlayers: 24}},
+		{"the ship", a2sSourceReply(2400, 'w', 1, "1.0.0.4"), stats.ServerInfo{Version: "1.0.0.4", OS: OSWindows, VAC: VACSecure, MaxPlayers: 24}},
+		{"goldsrc version suffix", a2sSourceReply(10, 'l', 1, "1.1.2.7/Stdio"), stats.ServerInfo{Version: "1.1.2.7", OS: OSLinux, VAC: VACSecure, MaxPlayers: 24}},
+		{"unknown env and vac", a2sSourceReply(240, 'x', 7, "1"), stats.ServerInfo{Version: "1", MaxPlayers: 24}},
 		{"hostile version", a2sSourceReply(240, 'l', 1, "1.0\x1b[31m\n<b>\xff"+strings.Repeat("9", 100)), stats.ServerInfo{
-			Version: ("1.0[31m<b>" + strings.Repeat("9", 100))[:maxVersionLen], OS: OSLinux, VAC: VACSecure}},
-		{"goldsrc m", a2sGoldSrcReply('l', 1, false), stats.ServerInfo{OS: OSLinux, VAC: VACSecure}},
-		{"goldsrc m mod", a2sGoldSrcReply('w', 0, true), stats.ServerInfo{OS: OSWindows, VAC: VACInsecure}},
+			Version: ("1.0[31m<b>" + strings.Repeat("9", 100))[:maxVersionLen], OS: OSLinux, VAC: VACSecure, MaxPlayers: 24}},
+		{"goldsrc m", a2sGoldSrcReply('l', 1, false), stats.ServerInfo{OS: OSLinux, VAC: VACSecure, MaxPlayers: 32}},
+		{"goldsrc m mod", a2sGoldSrcReply('w', 0, true), stats.ServerInfo{OS: OSWindows, VAC: VACInsecure, MaxPlayers: 32}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, ch, err := ParseA2SInfo(tc.in)
@@ -120,7 +121,7 @@ func TestQueryServerInfoChallenge(t *testing.T) {
 	}()
 	addr := netip.MustParseAddrPort(pc.LocalAddr().String())
 	info, err := QueryServerInfo(context.Background(), addr, time.Second)
-	if err != nil || info != (stats.ServerInfo{Version: "7604765", OS: OSWindows, VAC: VACSecure}) {
+	if err != nil || info != (stats.ServerInfo{Version: "7604765", OS: OSWindows, VAC: VACSecure, MaxPlayers: 24}) {
 		t.Fatalf("got %+v %v", info, err)
 	}
 	if first := <-reqs; !bytes.Equal(first, a2sRequest) {
@@ -212,6 +213,36 @@ func TestProcessorServerInfo(t *testing.T) {
 	}
 }
 
+// The slots of A2S_INFO go to max_players (not with the info columns), only
+// when they change, and not once an RCON status reports them.
+func TestProcessorA2SMaxPlayers(t *testing.T) {
+	p, st := newTestProcessor(t)
+	ctx := context.Background()
+	id := p.srv.info.ID
+	for range 2 {
+		if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "1", MaxPlayers: 24}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if want := fmt.Sprintf("%d:24:0", id); len(st.status) != 1 || st.status[0] != want {
+		t.Fatalf("status writes %v, want [%s]", st.status, want)
+	}
+	if len(st.infos) != 1 || st.infos[0].MaxPlayers != 0 || p.maxPlayers() != 24 {
+		t.Fatalf("infos %+v, maxPlayers %d", st.infos, p.maxPlayers())
+	}
+	status, _ := ParseStatus(cssStatus)
+	if err := p.Status(ctx, status, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	n := len(st.status)
+	if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "1", MaxPlayers: 10}); err != nil {
+		t.Fatal(err)
+	}
+	if len(st.status) != n || p.maxPlayers() != status.MaxPlayers {
+		t.Errorf("A2S_INFO slots written over the status: %v, maxPlayers %d", st.status[n:], p.maxPlayers())
+	}
+}
+
 // The monitor queries A2S_INFO without an RCON password.
 func TestMonitorServerInfo(t *testing.T) {
 	firstServerInfo = 10 * time.Millisecond
@@ -244,7 +275,7 @@ func TestMonitorServerInfo(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		select {
 		case info := <-got:
-			if info != (stats.ServerInfo{Version: "9540945", OS: OSLinux, VAC: VACSecure}) {
+			if info != (stats.ServerInfo{Version: "9540945", OS: OSLinux, VAC: VACSecure, MaxPlayers: 24}) {
 				t.Fatalf("info %+v", info)
 			}
 		case <-time.After(5 * time.Second):

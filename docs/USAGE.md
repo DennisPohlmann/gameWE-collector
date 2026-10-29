@@ -213,7 +213,7 @@ is the service and never asks; its automatic migration is
 | `gamewe db init`, `purge`, `optimize`, `reset`, `drop` | tables of a new database; delete old events; give the space back; empty everything; drop the tables (below) |
 | `gamewe -V` / `--version` / `version` | the version |
 | `gamewe status`, `gamewe logaddress`, `gamewe rcon` | RCON status, log address registration, any RCON command (below) |
-| `gamewe serverinfo` | ask the servers for version, OS and VAC (`A2S_INFO`) and store what changed, as `features.server_info` does |
+| `gamewe serverinfo` | ask the servers for version, OS, VAC and slots (`A2S_INFO`) and store what changed, as `features.server_info` does |
 | `gamewe game`, `gamewe server`, `gamewe option` | games, servers and settings like the web admin (below) |
 | `gamewe reset GAME -mode player-stats\|all-stats\|all` | reset a ranking (below) |
 | `gamewe awards [-date YYYY-MM-DD]` | decide the daily awards of a day (again), also with `features.daily_awards` off |
@@ -443,7 +443,7 @@ gamewe logaddress -add                        # register it where it is missing
 gamewe logaddress -server 198.51.100.7:27015 -address 203.0.113.4:41337 -add
 gamewe logaddress -server 198.51.100.8:27015 -add  # a CS2 server: logaddress_add_http with listen.http (token shown as <token>)
 gamewe rcon -server 3 sv_maxplayers           # any RCON command, prints the answer
-gamewe serverinfo                             # A2S_INFO of all servers, store version, OS, VAC (-dry-run: only show)
+gamewe serverinfo                             # A2S_INFO of all servers, store version, OS, VAC, max players (-dry-run: only show)
 gamewe awards -date 2026-10-21                # decide the daily awards of a day again
 ```
 

@@ -263,14 +263,15 @@ func TestMigrateJobCommands(t *testing.T) {
 	out, code = gw(t, bin, "serverinfo", "-f", "-config", cfg)
 	expect(t, out, code, 0, "done: 1 servers updated")
 	var version, os, vac string
-	if err := admin.QueryRow(`SELECT server_version, server_os, server_vac FROM hlstats_Servers WHERE port = `+strconv.Itoa(port)).Scan(&version, &os, &vac); err != nil {
+	var maxPlayers int
+	if err := admin.QueryRow(`SELECT server_version, server_os, server_vac, max_players FROM hlstats_Servers WHERE port = `+strconv.Itoa(port)).Scan(&version, &os, &vac, &maxPlayers); err != nil {
 		t.Fatal(err)
 	}
-	if version != "9540945" || os != "linux" || vac != "secure" {
-		t.Errorf("stored %q %q %q", version, os, vac)
+	if version != "9540945" || os != "linux" || vac != "secure" || maxPlayers != 24 {
+		t.Errorf("stored %q %q %q %d", version, os, vac, maxPlayers)
 	}
 	out, code = gw(t, bin, "serverinfo", "-o", "csv", "-config", cfg)
-	expect(t, out, code, 0, "9540945,linux,secure,false")
+	expect(t, out, code, 0, "9540945,linux,secure,24,false")
 	if !strings.Contains(out, "id,address,version") {
 		t.Error("csv header missing")
 	}

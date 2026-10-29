@@ -86,9 +86,10 @@ Valve's `A2S_INFO` query (`FF FF FF FF 54 "Source Engine Query" 00`, plus the
 4 challenge bytes when the server answers with `S2C_CHALLENGE` `FF FF FF FF
 41 <challenge>`) over UDP to the game port of every server in
 `hlstats_Servers`, every `features.server_info.interval`. It reads the
-version string, the environment byte (`l` Linux, `w` Windows, `m`/`o` Mac)
-and the VAC byte of the Source answer (`FF FF FF FF 49 ...`), and environment
-and VAC of the old GoldSrc answer (`FF FF FF FF 6D ...`, no version). Only one
+version string, the max players byte, the environment byte (`l` Linux, `w`
+Windows, `m`/`o` Mac) and the VAC byte of the Source answer (`FF FF FF FF 49
+...`), and max players, environment and VAC of the old GoldSrc answer (`FF FF
+FF FF 6D ...`, no version). Only one
 packet of at most 1400 bytes from the server's own address is read (split
 answers are not supported); the strings are cut to printable ASCII. The game
 server needs nothing extra: the server browser uses the same query.

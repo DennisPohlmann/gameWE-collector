@@ -82,7 +82,7 @@ type Server struct {
 	Engine       games.Engine // from Base
 	Warning      string       // realgame was guessed (logged once)
 	Map          string       // act_map
-	MaxPlayers   int          // max_players (from RCON status), 0 if unknown
+	MaxPlayers   int          // max_players (from RCON status or A2S_INFO), 0 if unknown
 	RconPassword string       // empty: no in-game command replies
 	// LogSecret is sv_logsecret (features.log_secret), set by hand in the
 	// CLI or the web admin; empty: packets are not checked.
@@ -97,6 +97,10 @@ type Server struct {
 // empty field is unknown.
 type ServerInfo struct {
 	Version, OS, VAC string
+	// MaxPlayers is the slot count of an A2S_INFO answer, 0 if unknown. It
+	// is not one of the info columns: the collector stores it in
+	// hlstats_Servers.max_players (see Processor.ServerInfo).
+	MaxPlayers int
 }
 
 // Or fills the empty fields of i from o.

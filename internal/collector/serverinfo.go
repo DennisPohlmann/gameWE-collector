@@ -118,7 +118,7 @@ func ParseA2SInfo(b []byte) (info stats.ServerInfo, challenge []byte, err error)
 		r.str()  // folder
 		r.str()  // game
 		id := r.bytes(2)
-		r.bytes(4) // players, max players, bots, server type
+		slots := r.bytes(4) // players, max players, bots, server type
 		env := r.byte()
 		r.byte() // visibility
 		vac := r.byte()
@@ -129,15 +129,15 @@ func ParseA2SInfo(b []byte) (info stats.ServerInfo, challenge []byte, err error)
 		if r.err != nil {
 			return info, nil, r.err
 		}
-		info = stats.ServerInfo{Version: CleanVersion(version), OS: a2sOS(env), VAC: a2sVAC(vac)}
+		info = stats.ServerInfo{Version: CleanVersion(version), OS: a2sOS(env), VAC: a2sVAC(vac), MaxPlayers: int(slots[1])}
 		return info, nil, nil
 	case 'm':
-		r.str()    // address
-		r.str()    // name
-		r.str()    // map
-		r.str()    // folder
-		r.str()    // game
-		r.bytes(4) // players, max players, protocol, server type
+		r.str()             // address
+		r.str()             // name
+		r.str()             // map
+		r.str()             // folder
+		r.str()             // game
+		slots := r.bytes(4) // players, max players, protocol, server type
 		env := r.byte()
 		r.byte()           // visibility
 		if r.byte() == 1 { // mod
@@ -151,7 +151,7 @@ func ParseA2SInfo(b []byte) (info stats.ServerInfo, challenge []byte, err error)
 		if r.err != nil {
 			return info, nil, r.err
 		}
-		return stats.ServerInfo{OS: a2sOS(env), VAC: a2sVAC(vac)}, nil, nil
+		return stats.ServerInfo{OS: a2sOS(env), VAC: a2sVAC(vac), MaxPlayers: int(slots[1])}, nil, nil
 	}
 	if r.err != nil {
 		return info, nil, r.err

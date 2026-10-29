@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"gamewe-collector/internal/collector"
@@ -18,7 +19,7 @@ import (
 // serverInfoCmd runs `gamewe serverinfo`: the A2S_INFO query of
 // features.server_info now, also when that is off. Changed values are
 // stored in hlstats_Servers as the collector does (a field the server does
-// not report keeps its stored value).
+// not report keeps its stored value), the slots in max_players.
 func serverInfoCmd(args []string) error {
 	var server string
 	var cf changeFlags
@@ -57,9 +58,14 @@ func serverInfoCmd(args []string) error {
 			d.Error = err.Error()
 			failed++
 		} else {
+			slots := got.MaxPlayers
+			got.MaxPlayers = 0
 			info := got.Or(s.Info)
-			d.Version, d.OS, d.VAC = info.Version, info.OS, info.VAC
-			if info != s.Info {
+			d.Version, d.OS, d.VAC, d.MaxPlayers = info.Version, info.OS, info.VAC, s.MaxPlayers
+			if slots > 0 {
+				d.MaxPlayers = slots
+			}
+			if info != s.Info || d.MaxPlayers != s.MaxPlayers {
 				changed = append(changed, len(doc))
 			}
 		}
@@ -69,10 +75,10 @@ func serverInfoCmd(args []string) error {
 				fmt.Printf("error: %s\n", d.Error)
 			} else {
 				state := "unchanged"
-				if info := (stats.ServerInfo{Version: d.Version, OS: d.OS, VAC: d.VAC}); info != s.Info {
-					state = fmt.Sprintf("changed, stored: version %q, os %q, vac %q", s.Info.Version, s.Info.OS, s.Info.VAC)
+				if info := (stats.ServerInfo{Version: d.Version, OS: d.OS, VAC: d.VAC}); info != s.Info || d.MaxPlayers != s.MaxPlayers {
+					state = fmt.Sprintf("changed, stored: version %q, os %q, vac %q, max players %d", s.Info.Version, s.Info.OS, s.Info.VAC, s.MaxPlayers)
 				}
-				fmt.Printf("version %q, os %q, vac %q (%s)\n", d.Version, d.OS, d.VAC, state)
+				fmt.Printf("version %q, os %q, vac %q, max players %d (%s)\n", d.Version, d.OS, d.VAC, d.MaxPlayers, state)
 			}
 		}
 		doc = append(doc, d)
@@ -90,6 +96,11 @@ func serverInfoCmd(args []string) error {
 			d := &doc[i]
 			if err := store.ServerInfo(ctx, d.ID, stats.ServerInfo{Version: d.Version, OS: d.OS, VAC: d.VAC}); err != nil {
 				return fmt.Errorf("database: %w", database.Explain(err))
+			}
+			if d.MaxPlayers != servers[i].MaxPlayers {
+				if err := store.ServerStatus(ctx, d.ID, "", d.MaxPlayers, nil); err != nil {
+					return fmt.Errorf("database: %w", database.Explain(err))
+				}
 			}
 			d.Stored = true
 		}
@@ -113,19 +124,21 @@ type serverInfoDoc struct {
 	Version string `json:"version"`
 	OS      string `json:"os"`
 	VAC     string `json:"vac"`
-	Stored  bool   `json:"stored"` // changed and written to hlstats_Servers
-	Error   string `json:"error,omitempty"`
+	// MaxPlayers is the slots of the answer, else the stored value.
+	MaxPlayers int    `json:"max_players"`
+	Stored     bool   `json:"stored"` // changed and written to hlstats_Servers
+	Error      string `json:"error,omitempty"`
 }
 
 type serverInfoList []serverInfoDoc
 
 func (serverInfoList) Header() []string {
-	return []string{"id", "address", "version", "os", "vac", "stored", "error"}
+	return []string{"id", "address", "version", "os", "vac", "max_players", "stored", "error"}
 }
 func (l serverInfoList) Rows() [][]string {
 	out := [][]string{}
 	for _, s := range l {
-		out = append(out, []string{itoa(s.ID), s.Address, s.Version, s.OS, s.VAC, yesNo(s.Stored), s.Error})
+		out = append(out, []string{itoa(s.ID), s.Address, s.Version, s.OS, s.VAC, strconv.Itoa(s.MaxPlayers), yesNo(s.Stored), s.Error})
 	}
 	return out
 }

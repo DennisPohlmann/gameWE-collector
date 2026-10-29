@@ -140,8 +140,10 @@ type serverState struct {
 	statusHost string // hostname and max players of the last status
 	statusMax  int
 	// Server info (features.server_info): the last answers of A2S_INFO and
-	// of status, and what hlstats_Servers holds.
+	// of status, and what hlstats_Servers holds; a2sMax: the slots of the
+	// last A2S_INFO answer.
 	a2sInfo, rconInfo, storedInfo stats.ServerInfo
+	a2sMax                        int
 	gone                          map[string]time.Time // players whose disconnect was logged, by key
 	// Players whose connect is stored (connect line, or status for those
 	// already on the server), by key, until their disconnect line. Kept over
@@ -853,8 +855,28 @@ func (p *Processor) statusServer(ctx context.Context, st Status, pings map[strin
 
 // ServerInfo applies an A2S_INFO answer (features.server_info).
 func (p *Processor) ServerInfo(ctx context.Context, info stats.ServerInfo) error {
+	p.srv.a2sMax, info.MaxPlayers = info.MaxPlayers, 0
 	p.srv.a2sInfo = info
-	return p.writeInfo(ctx)
+	if err := p.writeInfo(ctx); err != nil {
+		return err
+	}
+	return p.writeA2SMax(ctx)
+}
+
+// writeA2SMax stores the slots of A2S_INFO in hlstats_Servers.max_players
+// when they differ from the stored value, so servers without RCON get
+// them too. An RCON status wins: it reports the real slots, A2S_INFO may
+// report sv_visiblemaxplayers.
+func (p *Processor) writeA2SMax(ctx context.Context) error {
+	srv := &p.srv
+	if srv.statusMax > 0 || srv.a2sMax <= 0 || srv.a2sMax == srv.info.MaxPlayers {
+		return nil
+	}
+	if err := p.store.ServerStatus(ctx, srv.info.ID, "", srv.a2sMax, nil); err != nil {
+		return err
+	}
+	srv.info.MaxPlayers = srv.a2sMax
+	return nil
 }
 
 // writeInfo stores version, OS and VAC state when they changed: A2S_INFO
@@ -971,7 +993,7 @@ func (p *Processor) duplicate(line string, now time.Time) bool {
 const goneWindow = time.Minute
 
 // maxPlayers is the server's slot count: of the last RCON status, else
-// hlstats_Servers.max_players; 0 if unknown.
+// hlstats_Servers.max_players (A2S_INFO, or an earlier status); 0 if unknown.
 func (p *Processor) maxPlayers() int {
 	if p.srv.statusMax > 0 {
 		return p.srv.statusMax
