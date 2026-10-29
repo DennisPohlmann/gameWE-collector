@@ -34,7 +34,8 @@ bots do not count; the web shows three, the others move up when an entry is
 deleted) are stored in hlstats_gamewe_hall_of_fame with their values, then
 the ranking is reset (-mode, default player-stats). The running collector
 does this by itself; the periods follow the calendar of the collector's
-timezone, a period ends at features.scheduled_resets.time.
+timezone, a period ends at features.scheduled_resets.time. Templates
+(rankings without servers) are never reset and have no schedule.
 
   list      the stored entries, newest period first (all rankings or GAME)
   schedule  show the schedule of GAME, or set it: EVERY is day, week, month,
@@ -205,6 +206,12 @@ func hallSchedule(ctx context.Context, store *stats.Store, loc *time.Location, g
 	if _, err := store.ResetCounts(ctx, game, stats.ResetPlayerStats); err != nil { // checks the game
 		return err
 	}
+	if err := store.CheckNotTemplate(ctx, game); errors.Is(err, stats.ErrTemplate) && every == "" && mode == "" {
+		fmt.Fprintf(out, "%s: no reset schedule (%s)\n", game, "a template, a ranking without servers")
+		return nil
+	} else if err != nil {
+		return err
+	}
 	cur, err := store.ScheduledRanking(ctx, game)
 	if err != nil {
 		fmt.Fprintf(out, "warning: stored schedule of %s: %v\n", game, err)
@@ -283,9 +290,9 @@ func hallScheduleAll(ctx context.Context, store *stats.Store, loc *time.Location
 	show := func(r stats.ScheduledRanking) {
 		fmt.Fprintln(out, scheduleLine("all rankings", r, now, loc))
 		if len(following) > 0 {
-			fmt.Fprintf(out, "rankings without a schedule of their own: %s\n", strings.Join(following, ", "))
+			fmt.Fprintf(out, "rankings without a schedule of their own: %s (templates, rankings without servers, are never reset)\n", strings.Join(following, ", "))
 		} else {
-			fmt.Fprintln(out, "every ranking has a schedule of its own (or off)")
+			fmt.Fprintln(out, "no ranking follows it: every ranking has a schedule of its own (or off), templates (rankings without servers) are never reset")
 		}
 	}
 	if every == "" && mode == "" {
@@ -337,6 +344,9 @@ func scheduleLine(name string, r stats.ScheduledRanking, now time.Time, loc *tim
 }
 
 func hallReset(ctx context.Context, db *database.DB, store *stats.Store, loc *time.Location, game string, cf changeFlags, wait time.Duration, in io.Reader, out io.Writer, r *result) error {
+	if err := store.CheckNotTemplate(ctx, game); err != nil {
+		return err
+	}
 	sr, err := store.ScheduledRanking(ctx, game)
 	if err != nil {
 		return err

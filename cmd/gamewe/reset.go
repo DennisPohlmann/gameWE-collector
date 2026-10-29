@@ -31,7 +31,8 @@ Resets the ranking GAME (an hlstats_Games code):
   -mode all-stats     player and server statistics (server counters, load
                       history, trend); the players stay
   -mode all           all statistics and the players of the game
-Games, servers, definitions and settings stay.
+Games, servers, definitions and settings stay. A template (a ranking without
+servers, it only holds the definitions for new rankings) is not reset.
 -dry-run shows the rows per table and changes nothing. Without --force it asks
 for the game code to confirm.
 
@@ -114,6 +115,9 @@ func resetRun(pos []string, path, mode string, dry, yes, list bool, wait time.Du
 	game := pos[0]
 	counts, err := store.ResetCounts(ctx, game, mode)
 	if err != nil {
+		return err
+	}
+	if err := store.CheckNotTemplate(ctx, game); err != nil {
 		return err
 	}
 	w := tabwriter.NewWriter(out, 0, 2, 2, ' ', tabwriter.AlignRight)

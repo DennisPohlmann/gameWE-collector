@@ -477,6 +477,14 @@ func (j *Jobs) do(ctx context.Context, job stats.Job) {
 		j.finish(ctx, job, stats.JobDone, res)
 		return
 	}
+	if job.Type == stats.JobReset || job.Type == stats.JobScheduledReset {
+		// Templates are not offered for a reset (an older web did).
+		if err := j.Store.CheckNotTemplate(ctx, job.Game); err != nil {
+			j.Log.Warn("jobs: ranking reset refused", "job", job.ID, "game", job.Game, "err", err)
+			j.finish(ctx, job, stats.JobFailed, err.Error())
+			return
+		}
+	}
 	if job.Type == stats.JobScheduledReset {
 		res, err := j.scheduledReset(ctx, job.Game)
 		if err != nil {

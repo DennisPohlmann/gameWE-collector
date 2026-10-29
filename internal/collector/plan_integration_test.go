@@ -27,6 +27,10 @@ func TestIntegrationDailyJobsAndPlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// css is a ranking (it has a server), not a template.
+	if _, err := db.Exec(`INSERT INTO hlstats_Servers (address, port, name, game) VALUES ('198.51.100.70', 27015, 'css', 'css')`); err != nil {
+		t.Fatal(err)
+	}
 	for k, v := range map[string]string{stats.ScheduleKey("css"): "month", "MinActivity": "28"} {
 		if err := store.SetOption(ctx, k, v); err != nil {
 			t.Fatal(err)

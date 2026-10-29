@@ -244,6 +244,22 @@ func TestIntegrationResetJob(t *testing.T) {
 	if beat, err := store.LastHeartbeat(ctx); err != nil || time.Since(beat) > time.Minute {
 		t.Errorf("heartbeat %v %v", beat, err)
 	}
+
+	// A template (a ranking without servers) is not reset, also when an
+	// older web queued it.
+	exec(t, db, `INSERT INTO hlstats_Games (id, code, name, realgame, hidden) VALUES (3, 'cstrike', 'Counter-Strike', 'cstrike', '0')`)
+	for _, typ := range []string{stats.JobReset, stats.JobScheduledReset} {
+		id, err := store.AddJob(ctx, typ, "cstrike", stats.ResetAll, "test", time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := (&Jobs{Store: store, Log: jobs.Log}).Poll(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if j, _ := store.Job(ctx, id); j.Status != stats.JobFailed || !strings.Contains(j.Result, "template") {
+			t.Errorf("%s job of a template %+v", typ, j)
+		}
+	}
 }
 
 // !gamewe_reset: one player's totals, weekly and monthly rows and history

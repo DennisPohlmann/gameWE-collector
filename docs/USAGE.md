@@ -625,6 +625,11 @@ gamewe reset css3 -mode all            # all statistics, and the players of css3
 gamewe reset -list                     # the latest resets and their results (gamewe jobs: all jobs)
 ```
 
+A template, a ranking without servers in `hlstats_Servers` (e.g. the
+reference games `css`, `cstrike`, `tf` that new rankings copy their
+definitions from), is not reset: `gamewe reset` refuses it, and so does the
+collector for a reset job of a template (queued by an older web admin).
+
 What each mode clears:
 
 | | `player-stats` | `all-stats` | `all` |
@@ -711,6 +716,12 @@ gamewe halloffame                                   # all entries, newest period
   start, once, for the period that ended last (several missed periods are
   one reset, the best five then stand for all of them). Without a running
   collector `gamewe halloffame run` does it.
+- **Templates** (rankings without servers, they only hold the definitions
+  for new rankings) have no schedule: the schedule for all rankings leaves
+  them out, a schedule of their own is ignored, `gamewe halloffame schedule`
+  and `run` refuse them, and the job plan (`gamewe_next_reset_<game>`) does
+  not list them. A template that gets its first server follows the schedule
+  from then on, starting with the period then running.
 - **Turned off and on again:** while a ranking has no schedule (its own is
   `off`, or the schedule for all rankings is off) the collector forgets its
   running period. Turning the schedule on again starts with the period then

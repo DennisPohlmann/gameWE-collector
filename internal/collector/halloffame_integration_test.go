@@ -116,6 +116,12 @@ func TestIntegrationScheduledResetAll(t *testing.T) {
 	set(stats.GlobalScheduleKey, "month@15")
 	set(stats.GlobalModeKey, stats.ResetPlayerStats)
 	set(stats.ScheduleKey("tf"), stats.ScheduleOff)
+	// Two templates (rankings without servers); one with a schedule of its
+	// own and a period of an older collector: neither is reset, the period
+	// is forgotten.
+	exec(t, db, `INSERT INTO hlstats_Games (id, code, name, realgame, hidden) VALUES (3, 'cstrike', 'Counter-Strike', 'cstrike', '0'), (4, 'czero', 'Condition Zero', 'czero', '0')`)
+	set(stats.ScheduleKey("czero"), "month")
+	set(stats.LastResetKey("czero"), fmt.Sprint(time.Date(2026, 9, 1, 0, 0, 0, 0, loc).Unix())+" month")
 	now := time.Date(2026, 10, 26, 14, 0, 0, 0, loc)
 	jobs := &Jobs{Store: store, Hub: hub, Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Zone: loc, Now: func() time.Time { return now }}
 	if err := jobs.QueueScheduled(ctx, now); err != nil {
@@ -128,8 +134,19 @@ func TestIntegrationScheduledResetAll(t *testing.T) {
 	if r, _ := store.ScheduledRanking(ctx, "tf"); r.Schedule.On() || r.Inherited || r.Last != 0 {
 		t.Fatalf("tf: %+v", r)
 	}
-	if following, err := store.InheritingRankings(ctx); err != nil || !slices.Contains(following, "css") || slices.Contains(following, "tf") {
+	if n := q(t, db, `SELECT COUNT(*) FROM hlstats_Options WHERE keyname = ?`, stats.LastResetKey("czero")); n != 0 {
+		t.Errorf("the period of the template czero was kept")
+	}
+	if following, err := store.InheritingRankings(ctx); err != nil || !slices.Contains(following, "css") || slices.Contains(following, "tf") || slices.Contains(following, "cstrike") {
 		t.Fatalf("inheriting: %v, %v", following, err)
+	}
+	// cstrike is a template (no server): the schedule for all rankings
+	// does not start for it and the job plan leaves it out.
+	if r, err := store.ScheduledRanking(ctx, "cstrike"); err != nil || r.Last != 0 {
+		t.Fatalf("template cstrike after start: %+v, %v", r, err)
+	}
+	if n := q(t, db, `SELECT COUNT(*) FROM hlstats_Options WHERE keyname = ?`, stats.NextResetKey("cstrike")); n != 0 {
+		t.Errorf("job plan has a next reset of the template cstrike")
 	}
 
 	now = time.Date(2026, 11, 15, 0, 0, 30, 0, loc)

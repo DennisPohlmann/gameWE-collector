@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -251,13 +252,14 @@ type ScheduledRanking struct {
 }
 
 // ScheduledRankings returns the rankings of hlstats_Games with a schedule.
-// A broken value is returned as error for its game and skipped.
+// Templates (rankings without servers) never have one. A broken value is
+// returned as error for its game and skipped.
 func (s *Store) ScheduledRankings(ctx context.Context) ([]ScheduledRanking, []error, error) {
 	opts, err := s.Options(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
-	games, err := s.gameCodes(ctx)
+	games, err := s.rankingCodes(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -277,10 +279,11 @@ func (s *Store) ScheduledRankings(ctx context.Context) ([]ScheduledRanking, []er
 }
 
 // ForgetStoppedPeriods deletes gamewe_reset_last_<game> of the rankings
-// that have no schedule (their own is "off", or they follow the schedule
-// for all rankings while that is off) and returns their codes. A schedule
-// turned on again later then starts with the period running at that time
-// instead of resetting at once for the time it was off.
+// that have no schedule (their own is "off", they follow the schedule for
+// all rankings while that is off, or they are templates) and returns their
+// codes. A schedule turned on again later, or a template that gets its
+// first server, then starts with the period running at that time instead
+// of resetting at once for the time before.
 func (s *Store) ForgetStoppedPeriods(ctx context.Context) ([]string, error) {
 	opts, err := s.Options(ctx)
 	if err != nil {
@@ -290,13 +293,19 @@ func (s *Store) ForgetStoppedPeriods(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	rankings, err := s.rankingCodes(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var out []string
 	for _, g := range games {
 		if strings.TrimSpace(opts[LastResetKey(g)]) == "" {
 			continue
 		}
-		if r, err := s.scheduleOf(g, opts); err != nil || r.Schedule.On() {
-			continue // a broken value is reported by ScheduledRankings
+		if slices.Contains(rankings, g) { // a template has no schedule
+			if r, err := s.scheduleOf(g, opts); err != nil || r.Schedule.On() {
+				continue // a broken value is reported by ScheduledRankings
+			}
 		}
 		if _, err := s.exec(ctx, `DELETE FROM hlstats_Options WHERE keyname = ?`, LastResetKey(g)); err != nil {
 			return out, err
@@ -307,13 +316,14 @@ func (s *Store) ForgetStoppedPeriods(ctx context.Context) ([]string, error) {
 }
 
 // InheritingRankings returns the codes of the rankings without a schedule
-// of their own (they follow the schedule for all rankings).
+// of their own (they follow the schedule for all rankings); templates are
+// left out.
 func (s *Store) InheritingRankings(ctx context.Context) ([]string, error) {
 	opts, err := s.Options(ctx)
 	if err != nil {
 		return nil, err
 	}
-	games, err := s.gameCodes(ctx)
+	games, err := s.rankingCodes(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -328,7 +338,18 @@ func (s *Store) InheritingRankings(ctx context.Context) ([]string, error) {
 
 // gameCodes returns the codes of hlstats_Games.
 func (s *Store) gameCodes(ctx context.Context) ([]string, error) {
-	rows, err := s.query(ctx, `SELECT code FROM hlstats_Games ORDER BY code`)
+	return s.codes(ctx, `SELECT code FROM hlstats_Games ORDER BY code`)
+}
+
+// rankingCodes returns the codes of hlstats_Games with at least one server
+// in hlstats_Servers. The others are templates: they only hold definitions
+// for new rankings and are never reset.
+func (s *Store) rankingCodes(ctx context.Context) ([]string, error) {
+	return s.codes(ctx, `SELECT code FROM hlstats_Games WHERE TRIM(code) IN (SELECT TRIM(game) FROM hlstats_Servers) ORDER BY code`)
+}
+
+func (s *Store) codes(ctx context.Context, q string) ([]string, error) {
+	rows, err := s.query(ctx, q)
 	if err != nil {
 		return nil, err
 	}
@@ -342,6 +363,23 @@ func (s *Store) gameCodes(ctx context.Context) ([]string, error) {
 		games = append(games, strings.TrimSpace(g))
 	}
 	return games, rows.Err()
+}
+
+// ErrTemplate: the game is a template (a ranking without servers), which
+// is not reset.
+var ErrTemplate = errors.New("is a template (a ranking without servers): it only holds the definitions for new rankings and is not reset")
+
+// CheckNotTemplate returns an error wrapping ErrTemplate when game is a
+// template.
+func (s *Store) CheckNotTemplate(ctx context.Context, game string) error {
+	var n int
+	if err := s.queryRow(ctx, `SELECT COUNT(*) FROM hlstats_Servers WHERE TRIM(game) = ?`, game).Scan(&n); err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("%s %w", game, ErrTemplate)
+	}
+	return nil
 }
 
 // ScheduledRanking returns the schedule of one ranking (Schedule not On
