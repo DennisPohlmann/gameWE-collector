@@ -55,6 +55,7 @@ func TestWebKeysNotReported(t *testing.T) {
 		"gamewe_privacy_text_1":     "text",
 		"gamewe_privacy_text_25":    "text",
 		"gamewe_next_awards":        "{}",
+		"gamewe_next_bans":          "{}",
 		"gamewe_next_inactive":      "{}",
 		"gamewe_next_resets":        "{}",
 		"gamewe_next_reset_css":     "1791504000",
