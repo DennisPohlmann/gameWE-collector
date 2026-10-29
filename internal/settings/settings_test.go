@@ -88,6 +88,7 @@ var webNames = map[string]bool{
 	"gamewe_lang": true, "gamewe_session": true, "gamewe_totp": true, "gamewe_apitoken": true, "gamewe_apitoken_": true, "gamewe_privacy_": true,
 	"gamewe_info": true, "gamewe_up": true, "gamewe_servers": true, "gamewe_players_online": true,
 	"gamewe_players_ranked": true, "gamewe_database_up": true, "gamewe_database_latency_seconds": true,
+	"gamewe_skin_preview": true,
 }
 
 // TestWebSourceKeys keeps WebKeys in step with the web: every gamewe_* name
