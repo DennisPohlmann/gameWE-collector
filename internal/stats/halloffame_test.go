@@ -119,3 +119,75 @@ func TestPeriods(t *testing.T) {
 		}
 	}
 }
+
+// A changed reset time or time zone moves the period boundaries by hours;
+// the stored start of the running period must not count as a period that
+// ended (29.10.2026: "00:00" -> "00:05" reset every ranking of a "3 month"
+// schedule at the next start).
+func TestDueAfterClockOrZoneChange(t *testing.T) {
+	berlin, err := time.LoadLocation("Europe/Berlin")
+	if err != nil {
+		t.Skip("no tzdata")
+	}
+	at := func(s string, loc *time.Location) int64 {
+		v, err := time.ParseInLocation(time.DateTime, s, loc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return v.Unix()
+	}
+	quarter := ResetSchedule{Unit: UnitMonth, Every: 3}
+	with := func(clock int) ResetSchedule { s := quarter; s.Clock = clock; return s }
+	now := time.Unix(at("2026-10-29 23:05:48", berlin), 0)
+	for _, c := range []struct {
+		name  string
+		sch   ResetSchedule
+		loc   *time.Location
+		last  int64
+		state string // due, moved, started, none
+		from  string
+	}{
+		{"same clock", with(5), berlin, at("2026-10-01 00:05:00", berlin), "none", ""},
+		{"clock later", with(5), berlin, at("2026-10-01 00:00:00", berlin), "moved", ""},
+		{"clock earlier", with(0), berlin, at("2026-10-01 00:05:00", berlin), "moved", ""},
+		{"clock 04:00", with(240), berlin, at("2026-10-01 00:00:00", berlin), "moved", ""},
+		{"zone Berlin to UTC", with(0), time.UTC, at("2026-10-01 00:00:00", berlin), "moved", ""},
+		{"zone UTC to Berlin", with(0), berlin, at("2026-10-01 00:00:00", time.UTC), "moved", ""},
+		{"quarter ended", with(5), berlin, at("2026-07-01 00:05:00", berlin), "due", "2026-07-01 00:05:00"},
+		{"quarter ended, clock later", with(5), berlin, at("2026-07-01 00:00:00", berlin), "due", "2026-07-01 00:05:00"},
+		{"quarter ended, clock earlier", with(0), berlin, at("2026-07-01 00:05:00", berlin), "due", "2026-07-01 00:00:00"},
+		{"start in the future", with(0), berlin, at("2027-01-01 00:00:00", berlin), "started", ""},
+	} {
+		r := ScheduledRanking{Game: "css", Schedule: c.sch, Last: c.last, LastSchedule: c.sch.String()}
+		res := r.due(now, c.loc)
+		state := "none"
+		switch {
+		case res.Due:
+			state = "due"
+		case res.Moved:
+			state = "moved"
+		case res.Started:
+			state = "started"
+		}
+		if state != c.state {
+			t.Errorf("%s: %s, want %s", c.name, state, c.state)
+			continue
+		}
+		if c.from != "" {
+			if want := time.Unix(at(c.from, c.loc), 0); !res.From.Equal(want) {
+				t.Errorf("%s: from %s, want %s", c.name, res.From, want)
+			}
+		}
+	}
+	// Every N days and weeks: a clock moved by up to 11 hours keeps the
+	// running period.
+	for _, sch := range []ResetSchedule{{Unit: UnitDay, Every: 1}, {Unit: UnitWeek, Every: 1}, {Unit: UnitMonth, Every: 1, Day: 15}} {
+		for _, shift := range []time.Duration{-11 * time.Hour, -5 * time.Minute, 5 * time.Minute, 11 * time.Hour} {
+			cur := sch.PeriodStart(now, berlin)
+			r := ScheduledRanking{Schedule: sch, Last: cur.Add(shift).Unix(), LastSchedule: sch.String()}
+			if res := r.due(now, berlin); res.Due {
+				t.Errorf("%s, start moved by %s: due", sch, shift)
+			}
+		}
+	}
+}

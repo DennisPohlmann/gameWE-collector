@@ -367,6 +367,13 @@ func (j *Jobs) QueueScheduled(ctx context.Context, now time.Time) error {
 			j.Log.Info("jobs: reset schedule started", "game", r.Game, "every", r.Schedule.String(), "next", due.Next.Format(time.DateTime))
 			continue
 		}
+		if due.Moved {
+			if _, err := j.Store.ScheduledReset(ctx, r, now, j.zone()); err != nil {
+				return fmt.Errorf("%s: %w", r.Game, err)
+			}
+			j.Log.Info("jobs: reset time or time zone changed, the running period stays", "game", r.Game, "every", r.Schedule.String(), "next", due.Next.Format(time.DateTime))
+			continue
+		}
 		if !due.Due && r.LastSchedule == "" {
 			// Written by collector 0.19 without the schedule: add it, so a
 			// later change of the schedule is noticed.
@@ -535,6 +542,8 @@ func ScheduledText(r stats.ScheduledResult) string {
 	switch {
 	case r.Started:
 		return "schedule started: the first period ends " + r.Next.Format(time.DateTime)
+	case r.Moved:
+		return "not due: the reset time or time zone changed, the running period stays and ends " + r.Next.Format(time.DateTime)
 	case !r.Due:
 		return "not due: the period ends " + r.Next.Format(time.DateTime)
 	}

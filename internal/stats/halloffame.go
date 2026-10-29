@@ -204,6 +204,18 @@ func (s ResetSchedule) PeriodStart(t time.Time, loc *time.Location) time.Time {
 
 func mod(a, n int) int { return ((a % n) + n) % n }
 
+// nearestStart returns the period start of s closest to t: the start of
+// the period that contains t or the start of the next one. A stored start
+// written under another reset time (Clock) or time zone lies a few hours
+// off the boundary it stands for; this finds that boundary again.
+func (s ResetSchedule) nearestStart(t time.Time, loc *time.Location) time.Time {
+	start, next := s.PeriodStart(t, loc), s.Next(t, loc)
+	if next.Sub(t) < t.Sub(start) {
+		return next
+	}
+	return start
+}
+
 // Next returns the start of the period after the one that contains t.
 func (s ResetSchedule) Next(t time.Time, loc *time.Location) time.Time {
 	start := s.PeriodStart(t, loc)
@@ -435,11 +447,13 @@ func LastResetValue(start time.Time, s ResetSchedule) string {
 type ScheduledResult struct {
 	// Due: a period ended. Started: the schedule had no last reset yet;
 	// the current period was recorded as the first one and nothing reset.
-	Due, Started bool
-	From, To     time.Time // the period that ended [From, To)
-	Next         time.Time // end of the period now running
-	Top          []HallEntry
-	Tables       []TableCount
+	// Moved: the stored start is the running period's under another reset
+	// time or time zone; it is written again and nothing reset.
+	Due, Started, Moved bool
+	From, To            time.Time // the period that ended [From, To)
+	Next                time.Time // end of the period now running
+	Top                 []HallEntry
+	Tables              []TableCount
 }
 
 // Due returns, without changing anything, what a scheduled reset of r at
@@ -448,21 +462,38 @@ func (s *Store) Due(ctx context.Context, r ScheduledRanking, now time.Time, loc 
 	if !r.Schedule.On() {
 		return ScheduledResult{}, fmt.Errorf("ranking %s has no reset schedule (%s)", r.Game, ScheduleKey(r.Game))
 	}
-	cur := r.Schedule.PeriodStart(now, loc)
-	res := ScheduledResult{Next: r.Schedule.Next(now, loc)}
-	if r.Last == 0 || (r.LastSchedule != "" && r.LastSchedule != r.Schedule.String()) || r.Last > cur.Unix() {
-		res.Started = true
+	res := r.due(now, loc)
+	if !res.Due {
 		return res, nil
 	}
-	if r.Last >= cur.Unix() {
-		return res, nil
-	}
-	res.Due = true
-	res.From = time.Unix(r.Last, 0).In(loc)
-	res.To = cur
 	top, err := s.HallTop(ctx, r.Game)
 	res.Top = top
 	return res, err
+}
+
+// due is Due without the hall of fame.
+func (r ScheduledRanking) due(now time.Time, loc *time.Location) ScheduledResult {
+	cur := r.Schedule.PeriodStart(now, loc)
+	res := ScheduledResult{Next: r.Schedule.Next(now, loc)}
+	if r.Last == 0 || (r.LastSchedule != "" && r.LastSchedule != r.Schedule.String()) {
+		res.Started = true
+		return res
+	}
+	// The stored start stands for the period boundary closest to it: a
+	// changed reset time (features.scheduled_resets.time) or time zone
+	// moves the boundaries by hours, which must not count as a period that
+	// ended.
+	last := r.Schedule.nearestStart(time.Unix(r.Last, 0), loc)
+	switch {
+	case last.After(cur): // a start after the running period: begin anew
+		res.Started = true
+	case last.Equal(cur):
+		res.Moved = r.Last != cur.Unix()
+	default:
+		res.Due = true
+		res.From, res.To = last, cur
+	}
+	return res
 }
 
 // ScheduledReset does the scheduled reset of r if one is due at now: the
@@ -475,7 +506,7 @@ func (s *Store) ScheduledReset(ctx context.Context, r ScheduledRanking, now time
 		return res, err
 	}
 	cur := r.Schedule.PeriodStart(now, loc)
-	if res.Started {
+	if res.Started || res.Moved {
 		return res, s.setOption(ctx, LastResetKey(r.Game), LastResetValue(cur, r.Schedule))
 	}
 	if !res.Due {

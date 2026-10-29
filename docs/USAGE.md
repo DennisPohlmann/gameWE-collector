@@ -697,7 +697,10 @@ gamewe halloffame                                   # all entries, newest period
 - **A new schedule** starts with the period now running: the first reset is
   at its end, the statistics before count for that period. That holds for a
   changed schedule for all rankings too: every ranking that follows it starts
-  again, none is reset at once.
+  again, none is reset at once. A changed `features.scheduled_resets.time`
+  or `timezone` keeps the period now running as well: the collector writes
+  its start again with the new time of day (log "reset time or time zone
+  changed, the running period stays") and resets at its end, not at once.
 - **The best five** have the most points (skill), then the most kills. Only
   players with a kill or a death count; hidden players (`hideranking`, also
   hidden by an admin) and bots do not. A row keeps the values of the player

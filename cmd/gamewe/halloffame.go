@@ -364,6 +364,10 @@ func hallReset(ctx context.Context, db *database.DB, store *stats.Store, loc *ti
 			_, err := store.ScheduledReset(ctx, sr, time.Now(), loc)
 			return err
 		}
+		if due.Moved && !cf.dryRun { // only the stored start is written again
+			_, err := store.ScheduledReset(ctx, sr, time.Now(), loc)
+			return err
+		}
 		return nil
 	}
 	fmt.Fprintf(out, "%s: the period %s - %s has ended\n", game, due.From.Format(time.DateOnly), due.To.AddDate(0, 0, -1).Format(time.DateOnly))
