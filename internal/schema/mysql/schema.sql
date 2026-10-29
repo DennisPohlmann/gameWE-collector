@@ -1059,6 +1059,8 @@ CREATE TABLE `hlstats_gamewe_jobs` (
   `started_at` int(10) unsigned DEFAULT NULL,
   `finished_at` int(10) unsigned DEFAULT NULL,
   `result` varchar(1024) NOT NULL DEFAULT '',
+  `origin` varchar(32) NOT NULL DEFAULT '',
+  `origin_detail` varchar(1024) NOT NULL DEFAULT '',
   PRIMARY KEY (`id`),
   KEY `status` (`status`,`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

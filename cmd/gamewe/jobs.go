@@ -111,12 +111,13 @@ func showJobs(path string, f stats.JobFilter, out io.Writer) error {
 	}
 	defer db.Close()
 	ctx := context.Background()
-	jobs, err := jobsTable(ctx, db)
+	store := stats.NewStore(db, settings.NewLive(settings.Defaults()))
+	jobs, err := jobsTable(ctx, db, store)
 	if err != nil {
 		return err
 	}
 	if !jobs {
 		return errors.New("no hlstats_gamewe_jobs: " + database.SchemaHint)
 	}
-	return listJobs(ctx, stats.NewStore(db, settings.NewLive(settings.Defaults())), f, out)
+	return listJobs(ctx, store, f, out)
 }

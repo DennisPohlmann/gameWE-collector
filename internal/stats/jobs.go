@@ -3,8 +3,10 @@
 package stats
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -35,6 +37,95 @@ const (
 // (daily awards, daily move of inactive players, scheduled resets).
 const JobBySchedule = "schedule"
 
+// Job origins (hlstats_gamewe_jobs.origin): the feature that queued a job.
+// Empty for jobs queued before schema version 22 (job-origin).
+const (
+	OriginScheduledResets = "scheduled_resets" // features.scheduled_resets
+	OriginDailyAwards     = "daily_awards"     // features.daily_awards
+	OriginInactive        = "inactive_players" // features.inactive_players
+	OriginCLI             = "cli"              // a gamewe command
+	OriginAdmin           = "admin"            // the web admin (written by the web)
+	OriginAPI             = "api"              // the web's admin API (written by the web)
+)
+
+// JobOrigin is why a job was queued: Feature goes into the column origin,
+// the rest as JSON into origin_detail (only the fields that apply).
+type JobOrigin struct {
+	Feature string `json:"-"`
+	// Startup: queued by the collector's first look at its schedule after
+	// it started (a period or day that ended while it was not running, or
+	// at the first start with that schedule).
+	Startup bool `json:"startup,omitempty"`
+	// The period of a scheduled reset that ended: [From, To) as Unix
+	// times, the schedule (as in gamewe_reset_schedule), whether the
+	// ranking follows the schedule for all rankings, and the time zone.
+	From      int64  `json:"from,omitempty"`
+	To        int64  `json:"to,omitempty"`
+	Schedule  string `json:"schedule,omitempty"`
+	Inherited bool   `json:"inherited,omitempty"`
+	Zone      string `json:"zone,omitempty"`
+	// Day of the daily awards (YYYY-MM-DD).
+	Day string `json:"day,omitempty"`
+	// Command: the gamewe command that queued the job (built from its
+	// checked arguments, never the raw command line).
+	Command string `json:"command,omitempty"`
+	// Token: the API token's name (written by the web).
+	Token string `json:"token,omitempty"`
+	// Version of the collector that queued the job.
+	Version string `json:"version,omitempty"`
+}
+
+// Detail is the value of origin_detail ("" without details).
+func (o JobOrigin) Detail() string {
+	o.Feature = ""
+	if o == (JobOrigin{}) {
+		return ""
+	}
+	b, _ := json.Marshal(o)
+	if len(b) > 1024 {
+		return ""
+	}
+	return string(b)
+}
+
+// Summary is the origin in one line for the console: the feature, the
+// period of a scheduled reset (in its zone, last day included), whether it
+// was queued at the collector's start, the command or the API token.
+func (o JobOrigin) Summary() string {
+	parts := []string{cmp.Or(o.Feature, "-")}
+	if o.From > 0 && o.To > o.From {
+		loc := time.UTC
+		if z, err := time.LoadLocation(o.Zone); err == nil && o.Zone != "" {
+			loc = z
+		}
+		parts = append(parts, "period "+time.Unix(o.From, 0).In(loc).Format(time.DateOnly)+" - "+time.Unix(o.To-1, 0).In(loc).Format(time.DateOnly))
+	}
+	if o.Day != "" {
+		parts = append(parts, "day "+o.Day)
+	}
+	if o.Startup {
+		parts = append(parts, "at the collector's start")
+	}
+	if o.Command != "" {
+		parts = append(parts, o.Command)
+	}
+	if o.Token != "" {
+		parts = append(parts, "token "+o.Token)
+	}
+	return strings.Join(parts, ", ")
+}
+
+// ParseJobOrigin reads origin and origin_detail of a row (a broken detail
+// only loses the details).
+func ParseJobOrigin(feature, detail string) JobOrigin {
+	var o JobOrigin
+	if strings.TrimSpace(detail) != "" {
+		_ = json.Unmarshal([]byte(detail), &o)
+	}
+	o.Feature = feature
+	return o
+}
+
 // Job is a row of hlstats_gamewe_jobs.
 type Job struct {
 	ID                    int64
@@ -43,6 +134,7 @@ type Job struct {
 	RequestedAt           int64
 	StartedAt, FinishedAt int64 // 0 if not yet
 	Result                string
+	Origin                JobOrigin
 }
 
 // HeartbeatKey is the hlstats_Options key the running collector writes
@@ -61,16 +153,26 @@ const (
 	HeartbeatFresh    = 2 * time.Minute
 )
 
-const jobCols = `id, job_type, game, mode, status, requested_by, requested_at, COALESCE(started_at, 0), COALESCE(finished_at, 0), result`
+// jobCols are the columns scanJobs reads; without the origin columns
+// (NoJobOrigin) the origin is read as empty.
+func (s *Store) jobCols() string {
+	origin := `origin, origin_detail`
+	if s.NoJobOrigin {
+		origin = `'', ''`
+	}
+	return `id, job_type, game, mode, status, requested_by, requested_at, COALESCE(started_at, 0), COALESCE(finished_at, 0), result, ` + origin
+}
 
 func scanJobs(rows *sql.Rows) ([]Job, error) {
 	defer rows.Close()
 	var out []Job
 	for rows.Next() {
 		var j Job
-		if err := rows.Scan(&j.ID, &j.Type, &j.Game, &j.Mode, &j.Status, &j.RequestedBy, &j.RequestedAt, &j.StartedAt, &j.FinishedAt, &j.Result); err != nil {
+		var origin, detail string
+		if err := rows.Scan(&j.ID, &j.Type, &j.Game, &j.Mode, &j.Status, &j.RequestedBy, &j.RequestedAt, &j.StartedAt, &j.FinishedAt, &j.Result, &origin, &detail); err != nil {
 			return nil, err
 		}
+		j.Origin = ParseJobOrigin(origin, detail)
 		out = append(out, j)
 	}
 	return out, rows.Err()
@@ -78,7 +180,7 @@ func scanJobs(rows *sql.Rows) ([]Job, error) {
 
 // JobsByStatus returns the jobs with status, oldest first.
 func (s *Store) JobsByStatus(ctx context.Context, status string) ([]Job, error) {
-	rows, err := s.query(ctx, `SELECT `+jobCols+` FROM hlstats_gamewe_jobs WHERE status = ? ORDER BY id`, status)
+	rows, err := s.query(ctx, `SELECT `+s.jobCols()+` FROM hlstats_gamewe_jobs WHERE status = ? ORDER BY id`, status)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +217,7 @@ func (s *Store) ListJobs(ctx context.Context, f JobFilter) ([]Job, error) {
 			args = append(args, v)
 		}
 	}
-	q := `SELECT ` + jobCols + ` FROM hlstats_gamewe_jobs`
+	q := `SELECT ` + s.jobCols() + ` FROM hlstats_gamewe_jobs`
 	if len(where) > 0 {
 		q += ` WHERE ` + strings.Join(where, " AND ")
 	}
@@ -132,7 +234,7 @@ func (s *Store) ListJobs(ctx context.Context, f JobFilter) ([]Job, error) {
 
 // Job returns one job.
 func (s *Store) Job(ctx context.Context, id int64) (Job, error) {
-	rows, err := s.query(ctx, `SELECT `+jobCols+` FROM hlstats_gamewe_jobs WHERE id = ?`, id)
+	rows, err := s.query(ctx, `SELECT `+s.jobCols()+` FROM hlstats_gamewe_jobs WHERE id = ?`, id)
 	if err != nil {
 		return Job{}, err
 	}
@@ -146,10 +248,15 @@ func (s *Store) Job(ctx context.Context, id int64) (Job, error) {
 	return jobs[0], nil
 }
 
-// AddJob queues a job and returns its id.
-func (s *Store) AddJob(ctx context.Context, typ, game, mode, by string, at time.Time) (int64, error) {
-	return s.insertID(ctx, `INSERT INTO hlstats_gamewe_jobs (job_type, game, mode, status, requested_by, requested_at, result)
+// AddJob queues a job and returns its id; o says which feature queued it
+// and why (not stored with NoJobOrigin).
+func (s *Store) AddJob(ctx context.Context, typ, game, mode, by string, o JobOrigin, at time.Time) (int64, error) {
+	if s.NoJobOrigin {
+		return s.insertID(ctx, `INSERT INTO hlstats_gamewe_jobs (job_type, game, mode, status, requested_by, requested_at, result)
 		VALUES (?, ?, ?, ?, ?, ?, '')`, "id", typ, clip(game, 32), clip(mode, 16), JobPending, clip(by, 64), at.Unix())
+	}
+	return s.insertID(ctx, `INSERT INTO hlstats_gamewe_jobs (job_type, game, mode, status, requested_by, requested_at, result, origin, origin_detail)
+		VALUES (?, ?, ?, ?, ?, ?, '', ?, ?)`, "id", typ, clip(game, 32), clip(mode, 16), JobPending, clip(by, 64), at.Unix(), clip(o.Feature, 32), o.Detail())
 }
 
 // ClaimJob moves a job from status from to running; false if another

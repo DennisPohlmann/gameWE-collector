@@ -468,7 +468,11 @@ asks first, `--dry-run` shows what it would do, `--force` does not ask):
 The daily awards, the daily move of inactive players and the scheduled
 resets go through `hlstats_gamewe_jobs` like the jobs of the web admin
 (`requested_by` `schedule`), so `gamewe jobs` and the web admin (page
-Jobs) list every run with its result. The web admin also shows when they
+Jobs) list every run with its result and the feature that started it
+(column ORIGIN: e.g. `scheduled_resets, period 2026-10-01 - 2026-12-31,
+at the collector's start` for a reset the collector queued at its start
+because the period ended while it was stopped, `cli, gamewe reset css -mode
+all` for a command; [DB-SEMANTICS.md](DB-SEMANTICS.md)). The web admin also shows when they
 run next: the collector writes it with its heartbeat (`gamewe_next_*` in
 `hlstats_Options`, [CONFIG.md](CONFIG.md)), because their times are in the
 config file.

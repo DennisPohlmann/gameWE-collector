@@ -63,6 +63,12 @@ func TestIntegrationScheduledReset(t *testing.T) {
 	if !strings.Contains(job[0].Result, "period 2026-10-01 - 2026-10-31") || !strings.Contains(job[0].Result, "1. "+top[0].Name) {
 		t.Errorf("result: %s", job[0].Result)
 	}
+	// Queued by the schedule while the collector ran (not at its start),
+	// with the period that ended.
+	if o, want := job[0].Origin, (stats.JobOrigin{Feature: stats.OriginScheduledResets, Schedule: "month", Zone: loc.String(),
+		From: time.Date(2026, 10, 1, 0, 0, 0, 0, loc).Unix(), To: time.Date(2026, 11, 1, 0, 0, 0, 0, loc).Unix()}); o != want {
+		t.Errorf("origin %+v, want %+v", o, want)
+	}
 	if n := q(t, db, `SELECT COUNT(*) FROM hlstats_gamewe_hall_of_fame WHERE game = 'css' AND period_start = '2026-10-01' AND period_end = '2026-10-31' AND unit = 'month' AND every = 1`); n != 2 {
 		t.Errorf("hall of fame rows: %d, want 2 (two players)", n)
 	}
@@ -94,6 +100,21 @@ func TestIntegrationScheduledReset(t *testing.T) {
 	top, err = store.HallTop(ctx, "css")
 	if err != nil || len(top) != 0 {
 		t.Errorf("top with a hidden player: %+v, %v", top, err)
+	}
+
+	// The collector was stopped over the end of November: the reset it
+	// queues at its start says so.
+	now = time.Date(2026, 12, 3, 9, 0, 0, 0, loc)
+	jobs = &Jobs{Store: store, Hub: hub, Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Zone: loc, Version: "9.8.7", Now: func() time.Time { return now }}
+	if err := jobs.Poll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	job, err = store.RecentJobs(ctx, 1)
+	if err != nil || len(job) != 1 || job[0].Type != stats.JobScheduledReset {
+		t.Fatalf("job after a restart: %+v, %v", job, err)
+	}
+	if o := job[0].Origin; !o.Startup || o.Version != "9.8.7" || o.Summary() != "scheduled_resets, period 2026-11-01 - 2026-11-30, at the collector's start" {
+		t.Errorf("origin after a restart %+v (%s)", o, o.Summary())
 	}
 	hub.Close(ctx)
 }

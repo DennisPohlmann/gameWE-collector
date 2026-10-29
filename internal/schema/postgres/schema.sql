@@ -1064,6 +1064,8 @@ CREATE TABLE hlstats_gamewe_jobs (
   started_at bigint,
   finished_at bigint,
   result varchar(1024) NOT NULL DEFAULT '',
+  origin varchar(32) NOT NULL DEFAULT '',
+  origin_detail varchar(1024) NOT NULL DEFAULT '',
   PRIMARY KEY (id)
 );
 CREATE INDEX hlstats_gamewe_jobs_status ON hlstats_gamewe_jobs (status, id);

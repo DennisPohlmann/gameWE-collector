@@ -18,6 +18,7 @@ import (
 	"gamewe-collector/internal/database"
 	"gamewe-collector/internal/settings"
 	"gamewe-collector/internal/stats"
+	"gamewe-collector/internal/version"
 )
 
 const resetUsage = `Usage:
@@ -96,7 +97,7 @@ func resetRun(pos []string, path, mode string, dry, yes, list bool, wait time.Du
 		s, _ := settings.FromOptions(opts)
 		set.Set(s) // the start skill
 	}
-	jobs, err := jobsTable(ctx, db)
+	jobs, err := jobsTable(ctx, db, store)
 	if err != nil {
 		return err
 	}
@@ -154,20 +155,21 @@ func resetRun(pos []string, path, mode string, dry, yes, list bool, wait time.Du
 		}
 		return stats.FormatCounts(res), nil
 	}
-	return runJob(ctx, store, jobs, stats.JobReset, game, mode, wait, out, "resetting here", here)
+	origin := stats.JobOrigin{Feature: stats.OriginCLI, Command: "gamewe reset " + game + " -mode " + mode, Version: version.Version}
+	return runJob(ctx, store, jobs, stats.JobReset, game, mode, origin, wait, out, "resetting here", here)
 }
 
 // runJob hands a job to the running collector (heartbeat fresh, table
 // hlstats_gamewe_jobs present) and waits for it, or else runs it here with
-// here (which takes the job lock).
-func runJob(ctx context.Context, store *stats.Store, jobs bool, typ, game, mode string, wait time.Duration, out io.Writer, doing string, here func() (string, error)) error {
+// here (which takes the job lock). origin is stored with the job.
+func runJob(ctx context.Context, store *stats.Store, jobs bool, typ, game, mode string, origin stats.JobOrigin, wait time.Duration, out io.Writer, doing string, here func() (string, error)) error {
 	if jobs {
 		beat, err := store.LastHeartbeat(ctx)
 		if err != nil {
 			return err
 		}
 		if !beat.IsZero() && time.Since(beat) < stats.HeartbeatFresh {
-			return queueJob(ctx, store, typ, game, mode, wait, out, doing, here)
+			return queueJob(ctx, store, typ, game, mode, origin, wait, out, doing, here)
 		}
 	}
 	fmt.Fprintf(out, "no running collector (no heartbeat in the last 2 minutes): %s\n", doing)
@@ -179,15 +181,23 @@ func runJob(ctx context.Context, store *stats.Store, jobs bool, typ, game, mode 
 	return nil
 }
 
-// jobsTable reports whether the database has hlstats_gamewe_jobs.
-func jobsTable(ctx context.Context, db *database.DB) (bool, error) {
+// jobsTable reports whether the database has hlstats_gamewe_jobs; without
+// its columns origin and origin_detail (before schema version 22) store
+// queues and reads jobs without them.
+func jobsTable(ctx context.Context, db *database.DB, store *stats.Store) (bool, error) {
 	missing, err := database.MissingSchema(ctx, db)
 	if err != nil {
 		return false, err
 	}
 	for _, r := range missing {
-		if r.Table == "hlstats_gamewe_jobs" {
+		if r.Table != "hlstats_gamewe_jobs" {
+			continue
+		}
+		if r.Column == "" && r.Index == "" {
 			return false, nil
+		}
+		if r.Column == "origin" || r.Column == "origin_detail" {
+			store.NoJobOrigin = true
 		}
 	}
 	return true, nil
@@ -195,8 +205,8 @@ func jobsTable(ctx context.Context, db *database.DB) (bool, error) {
 
 // queueJob hands the job to the running collector and waits for it; if
 // the collector stops before it took the job, here runs it.
-func queueJob(ctx context.Context, store *stats.Store, typ, game, mode string, wait time.Duration, out io.Writer, doing string, here func() (string, error)) error {
-	id, err := store.AddJob(ctx, typ, game, mode, "cli", time.Now())
+func queueJob(ctx context.Context, store *stats.Store, typ, game, mode string, origin stats.JobOrigin, wait time.Duration, out io.Writer, doing string, here func() (string, error)) error {
+	id, err := store.AddJob(ctx, typ, game, mode, "cli", origin, time.Now())
 	if err != nil {
 		return err
 	}
@@ -350,12 +360,12 @@ func listJobs(ctx context.Context, store *stats.Store, f stats.JobFilter, out io
 	if structured() {
 		l := jobList{}
 		for _, j := range jobs {
-			l = append(l, jobDoc{j.ID, j.Type, j.Game, j.Mode, j.Status, j.RequestedBy, unixTime(j.RequestedAt), unixTime(j.StartedAt), unixTime(j.FinishedAt), j.Result})
+			l = append(l, jobDoc{j.ID, j.Type, j.Game, j.Mode, j.Status, j.RequestedBy, unixTime(j.RequestedAt), unixTime(j.StartedAt), unixTime(j.FinishedAt), j.Result, j.Origin.Feature, j.Origin.Detail()})
 		}
 		return emit(out, l)
 	}
 	w := tabwriter.NewWriter(out, 0, 2, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\tTYPE\tGAME\tMODE\tSTATUS\tBY\tREQUESTED\tFINISHED\tRESULT")
+	fmt.Fprintln(w, "ID\tTYPE\tGAME\tMODE\tSTATUS\tBY\tREQUESTED\tFINISHED\tRESULT\tORIGIN")
 	ts := func(t int64) string {
 		if t == 0 {
 			return "-"
@@ -367,7 +377,7 @@ func listJobs(ctx context.Context, store *stats.Store, f stats.JobFilter, out io
 		if r := []rune(res); len(r) > 80 {
 			res = string(r[:77]) + "..."
 		}
-		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", j.ID, j.Type, cmp.Or(j.Game, "-"), cmp.Or(j.Mode, "-"), j.Status, j.RequestedBy, ts(j.RequestedAt), ts(j.FinishedAt), res)
+		fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", j.ID, j.Type, cmp.Or(j.Game, "-"), cmp.Or(j.Mode, "-"), j.Status, j.RequestedBy, ts(j.RequestedAt), ts(j.FinishedAt), res, j.Origin.Summary())
 	}
 	return w.Flush()
 }
@@ -383,17 +393,21 @@ type jobDoc struct {
 	StartedAt   string `json:"started_at"`
 	FinishedAt  string `json:"finished_at"`
 	Result      string `json:"result"`
+	// Origin: the feature that queued the job; OriginDetail: why, as JSON
+	// (stats.JobOrigin). Empty for jobs before schema version 22.
+	Origin       string `json:"origin"`
+	OriginDetail string `json:"origin_detail"`
 }
 
 type jobList []jobDoc
 
 func (jobList) Header() []string {
-	return []string{"id", "type", "game", "mode", "status", "requested_by", "requested_at", "started_at", "finished_at", "result"}
+	return []string{"id", "type", "game", "mode", "status", "requested_by", "requested_at", "started_at", "finished_at", "result", "origin", "origin_detail"}
 }
 func (l jobList) Rows() [][]string {
 	out := [][]string{}
 	for _, j := range l {
-		out = append(out, []string{itoa(j.ID), j.Type, j.Game, j.Mode, j.Status, j.RequestedBy, j.RequestedAt, j.StartedAt, j.FinishedAt, j.Result})
+		out = append(out, []string{itoa(j.ID), j.Type, j.Game, j.Mode, j.Status, j.RequestedBy, j.RequestedAt, j.StartedAt, j.FinishedAt, j.Result, j.Origin, j.OriginDetail})
 	}
 	return out
 }

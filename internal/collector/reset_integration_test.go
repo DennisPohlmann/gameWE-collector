@@ -182,11 +182,11 @@ func TestIntegrationResetJob(t *testing.T) {
 	flush(t, hub)
 	css := "198.51.100.60:27015"
 	ctx := context.Background()
-	first, err := store.AddJob(ctx, stats.JobReset, "css", stats.ResetAll, "test", time.Now())
+	first, err := store.AddJob(ctx, stats.JobReset, "css", stats.ResetAll, "test", stats.JobOrigin{}, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, _ := store.AddJob(ctx, stats.JobReset, "css", stats.ResetPlayerStats, "test", time.Now())
+	second, _ := store.AddJob(ctx, stats.JobReset, "css", stats.ResetPlayerStats, "test", stats.JobOrigin{}, time.Now())
 	jobs := &Jobs{Store: store, Hub: hub, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -228,7 +228,7 @@ func TestIntegrationResetJob(t *testing.T) {
 	}
 
 	// A collector stopped during a reset left the job running.
-	third, _ := store.AddJob(ctx, stats.JobReset, "tf", stats.ResetStatsOld, "test", time.Now()) // queued by an older web
+	third, _ := store.AddJob(ctx, stats.JobReset, "tf", stats.ResetStatsOld, "test", stats.JobOrigin{}, time.Now()) // queued by an older web
 	if ok, err := store.ClaimJob(ctx, third, stats.JobPending, time.Now()); err != nil || !ok {
 		t.Fatal(ok, err)
 	}
@@ -253,7 +253,7 @@ func TestIntegrationResetJob(t *testing.T) {
 	// older web queued it.
 	exec(t, db, `INSERT INTO hlstats_Games (id, code, name, realgame, hidden) VALUES (3, 'cstrike', 'Counter-Strike', 'cstrike', '0')`)
 	for _, typ := range []string{stats.JobReset, stats.JobScheduledReset} {
-		id, err := store.AddJob(ctx, typ, "cstrike", stats.ResetAll, "test", time.Now())
+		id, err := store.AddJob(ctx, typ, "cstrike", stats.ResetAll, "test", stats.JobOrigin{}, time.Now())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -345,7 +345,7 @@ func TestIntegrationHeartbeatDuringJob(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	store := stats.NewStore(db, settings.NewLive(settings.Defaults()))
-	if _, err := store.AddJob(ctx, stats.JobInactive, "", "", "test", time.Now()); err != nil {
+	if _, err := store.AddJob(ctx, stats.JobInactive, "", "", "test", stats.JobOrigin{}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	locked, release := make(chan struct{}), make(chan struct{})

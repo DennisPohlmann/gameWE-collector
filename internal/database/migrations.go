@@ -221,6 +221,13 @@ var Migrations = []Migration{
 			"account is), filled by the collector's bans-sync job (features.bans_sync); readable by gamewe_web",
 		Sync: true,
 	},
+	{
+		Version: 22, Name: "job-origin",
+		Desc: "columns origin and origin_detail on hlstats_gamewe_jobs: the feature that queued a job (scheduled_resets, " +
+			"daily_awards, inactive_players, admin, api, cli) and why (JSON: period, schedule, queued at the collector's start, " +
+			"API token, command), for the web admin's job list; older jobs keep them empty",
+		Sync: true,
+	},
 }
 
 // Latest is the newest schema version this collector knows.

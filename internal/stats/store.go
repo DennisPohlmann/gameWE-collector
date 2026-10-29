@@ -55,6 +55,11 @@ type Store struct {
 	// (the daily awards' zone, features.daily_awards.timezone); nil: UTC.
 	// Set it before use.
 	HistoryZone *time.Location
+
+	// NoJobOrigin: hlstats_gamewe_jobs lacks the columns origin and
+	// origin_detail (a gamewe command on a database before schema version
+	// 22); jobs are then queued and read without them.
+	NoJobOrigin bool
 }
 
 type cached struct {

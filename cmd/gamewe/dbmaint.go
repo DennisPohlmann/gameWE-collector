@@ -322,7 +322,7 @@ func dbPurge(ctx context.Context, db *database.DB, d config.Database, days int, 
 	// them every hour.
 	store := stats.NewStore(db, settings.NewLive(settings.Defaults()))
 	jobsBefore := time.Now().Add(-stats.JobKeep)
-	jobs, err := jobsTable(ctx, db)
+	jobs, err := jobsTable(ctx, db, store)
 	if err != nil {
 		return err
 	}

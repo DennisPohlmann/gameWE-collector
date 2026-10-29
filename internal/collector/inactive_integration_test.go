@@ -314,7 +314,7 @@ func TestIntegrationJobLock(t *testing.T) {
 		t.Errorf("awards under a held lock logged %q", buf.String())
 	}
 	// A queued inactive job fails with the reason, and runs once the lock is free.
-	id, err := store.AddJob(ctx, stats.JobInactive, "", "", "test", time.Now())
+	id, err := store.AddJob(ctx, stats.JobInactive, "", "", "test", stats.JobOrigin{}, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -325,7 +325,7 @@ func TestIntegrationJobLock(t *testing.T) {
 		t.Errorf("job under a held lock: %+v", job)
 	}
 	release()
-	id, _ = store.AddJob(ctx, stats.JobInactive, "", "", "test", time.Now())
+	id, _ = store.AddJob(ctx, stats.JobInactive, "", "", "test", stats.JobOrigin{}, time.Now())
 	if err := j.Poll(ctx); err != nil {
 		t.Fatal(err)
 	}

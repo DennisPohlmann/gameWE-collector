@@ -155,6 +155,9 @@ func TestMigrateJobCommands(t *testing.T) {
 	if n := num(`SELECT COUNT(*) FROM hlstats_gamewe_jobs WHERE job_type = 'inactive' AND status = 'done'`); n != 1 {
 		t.Errorf("%d done inactive jobs, want 1", n)
 	}
+	if n := num(`SELECT COUNT(*) FROM hlstats_gamewe_jobs WHERE job_type = 'inactive' AND origin = 'cli' AND origin_detail LIKE '%"command":"gamewe inactive"%'`); n != 1 {
+		t.Errorf("%d inactive jobs with the origin cli and the command, want 1", n)
+	}
 	if n := num(`SELECT COUNT(*) FROM hlstats_Options WHERE keyname = 'gamewe_collector_version' AND value = '9.8.7'`); n != 1 {
 		t.Errorf("gamewe_collector_version not written (%d rows)", n)
 	}
@@ -166,14 +169,14 @@ func TestMigrateJobCommands(t *testing.T) {
 		t.Errorf("reset -list shows the inactive job:\n%s", out)
 	}
 	out, code = gw(t, bin, "jobs", "-config", cfg)
-	expect(t, out, code, 0, "inactive", "done")
+	expect(t, out, code, 0, "inactive", "done", "ORIGIN", "cli, gamewe inactive")
 	out, code = gw(t, bin, "jobs", "-type", "inactive", "-status", "done", "-o", "csv", "-config", cfg)
 	expect(t, out, code, 0, "id,type,", ",inactive,")
 	out, code = gw(t, bin, "jobs", "-type", "bogus", "-config", cfg)
 	expect(t, out, code, 2, `-type "bogus"`)
 
 	// A running job shows its progress; the result replaces it.
-	id, err := store.AddJob(ctx, stats.JobReset, "css", "all", "test", time.Now())
+	id, err := store.AddJob(ctx, stats.JobReset, "css", "all", "test", stats.JobOrigin{}, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}

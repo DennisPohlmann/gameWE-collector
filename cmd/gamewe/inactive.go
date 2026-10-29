@@ -15,6 +15,7 @@ import (
 	"gamewe-collector/internal/database"
 	"gamewe-collector/internal/settings"
 	"gamewe-collector/internal/stats"
+	"gamewe-collector/internal/version"
 )
 
 const inactiveUsage = `Usage:
@@ -101,7 +102,7 @@ func inactiveRun(path string, cf changeFlags, wait time.Duration, in io.Reader, 
 	if err := approve(ctx, cf, in, out, interactive(in), fmt.Sprintf("Move them to hlstats_PlayersInactive now (%d)?", n)); err != nil {
 		return err
 	}
-	jobs, err := jobsTable(ctx, db)
+	jobs, err := jobsTable(ctx, db, store)
 	if err != nil {
 		return err
 	}
@@ -132,5 +133,6 @@ func inactiveRun(path string, cf changeFlags, wait time.Duration, in io.Reader, 
 		}
 		return collector.InactiveResult(moved, days), nil
 	}
-	return runJob(ctx, store, jobs, stats.JobInactive, "", "", wait, out, "moving here", here)
+	origin := stats.JobOrigin{Feature: stats.OriginCLI, Command: "gamewe inactive", Version: version.Version}
+	return runJob(ctx, store, jobs, stats.JobInactive, "", "", origin, wait, out, "moving here", here)
 }

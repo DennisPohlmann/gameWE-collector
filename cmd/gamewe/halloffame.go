@@ -20,6 +20,7 @@ import (
 	"gamewe-collector/internal/database"
 	"gamewe-collector/internal/settings"
 	"gamewe-collector/internal/stats"
+	"gamewe-collector/internal/version"
 )
 
 const hallUsage = `Usage:
@@ -397,7 +398,7 @@ func hallReset(ctx context.Context, db *database.DB, store *stats.Store, loc *ti
 	if err := approve(ctx, cf, in, out, interactive(in), fmt.Sprintf("Store the hall of fame and reset %s now? This cannot be undone.", game)); err != nil {
 		return err
 	}
-	jobs, err := jobsTable(ctx, db)
+	jobs, err := jobsTable(ctx, db, store)
 	if err != nil {
 		return err
 	}
@@ -417,7 +418,9 @@ func hallReset(ctx context.Context, db *database.DB, store *stats.Store, loc *ti
 		}
 		return collector.ScheduledText(res), nil
 	}
-	return runJob(ctx, store, jobs, stats.JobScheduledReset, game, sr.Mode, wait, out, "resetting here", here)
+	origin := stats.JobOrigin{Feature: stats.OriginCLI, Command: "gamewe halloffame run " + game, Version: version.Version,
+		From: due.From.Unix(), To: due.To.Unix(), Schedule: sr.Schedule.String(), Inherited: sr.Inherited, Zone: loc.String()}
+	return runJob(ctx, store, jobs, stats.JobScheduledReset, game, sr.Mode, origin, wait, out, "resetting here", here)
 }
 
 type hallDoc struct {

@@ -63,6 +63,14 @@ func TestIntegrationDailyJobsAndPlan(t *testing.T) {
 	if i := got[stats.JobInactive]; i.Status != stats.JobDone || i.RequestedBy != stats.JobBySchedule {
 		t.Errorf("inactive job: %+v", i)
 	}
+	// The awards of the 26th were queued at the start; the move of inactive
+	// players at its daily time.
+	if o := got[stats.JobAwards].Origin; o != (stats.JobOrigin{Feature: stats.OriginDailyAwards, Startup: true, Day: "2026-10-26"}) {
+		t.Errorf("awards origin %+v", o)
+	}
+	if o := got[stats.JobInactive].Origin; o != (stats.JobOrigin{Feature: stats.OriginInactive}) {
+		t.Errorf("inactive origin %+v", o)
+	}
 
 	option := func(key string) string {
 		t.Helper()

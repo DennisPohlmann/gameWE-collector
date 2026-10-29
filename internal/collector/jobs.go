@@ -53,6 +53,9 @@ type Jobs struct {
 	lastInactive time.Time
 	lastAwards   time.Time
 	written      map[string]string // plan keys as last written
+	// scheduled: QueueScheduled ran before (its jobs are no longer queued
+	// at the collector's start).
+	scheduled bool
 }
 
 // AwardsConfig is features.daily_awards: once a day at At the awards of
@@ -178,12 +181,13 @@ func (j *Jobs) Poll(ctx context.Context) error {
 		}
 	}
 	if j.inactiveDue(now) {
-		if err := j.queueDaily(ctx, stats.JobInactive, "", now); err != nil && ctx.Err() == nil {
+		if err := j.queueDaily(ctx, stats.JobInactive, "", j.origin(stats.OriginInactive, false), now); err != nil && ctx.Err() == nil {
 			j.Log.Error("jobs: queueing the move of inactive players failed", "err", err)
 		}
 	}
+	startup := j.lastAwards.IsZero()
 	if day, ok := j.awardsDue(now); ok {
-		if err := j.queueAwards(ctx, day, now); err != nil && ctx.Err() == nil {
+		if err := j.queueAwards(ctx, day, startup, now); err != nil && ctx.Err() == nil {
 			j.Log.Error("jobs: queueing the daily awards failed", "day", stats.AwardDate(day), "err", err)
 		}
 	}
@@ -236,9 +240,14 @@ func (j *Jobs) Poll(ctx context.Context) error {
 	return nil
 }
 
+// origin is the origin of a job the collector queues itself.
+func (j *Jobs) origin(feature string, startup bool) stats.JobOrigin {
+	return stats.JobOrigin{Feature: feature, Startup: startup, Version: j.Version}
+}
+
 // queueDaily queues a daily job of typ (mode: its argument) unless one of
 // that type and mode is pending or running already.
-func (j *Jobs) queueDaily(ctx context.Context, typ, mode string, now time.Time) error {
+func (j *Jobs) queueDaily(ctx context.Context, typ, mode string, o stats.JobOrigin, now time.Time) error {
 	for _, st := range []string{stats.JobPending, stats.JobRunning} {
 		jobs, err := j.Store.JobsByStatus(ctx, st)
 		if err != nil {
@@ -248,7 +257,7 @@ func (j *Jobs) queueDaily(ctx context.Context, typ, mode string, now time.Time) 
 			return nil
 		}
 	}
-	_, err := j.Store.AddJob(ctx, typ, "", mode, stats.JobBySchedule, now)
+	_, err := j.Store.AddJob(ctx, typ, "", mode, stats.JobBySchedule, o, now)
 	return err
 }
 
@@ -268,13 +277,15 @@ func (j *Jobs) awardsDue(now time.Time) (time.Time, bool) {
 }
 
 // queueAwards queues the daily awards of day unless the day has some
-// already (a restart of the collector).
-func (j *Jobs) queueAwards(ctx context.Context, day, now time.Time) error {
+// already (a restart of the collector); startup: at the collector's start.
+func (j *Jobs) queueAwards(ctx context.Context, day time.Time, startup bool, now time.Time) error {
 	done, err := j.Store.AwardsDone(ctx, day)
 	if err != nil || done {
 		return err
 	}
-	return j.queueDaily(ctx, stats.JobAwards, stats.AwardDate(day), now)
+	o := j.origin(stats.OriginDailyAwards, startup)
+	o.Day = stats.AwardDate(day)
+	return j.queueDaily(ctx, stats.JobAwards, stats.AwardDate(day), o, now)
 }
 
 // awardsDay is the day of a queued awards job (its mode) in the zone of
@@ -360,8 +371,12 @@ func (j *Jobs) zone() *time.Location {
 
 // QueueScheduled queues a scheduled reset for every ranking whose period
 // ended (unless one is queued or running for it already). A schedule
-// without a last reset gets the current period as its first one.
+// without a last reset gets the current period as its first one. The jobs
+// of its first call after the collector's start are marked as such
+// (JobOrigin.Startup).
 func (j *Jobs) QueueScheduled(ctx context.Context, now time.Time) error {
+	startup := !j.scheduled
+	j.scheduled = true
 	rankings, bad, err := j.Store.ScheduledRankings(ctx)
 	if err != nil {
 		return err
@@ -418,11 +433,13 @@ func (j *Jobs) QueueScheduled(ctx context.Context, now time.Time) error {
 		if !due.Due || slices.ContainsFunc(open, func(o stats.Job) bool { return o.Game == r.Game }) {
 			continue
 		}
-		id, err := j.Store.AddJob(ctx, stats.JobScheduledReset, r.Game, r.Mode, stats.JobBySchedule, now)
+		o := j.origin(stats.OriginScheduledResets, startup)
+		o.From, o.To, o.Schedule, o.Inherited, o.Zone = due.From.Unix(), due.To.Unix(), r.Schedule.String(), r.Inherited, j.zone().String()
+		id, err := j.Store.AddJob(ctx, stats.JobScheduledReset, r.Game, r.Mode, stats.JobBySchedule, o, now)
 		if err != nil {
 			return err
 		}
-		j.Log.Info("jobs: scheduled ranking reset queued", "job", id, "game", r.Game, "period", due.From.Format(time.DateOnly)+" - "+due.To.Format(time.DateOnly))
+		j.Log.Info("jobs: scheduled ranking reset queued", "job", id, "game", r.Game, "period", due.From.Format(time.DateOnly)+" - "+due.To.Format(time.DateOnly), "at_start", startup)
 	}
 	return nil
 }
