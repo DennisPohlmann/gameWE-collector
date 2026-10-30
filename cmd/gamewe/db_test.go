@@ -114,7 +114,7 @@ func TestParseMigrateFlags(t *testing.T) {
 func TestPrintPlan(t *testing.T) {
 	p := &database.Plan{Kind: database.KindHLstatsX, Latest: 2, Pending: database.Migrations,
 		Steps: []database.Step{
-			{Name: "setup", What: "create the table gamewe_schema_migrations (schema versions)"},
+			{Name: "setup", What: "create the table hlstats_gamewe_schema_migrations (schema versions)"},
 			{Version: 2, Name: "gamewe-0.2.1", What: "alter table hlstats_Events_Frags: add columns server_id", Table: "hlstats_Events_Frags", Rows: 2_500_000, Slow: true},
 		}}
 	var out bytes.Buffer

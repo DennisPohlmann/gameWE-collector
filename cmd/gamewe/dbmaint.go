@@ -131,7 +131,7 @@ func dbDropCmd(args []string, c dbIO) error {
 	}
 	yes, dry := cf.force, cf.dryRun
 	if print {
-		q, err := database.DropSQL(cfg.Database.Type)
+		q, err := database.DropSQL(cfg.Database.Type, tablePrefix(cfg.Database))
 		if err != nil {
 			return err
 		}

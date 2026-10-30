@@ -49,7 +49,7 @@ func OwnTables(ctx context.Context, db *DB) (own, other []string, err error) {
 		own = append(own, MigrationsTable)
 	}
 	for t := range cat.tables {
-		if strings.HasPrefix(t, "hlstats_") && !known[t] {
+		if strings.HasPrefix(t, "hlstats_") && !known[t] && t != MigrationsTable {
 			other = append(other, db.Prefix.Table(t))
 		}
 	}
@@ -79,8 +79,10 @@ func isOwnTable(dialect, name string) bool {
 }
 
 // DropSQL is the statement that drops all tables of the schema and the
-// version table (IF EXISTS), for gamewe db drop and its -print.
-func DropSQL(dialect string) (string, error) {
+// version table (IF EXISTS), for gamewe db drop and its -print. With the
+// default prefix also the version table of its old name
+// (LegacyMigrationsTable).
+func DropSQL(dialect string, pfx Prefix) (string, error) {
 	tables, err := schema.Tables(dialect)
 	if err != nil {
 		return "", err
@@ -90,6 +92,9 @@ func DropSQL(dialect string) (string, error) {
 		names = append(names, quoteTable(dialect, t.Name))
 	}
 	names = append(names, quoteTable(dialect, MigrationsTable))
+	if pfx.Default() {
+		names = append(names, quoteTable(dialect, LegacyMigrationsTable))
+	}
 	return "DROP TABLE IF EXISTS " + strings.Join(names, ", ") + ";\n", nil
 }
 
@@ -99,7 +104,7 @@ func DropSQL(dialect string) (string, error) {
 // right, which the collector user has not on MariaDB by default: then it
 // returns a *DropRightsError and nothing is dropped.
 func DropTables(ctx context.Context, db *DB) error {
-	q, err := DropSQL(db.Type)
+	q, err := DropSQL(db.Type, db.Prefix)
 	if err != nil {
 		return err
 	}

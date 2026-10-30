@@ -12,11 +12,11 @@ import (
 )
 
 // Table prefix (database.table_prefix). The code and the compiled schema
-// always name the tables hlstats_<Name> and MigrationsTable; with another
-// prefix the connection rewrites these names in every statement it sends
-// (Prefix.SQL), so the database has <prefix>_<Name> and
-// <prefix>_gamewe_schema_migrations. Names that come back from the catalog
-// are turned into the code's names with Prefix.Logical. With the default
+// always name the tables hlstats_<Name> (also MigrationsTable,
+// hlstats_gamewe_schema_migrations); with another prefix the connection
+// rewrites these names in every statement it sends (Prefix.SQL), so the
+// database has <prefix>_<Name>. Names that come back from the catalog are
+// turned into the code's names with Prefix.Logical. With the default
 // prefix nothing is rewritten.
 
 // codePrefix is the prefix the code and the schema files are written with.
@@ -46,9 +46,6 @@ func (p Prefix) Table(name string) string {
 	if hasCodePrefix(name) {
 		return string(p) + "_" + name[len(codePrefix):]
 	}
-	if strings.EqualFold(name, MigrationsTable) {
-		return string(p) + "_" + name
-	}
 	return name
 }
 
@@ -62,13 +59,10 @@ func (p Prefix) Logical(name string) (string, bool) {
 		return name, true
 	}
 	if len(name) > len(p) && name[len(p)] == '_' && strings.EqualFold(name[:len(p)], string(p)) {
-		rest := name[len(p)+1:]
-		if strings.EqualFold(rest, MigrationsTable) {
-			return MigrationsTable, true
-		}
-		return codePrefix + rest, true
+		return codePrefix + name[len(p)+1:], true
 	}
-	if hasCodePrefix(name) || strings.EqualFold(name, MigrationsTable) {
+	// LegacyMigrationsTable is the old version table of the default prefix.
+	if hasCodePrefix(name) || strings.EqualFold(name, LegacyMigrationsTable) {
 		return name, false
 	}
 	return name, true
@@ -79,7 +73,7 @@ func hasCodePrefix(name string) bool {
 }
 
 // SQL rewrites the table names of a statement: every identifier that
-// starts with hlstats_ and the identifier MigrationsTable, also inside
+// starts with hlstats_, also inside
 // `...` or "..." quotes. String literals and comments stay as they are.
 func (p Prefix) SQL(q string) string { return p.rewrite(q, false) }
 
@@ -135,8 +129,7 @@ func (p Prefix) rewrite(q string, literals bool) string {
 // needsRewrite is a quick check before the scan: most statements of the
 // collector name a table, but the lock and SET statements do not.
 func needsRewrite(q string) bool {
-	l := strings.ToLower(q)
-	return strings.Contains(l, codePrefix) || strings.Contains(l, MigrationsTable)
+	return strings.Contains(strings.ToLower(q), codePrefix)
 }
 
 // quotedEnd returns the index after the literal that starts at q[i]; a

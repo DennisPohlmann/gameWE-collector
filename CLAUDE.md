@@ -82,8 +82,8 @@ the audit summary of `security-privacy-audit`.
 - Every SQL statement uses placeholders (`?`, rebound for Postgres in
   `internal/database/rebind.go`). Table/column names in `fmt.Sprintf` SQL
   only from constants or a fixed allowlist, never from log or RCON data.
-- Code, schema files and tests always name the tables `hlstats_*` and
-  `gamewe_schema_migrations`. With `database.table_prefix` the connection
+- Code, schema files and tests always name the tables `hlstats_*` (also
+  the version table `hlstats_gamewe_schema_migrations`). With `database.table_prefix` the connection
   rewrites these identifiers (`internal/database/prefix.go`, not inside
   string literals); names read from the catalog go through
   `Prefix.Logical`, names passed as data (information_schema arguments,

@@ -104,7 +104,7 @@ func TestMigrateMaintenance(t *testing.T) {
 		if own2, _, _ := OwnTables(ctx, db); len(own2) != len(own) {
 			t.Fatalf("a refused drop dropped tables: %d of %d left", len(own2), len(own))
 		}
-		q, err := DropSQL(db.Type)
+		q, err := DropSQL(db.Type, db.Prefix)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -140,7 +140,7 @@ func TestMigrateDropKeepsOtherTables(t *testing.T) {
 	if err != nil || len(other) != 1 || !strings.EqualFold(other[0], db.Prefix.Table("hlstats_heatmap_config")) {
 		t.Fatalf("other %v %v", other, err)
 	}
-	q, _ := DropSQL(db.Type)
+	q, _ := DropSQL(db.Type, db.Prefix)
 	if strings.Contains(strings.ToLower(q), "heatmap") {
 		t.Fatalf("drop SQL names a foreign table: %s", q)
 	}

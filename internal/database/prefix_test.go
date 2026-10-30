@@ -17,7 +17,8 @@ func TestPrefixSQL(t *testing.T) {
 		"UPDATE `hlstats_Servers` SET x = 1":                                        "UPDATE `gw_Servers` SET x = 1",
 		`SELECT 1 FROM "hlstats_players"`:                                           `SELECT 1 FROM "gw_players"`,
 		"SELECT 1 FROM stats.hlstats_Players":                                       "SELECT 1 FROM stats.gw_Players",
-		"INSERT INTO gamewe_schema_migrations (version) VALUES (?)":                 "INSERT INTO gw_gamewe_schema_migrations (version) VALUES (?)",
+		"INSERT INTO hlstats_gamewe_schema_migrations (version) VALUES (?)":         "INSERT INTO gw_gamewe_schema_migrations (version) VALUES (?)",
+		"SELECT 1 FROM gamewe_schema_migrations":                                    "SELECT 1 FROM gamewe_schema_migrations", // the old name: only the default prefix has it
 		"CREATE INDEX hlstats_actions_code ON hlstats_Actions (code)":               "CREATE INDEX gw_actions_code ON gw_Actions (code)",
 		"SELECT keyname FROM HLSTATS_Options":                                       "SELECT keyname FROM gw_Options",
 		// literals, comments, longer identifiers and column names stay
@@ -34,7 +35,7 @@ func TestPrefixSQL(t *testing.T) {
 		}
 	}
 	for _, d := range []Prefix{"", "hlstats"} {
-		q := "SELECT * FROM hlstats_Players JOIN gamewe_schema_migrations"
+		q := "SELECT * FROM hlstats_Players JOIN hlstats_gamewe_schema_migrations"
 		if got := d.SQL(q); got != q {
 			t.Errorf("default prefix %q changed %q to %q", d, q, got)
 		}
@@ -98,8 +99,8 @@ func TestPrefixLogical(t *testing.T) {
 		"gw_players":                  {"hlstats_players", true},
 		"GW_Players":                  {"hlstats_Players", true},
 		"gw_gamewe_schema_migrations": {MigrationsTable, true},
-		"hlstats_players":             {"hlstats_players", false}, // another installation
-		"gamewe_schema_migrations":    {MigrationsTable, false},
+		"hlstats_players":             {"hlstats_players", false},     // another installation
+		"gamewe_schema_migrations":    {LegacyMigrationsTable, false}, // the old one of the default prefix
 		"other_table":                 {"other_table", true},
 		"gw":                          {"gw", true},
 	} {

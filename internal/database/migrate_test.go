@@ -184,13 +184,18 @@ func TestDetectCE(t *testing.T) {
 
 func TestDropSQL(t *testing.T) {
 	for _, dialect := range []string{schema.MySQL, schema.Postgres} {
-		q, err := DropSQL(dialect)
+		q, err := DropSQL(dialect, "")
 		if err != nil {
 			t.Fatal(err)
 		}
 		tables, _ := schema.Tables(dialect)
-		if !strings.HasPrefix(q, "DROP TABLE IF EXISTS ") || strings.Count(q, ",") != len(tables) || !strings.Contains(q, MigrationsTable) {
+		// The schema's tables, the version table and its old name.
+		if !strings.HasPrefix(q, "DROP TABLE IF EXISTS ") || strings.Count(q, ",") != len(tables)+1 || !strings.Contains(q, MigrationsTable) || !strings.Contains(q, " "+LegacyMigrationsTable) && !strings.Contains(q, "`"+LegacyMigrationsTable+"`") {
 			t.Errorf("%s: %s", dialect, q)
+		}
+		// Another prefix never names the old table of the default prefix.
+		if q, _ := DropSQL(dialect, "gw"); strings.Count(q, ",") != len(tables) {
+			t.Errorf("%s gw: %s", dialect, q)
 		}
 		if dialect == schema.MySQL && !strings.Contains(q, "`hlstats_Events_Frags`") {
 			t.Errorf("mysql quoting: %s", q)

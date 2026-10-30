@@ -89,8 +89,12 @@ Then register the game servers in the web admin and run `gamewe check`.
 
 ## Schema versions and upgrades
 
-The table `gamewe_schema_migrations` records the schema versions (version,
-name, time, checksum, note) of a database. The collector checks the
+The table `hlstats_gamewe_schema_migrations` records the schema versions
+(version, name, time, checksum, note) of a database. Up to collector 1.4 it
+was called `gamewe_schema_migrations` (without the table prefix, unlike every
+other table): `gamewe db migrate` (or the start with `auto_migrate`) copies
+its versions into the new table and changes nothing else; the old table
+stays (nothing reads it any more) and can be dropped. The collector checks the
 database at every start against the schema compiled into it (a version is
 missing, or a table, column or index of the current schema):
 
@@ -231,14 +235,15 @@ database:
   `status`, `grants`, `seed`, `purge`, `optimize`, `reset`, `drop` (their
   `-print` SQL too) and the jobs (`gamewe reset`, `inactive`, `awards`).
   The table of the schema versions is `<prefix>_gamewe_schema_migrations`
-  (without a prefix: `gamewe_schema_migrations`, as before).
+  like every other table (`hlstats_gamewe_schema_migrations` with the
+  default prefix).
 - Tables of another prefix in the same database are never read, changed or
   dropped. Each prefix has its own collector lock and job lock, so two
   collectors with different prefixes can run on one database.
 - The prefix is the same for every table. It cannot be changed on a running
   installation by changing the setting: rename the tables first (stop the
   collector, `RENAME TABLE hlstats_Players TO gw_Players, ...` and
-  `gamewe_schema_migrations` to `gw_gamewe_schema_migrations`).
+  `hlstats_gamewe_schema_migrations` to `gw_gamewe_schema_migrations`).
 - `gamewe check` shows a prefix other than `hlstats` in its `database:` line
   and always as `database.table_prefix` in `-o json|yaml`.
 - An HLstatsX:CE database with its own `DB_PREFIX` is converted with
@@ -255,7 +260,7 @@ do first (`--dry-run` / `-n` only that), ask, and accept `--force` / `-f`
 for scripts (older name `-yes`; without a terminal on stdin they stop and
 change nothing unless `--force` is given). They only touch the
 tables of the gameWE schema (`hlstats_*` of the compiled schema and
-`gamewe_schema_migrations`); other tables in the database, e.g. left over
+`hlstats_gamewe_schema_migrations`); other tables in the database, e.g. left over
 from an old HLstatsX, are listed and left alone.
 
 | Command | What it does | Rights |

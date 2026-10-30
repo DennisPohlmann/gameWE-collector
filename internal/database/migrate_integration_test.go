@@ -610,3 +610,66 @@ func TestMigrateMyISAM(t *testing.T) {
 	}
 	webRights(t, "mig_myisam")
 }
+
+// A database of collector <= 1.4 has the version table without the table
+// prefix (gamewe_schema_migrations): migrate copies its versions into
+// hlstats_gamewe_schema_migrations and changes nothing else, also when the
+// new table is there already but empty (a migrate stopped in between). The
+// old table stays for gamewe db cleanup.
+func TestMigrateLegacyVersionTable(t *testing.T) {
+	migrateTest(t)
+	ctx := context.Background()
+	db := newTestDB(t, "mig_legacy", false)
+	if !db.Prefix.Default() {
+		t.Skip("only the default prefix had the version table without prefix")
+	}
+	mustMigrate(t, db)
+	admin := adminIn(t, "mig_legacy")
+	rename := "RENAME TABLE `" + MigrationsTable + "` TO `" + LegacyMigrationsTable + "`"
+	if db.Postgres() {
+		rename = "ALTER TABLE " + MigrationsTable + " RENAME TO " + LegacyMigrationsTable
+	}
+	for _, emptyNew := range []bool{false, true} {
+		if _, err := admin.Exec("DROP TABLE IF EXISTS " + LegacyMigrationsTable); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := admin.Exec(rename); err != nil {
+			t.Fatal(err)
+		}
+		if emptyNew {
+			if _, err := db.Exec(versionTableSQL(db.Type)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		p, err := PlanMigrations(ctx, db)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p.Kind != KindGameWE || p.Current != Latest() || len(p.Pending) != 0 || len(p.Missing) != 0 {
+			t.Fatalf("plan with the old version table (new one there: %v): %+v", emptyNew, p)
+		}
+		want := 2
+		if emptyNew {
+			want = 1
+		}
+		if len(p.Steps) != want || !strings.Contains(p.Steps[len(p.Steps)-1].What, "copy the "+fmt.Sprint(len(Migrations))+" schema versions from "+LegacyMigrationsTable) {
+			t.Fatalf("steps (new one there: %v): %+v", emptyNew, p.Steps)
+		}
+		before := counts(t, db)
+		mustMigrate(t, db)
+		upToDate(t, db)
+		after := counts(t, db)
+		if after[MigrationsTable] != len(Migrations) {
+			t.Errorf("%s has %d rows", MigrationsTable, after[MigrationsTable])
+		}
+		delete(after, MigrationsTable)
+		delete(before, MigrationsTable)
+		if fmt.Sprint(after) != fmt.Sprint(before) {
+			t.Errorf("migrate changed rows: %v -> %v", before, after)
+		}
+		var n int
+		if err := admin.QueryRow("SELECT COUNT(*) FROM " + LegacyMigrationsTable).Scan(&n); err != nil || n != len(Migrations) {
+			t.Errorf("the old version table: %d rows, %v", n, err)
+		}
+	}
+}

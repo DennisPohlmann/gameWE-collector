@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -18,8 +19,16 @@ import (
 	"gamewe-collector/internal/schema"
 )
 
-// MigrationsTable records the applied schema versions.
-const MigrationsTable = "gamewe_schema_migrations"
+// MigrationsTable records the applied schema versions. It has the table
+// prefix like every other table (gw_gamewe_schema_migrations with the
+// prefix gw).
+const MigrationsTable = "hlstats_gamewe_schema_migrations"
+
+// LegacyMigrationsTable is the name of the version table up to collector
+// 1.4 with the default prefix (another prefix already had
+// <prefix>_gamewe_schema_migrations). gamewe db migrate copies its rows
+// into MigrationsTable; the old table is not read afterwards.
+const LegacyMigrationsTable = "gamewe_schema_migrations"
 
 // SlowRows is the table size (estimated rows) from which a step that
 // rebuilds or indexes the table is marked as slow in the plan.
@@ -245,14 +254,37 @@ func atoi64(s string) int64 {
 	return n
 }
 
-// readApplied returns the rows of MigrationsTable (nil if it does not exist).
-func readApplied(ctx context.Context, q querier, cat catalog) ([]Applied, error) {
-	if !cat.tables[MigrationsTable] {
-		return nil, nil
+// readApplied returns the rows of MigrationsTable (nil if it does not
+// exist) and, with the default prefix, those of LegacyMigrationsTable that
+// it lacks (legacy: how many). A version is in both after its copy.
+func readApplied(ctx context.Context, q querier, cat catalog, pfx Prefix) (applied []Applied, legacy int, err error) {
+	seen := map[int]bool{}
+	for _, t := range []string{MigrationsTable, LegacyMigrationsTable} {
+		if !cat.tables[t] || (t == LegacyMigrationsTable && !pfx.Default()) {
+			continue
+		}
+		rows, err := readVersions(ctx, q, t)
+		if err != nil {
+			return nil, 0, err
+		}
+		for _, a := range rows {
+			if !seen[a.Version] {
+				seen[a.Version] = true
+				applied = append(applied, a)
+				if t == LegacyMigrationsTable {
+					legacy++
+				}
+			}
+		}
 	}
-	rows, err := q.QueryContext(ctx, `SELECT version, name, applied_at, checksum, note FROM `+MigrationsTable+` ORDER BY version`)
+	slices.SortFunc(applied, func(a, b Applied) int { return a.Version - b.Version })
+	return applied, legacy, nil
+}
+
+func readVersions(ctx context.Context, q querier, table string) ([]Applied, error) {
+	rows, err := q.QueryContext(ctx, `SELECT version, name, applied_at, checksum, note FROM `+table+` ORDER BY version`)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", MigrationsTable, err)
+		return nil, fmt.Errorf("%s: %w", table, err)
 	}
 	defer rows.Close()
 	var out []Applied
@@ -260,12 +292,22 @@ func readApplied(ctx context.Context, q querier, cat catalog) ([]Applied, error)
 		var a Applied
 		var at int64
 		if err := rows.Scan(&a.Version, &a.Name, &at, &a.Checksum, &a.Note); err != nil {
-			return nil, fmt.Errorf("%s: %w", MigrationsTable, err)
+			return nil, fmt.Errorf("%s: %w", table, err)
 		}
 		a.AppliedAt = time.Unix(at, 0).UTC()
 		out = append(out, a)
 	}
 	return out, rows.Err()
+}
+
+// copyVersionsSQL copies the rows of LegacyMigrationsTable that
+// MigrationsTable lacks.
+func copyVersionsSQL(dialect string) string {
+	cols := "version, name, applied_at, checksum, note"
+	if dialect == schema.Postgres {
+		return "INSERT INTO " + MigrationsTable + " (" + cols + ") SELECT " + cols + " FROM " + LegacyMigrationsTable + " ON CONFLICT DO NOTHING"
+	}
+	return "INSERT IGNORE INTO `" + MigrationsTable + "` (" + cols + ") SELECT " + cols + " FROM `" + LegacyMigrationsTable + "`"
 }
 
 // ErrHLstatsXCE: HLstatsX:CE stores events with eventTime and other ids
@@ -295,11 +337,11 @@ func plan(ctx context.Context, q querier, dialect string, pfx Prefix) (*Plan, er
 	if err != nil {
 		return nil, err
 	}
-	applied, err := readApplied(ctx, q, cat)
+	applied, legacy, err := readApplied(ctx, q, cat, pfx)
 	if err != nil {
 		return nil, err
 	}
-	p := &Plan{Dialect: dialect, Versions: cat.tables[MigrationsTable], Applied: applied, Latest: Latest()}
+	p := &Plan{Dialect: dialect, Versions: len(applied) > 0 || cat.tables[MigrationsTable], Applied: applied, Latest: Latest()}
 	done := map[int]bool{}
 	for _, a := range applied {
 		done[a.Version] = true
@@ -323,7 +365,7 @@ func plan(ctx context.Context, q querier, dialect string, pfx Prefix) (*Plan, er
 	}
 	hl := 0
 	for t := range cat.tables {
-		if strings.HasPrefix(t, "hlstats_") {
+		if strings.HasPrefix(t, "hlstats_") && t != MigrationsTable {
 			hl++
 		}
 	}
@@ -342,8 +384,13 @@ func plan(ctx context.Context, q querier, dialect string, pfx Prefix) (*Plan, er
 	}
 	p.Missing = withPrefix(missing(tables, cat, pg), pfx)
 
-	if !p.Versions {
+	if !cat.tables[MigrationsTable] {
 		p.Steps = append(p.Steps, Step{Name: "setup", What: "create the table " + MigrationsTable + " (schema versions)", kind: stepVersion})
+	}
+	if legacy > 0 {
+		p.Steps = append(p.Steps, Step{Name: "setup", Table: MigrationsTable,
+			What: fmt.Sprintf("copy the %d schema versions from %s (the old name, without the table prefix); the old table stays", legacy, LegacyMigrationsTable),
+			kind: stepExec, stmts: []string{copyVersionsSQL(dialect)}})
 	}
 	if p.Kind == KindEmpty {
 		p.Steps = append(p.Steps,
@@ -411,7 +458,8 @@ func plan(ctx context.Context, q querier, dialect string, pfx Prefix) (*Plan, er
 		}
 	}
 	for _, s := range p.Steps {
-		if s.kind == stepExec || s.kind == stepScript {
+		// The copy of the versions (setup) changes no table of the web.
+		if (s.kind == stepExec || s.kind == stepScript) && s.Name != "setup" {
 			p.Steps = append(p.Steps, grantsStep(pfx))
 			break
 		}
