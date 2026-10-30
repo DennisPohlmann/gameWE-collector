@@ -3,8 +3,10 @@
 package collector
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -43,7 +45,7 @@ func post(h http.Handler, remote, path, body string) int {
 func TestHTTPLogHandler(t *testing.T) {
 	hub, _ := httpTestHub(t)
 	cfg := httpCfg()
-	h := newHTTPHandler(cfg, hub, newRejectLog(quiet))
+	h := newHTTPHandler(cfg, hub, newRejectLog(quiet, "test"), quiet)
 	body := "10/25/2026 - 12:00:00.123 - World triggered \"Round_Start\"\n"
 	cases := []struct {
 		name, remote, path, body string
@@ -77,7 +79,7 @@ func TestHTTPLogToken(t *testing.T) {
 	hub, _ := httpTestHub(t)
 	cfg := httpCfg()
 	cfg.Token = "abcdefghijklmnop1234" // gitleaks:allow (made-up test token)
-	h := newHTTPHandler(cfg, hub, newRejectLog(quiet))
+	h := newHTTPHandler(cfg, hub, newRejectLog(quiet, "test"), quiet)
 	for path, want := range map[string]int{"/abcdefghijklmnop1234/27015": 200, "/27015": 404, "/abcdefghijklmnop1235/27015": 404, "/abcdefghijklmnop1234/": 404} {
 		if got := post(h, "192.0.2.10:1", path, "x\n"); got != want {
 			t.Errorf("%s: got %d, want %d", path, got, want)
@@ -89,7 +91,7 @@ func TestHTTPLogProxy(t *testing.T) {
 	hub, _ := httpTestHub(t)
 	cfg := httpCfg()
 	cfg.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
-	h := newHTTPHandler(cfg, hub, newRejectLog(quiet))
+	h := newHTTPHandler(cfg, hub, newRejectLog(quiet, "test"), quiet)
 	send := func(remote, xff string) int {
 		r := httptest.NewRequest(http.MethodPost, "/27015", strings.NewReader("x\n"))
 		r.RemoteAddr = remote
@@ -111,6 +113,127 @@ func TestHTTPLogProxy(t *testing.T) {
 	}
 	if c := send("10.0.0.2:1", "garbage"); c != 404 {
 		t.Errorf("garbage XFF: %d", c)
+	}
+}
+
+// logBuf is a logger that writes text lines into a buffer.
+func logBuf() (*slog.Logger, *bytes.Buffer) {
+	var b bytes.Buffer
+	return slog.New(slog.NewTextHandler(&b, &slog.HandlerOptions{Level: slog.LevelDebug})), &b
+}
+
+// Each reason of a 404 is told apart in the log, and the path (with the
+// token) is never logged.
+func TestHTTPLogPathReasons(t *testing.T) {
+	hub, _ := httpTestHub(t)
+	const token = "abcdefghijklmnop1234" // gitleaks:allow (made-up test token)
+	for _, c := range []struct {
+		token, path string
+		want        error
+	}{
+		{"", "/", errHTTPPort},
+		{"", "/70000", errHTTPPort},
+		{"", "/+27015", errHTTPPort},
+		{"", "/x/y/27015", errHTTPPath},
+		{"", "/" + token + "/27015", errHTTPExtraToken},
+		{token, "/27015", errHTTPNoToken},
+		{token, "/abcdefghijklmnop1235/27015", errHTTPToken},
+		{token, "/" + token + "/", errHTTPPort},
+		{token, "/" + token + "/x/27015", errHTTPPath},
+	} {
+		cfg := httpCfg()
+		cfg.Token = c.token
+		log, buf := logBuf()
+		h := newHTTPHandler(cfg, hub, newRejectLog(log, "rejected HTTP log post"), log)
+		if got := post(h, "192.0.2.10:1", c.path, "x\n"); got != 404 {
+			t.Errorf("%s: got %d", c.path, got)
+		}
+		out := buf.String()
+		if !strings.Contains(out, c.want.Error()) || !strings.Contains(out, "status=404") {
+			t.Errorf("%s: log %q, want %q", c.path, out, c.want)
+		}
+		if strings.Contains(out, "abcdefghijklmnop123") {
+			t.Errorf("%s: token in the log: %q", c.path, out)
+		}
+	}
+}
+
+// A 403 says which server is missing and which ports are configured.
+func TestHTTPLogRejectHint(t *testing.T) {
+	hub, _ := httpTestHub(t)
+	log, buf := logBuf()
+	h := newHTTPHandler(httpCfg(), hub, newRejectLog(log, "rejected HTTP log post"), log)
+	post(h, "192.0.2.10:1", "/26015", "x\n")
+	post(h, "198.51.100.1:1", "/27015", "x\n")
+	out := buf.String()
+	for _, want := range []string{"source=192.0.2.10:26015", "status=403", "configured_ports=\"[27015 27016]\"",
+		"no server 198.51.100.1:27015 in the web admin"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("log lacks %q:\n%s", want, out)
+		}
+	}
+}
+
+// A rejection that keeps coming is logged again every RejectRepeat with
+// the count since the last line, not only every 1000th time.
+func TestRejectLogRepeat(t *testing.T) {
+	log, buf := logBuf()
+	rl := newRejectLog(log, "rejected")
+	now := time.Date(2026, 10, 30, 20, 0, 0, 0, time.UTC)
+	rl.now = func() time.Time { return now }
+	hints := 0
+	hint := func() []any { hints++; return []any{"hint", "fix it"} }
+	for i := 0; i < 50; i++ {
+		rl.note("192.0.2.10:26015", ErrUnknownPort, hint)
+		now = now.Add(10 * time.Second) // CS2 posts every few seconds
+	}
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	// 0 s, then 300 s and 300 s later (at 300 s and 310 s?: no, every
+	// 5 minutes from the last line): 0, 300.
+	if len(lines) != 2 || hints != 2 {
+		t.Fatalf("got %d lines, %d hints:\n%s", len(lines), hints, buf.String())
+	}
+	if !strings.Contains(lines[0], "count=1 ") || strings.Contains(lines[0], "new=") {
+		t.Errorf("first line: %s", lines[0])
+	}
+	if !strings.Contains(lines[1], "count=31 new=30 since=5m0s") || !strings.Contains(lines[1], "hint=\"fix it\"") {
+		t.Errorf("repeat line: %s", lines[1])
+	}
+	rl.note("192.0.2.10:26015", ErrUnknownSource, nil) // other reason: logged at once
+	if n := strings.Count(buf.String(), "\n"); n != 3 {
+		t.Errorf("other reason not logged at once: %d lines", n)
+	}
+}
+
+// Accepted posts show up: the first of a server and the first after a
+// pause at info level, the others at debug level.
+func TestHTTPLogAccepted(t *testing.T) {
+	hub, _ := httpTestHub(t)
+	log, buf := logBuf()
+	h := newHTTPHandler(httpCfg(), hub, newRejectLog(log, "rejected HTTP log post"), log)
+	now := time.Date(2026, 10, 30, 20, 0, 0, 0, time.UTC)
+	h.now = func() time.Time { return now }
+	body := "10/30/2026 - 20:00:00.000 - World triggered \"Round_Start\"\n"
+	post(h, "192.0.2.10:1", "/27015", body)
+	now = now.Add(5 * time.Second)
+	post(h, "192.0.2.10:1", "/27015", body+body)
+	now = now.Add(HTTPQuiet)
+	post(h, "192.0.2.10:1", "/27015", body)
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("got %d lines:\n%s", len(lines), buf.String())
+	}
+	for i, want := range []string{
+		`level=INFO msg="receiving HTTP logs" source=192.0.2.10:27015 server_id=`,
+		`level=DEBUG msg="HTTP log post" source=192.0.2.10:27015`,
+		`level=INFO msg="receiving HTTP logs" source=192.0.2.10:27015`,
+	} {
+		if !strings.Contains(lines[i], want) {
+			t.Errorf("line %d: %s, want %s", i, lines[i], want)
+		}
+	}
+	if !strings.Contains(lines[1], "lines=2") || !strings.Contains(lines[2], "after=10m0s") {
+		t.Errorf("lines/after: %s | %s", lines[1], lines[2])
 	}
 }
 
@@ -151,7 +274,7 @@ func TestConnLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	l := newConnLimit(ln, 3, 1, newRejectLog(quiet))
+	l := newConnLimit(ln, 3, 1, newRejectLog(quiet, "test"))
 	defer l.Close()
 	accepted := make(chan net.Conn, 4)
 	go func() {

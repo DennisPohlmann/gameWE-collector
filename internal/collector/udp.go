@@ -27,17 +27,14 @@ func Serve(ctx context.Context, addr string, hub *Hub, log *slog.Logger, ready f
 }
 
 // ServeConn reads packets from conn until ctx is done. Rejected packets
-// are logged the first time per source and reason, then every 1000th time.
+// are logged the first time per source and reason, then every
+// RejectRepeat while they keep coming.
 func ServeConn(ctx context.Context, conn *net.UDPConn, hub *Hub, log *slog.Logger) error {
 	go func() {
 		<-ctx.Done()
 		conn.Close()
 	}()
-	type key struct {
-		src    string
-		reason error
-	}
-	counts := map[key]uint64{}
+	rl := newRejectLog(log, "rejected log packet")
 	buf := make([]byte, 65535)
 	for {
 		n, src, err := conn.ReadFromUDPAddrPort(buf)
@@ -50,14 +47,19 @@ func ServeConn(ctx context.Context, conn *net.UDPConn, hub *Hub, log *slog.Logge
 		}
 		src = netip.AddrPortFrom(src.Addr().Unmap(), src.Port()) // log IPv4 as a.b.c.d
 		if err := hub.Dispatch(src, buf[:n], time.Now().UTC()); err != nil {
-			k := key{src.String(), err}
-			if len(counts) > 10000 {
-				counts = map[key]uint64{} // bound memory under a flood of sources
-			}
-			counts[k]++
-			if c := counts[k]; c == 1 || c%1000 == 0 {
-				log.Warn("rejected log packet", "source", src.String(), "reason", err, "count", c)
-			}
+			rl.note(src.String(), err, func() []any { return hub.udpHint(src, err) })
 		}
 	}
+}
+
+// udpHint says how to fix the rejection of a log packet from src.
+func (h *Hub) udpHint(src netip.AddrPort, err error) []any {
+	switch {
+	case errors.Is(err, ErrUnknownPort):
+		return []any{"configured_ports", h.PortsAt(src.Addr()),
+			"hint", "add this server with its own port in the web admin, or fix the port of the existing one"}
+	case errors.Is(err, ErrUnknownSource):
+		return []any{"hint", "add the server " + src.String() + " in the web admin (Servers), if it is yours"}
+	}
+	return nil
 }

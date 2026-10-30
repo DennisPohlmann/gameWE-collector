@@ -562,7 +562,7 @@ drop it (`DROP DATABASE gamewe;` and the three users).
 | `hlstats_Servers serverId N is ignored: ...` | The row's address is not an IP, the port is invalid, or its game is not in `hlstats_Games`. Fix it in the web admin. |
 | No `game server active` in the log | Check `logaddress_add` and the firewall (UDP port). |
 | `rejected log packet ... not in hlstats_Servers` | Register the shown source `IP:port` in the web admin. With `known server IP but a port ...` another game server on the same host sends logs: add it with its own port (logs are never attributed by IP alone). |
-| `rejected HTTP log post` (CS2) | `reason` says why: not in `hlstats_Servers` (register the server; the URL must end with its game port, `/27015`), `not Source 2` (the server's game must have realgame `cs2`; other games log over UDP), `HTTP path ...` (wrong port or token in the `logaddress_add_http` URL), `larger than listen.http.max_body`, or `too many open HTTP connections`. |
+| `rejected HTTP log post` (CS2) | `reason` and `hint` say why, `status` is what the game server got back. 403: not in `hlstats_Servers` (register the server; the URL must end with its game port, `/27015`; with `known server IP but a port ...` the URL has another port than the server in the web admin, `configured_ports` lists the right ones), `not Source 2` (the server's game must have realgame `cs2`; other games log over UDP). 404: `HTTP path ...` names the problem of the `logaddress_add_http` URL (no game port at the end, token missing, wrong or not expected). Also `larger than listen.http.max_body` or `too many open HTTP connections`. Repeated every 5 minutes while the posts keep coming. |
 | `rejected log packet ... missing or wrong log secret` | The server has a secret in `hlstats_Servers.log_secret` and the game server sends no or another `sv_logsecret`: set the same number in `server.cfg` and with `gamewe server set <id> -logsecret <n>` (or the web admin), or clear it with `-logsecret ""` to accept all its packets. |
 | Commands get no answer | `rcon_password` is empty or wrong (`rcon authentication failed`), the plugin is missing, or the RCON port is blocked (TCP). `gamewe check` shows servers without a password. |
 | `systemctl start` fails, `status=78/CONFIG` | The config file (or a `-` flag in `ExecStart`) is wrong, or the schema is not migrated automatically: the journal names it. Fix it, then `systemctl start gamewe-collector` (it is not restarted by itself). `gamewe config test` lists every problem of the config file with its line, `gamewe check` also tests the database, both without the service. |
@@ -580,8 +580,12 @@ player names are shown as `\xNN`. Besides those:
 
 - `game servers loaded from hlstats_Servers`: after start and when servers change
 - `game server active`: the first accepted line of a server
-- `rejected log packet … source=IP:port`: a sender that is not in `hlstats_Servers`
-  (first time, then every 1000th)
+- `rejected log packet … source=IP:port` (UDP) and `rejected HTTP log post`
+  (CS2): a sender that is not in `hlstats_Servers`, or another reason (first
+  time, then every 5 minutes while it keeps coming, with `count`, `new` and a
+  `hint`)
+- `receiving HTTP logs`: the first accepted HTTP post of a CS2 server, and the
+  first after 10 minutes without posts
 - `processing log line failed`: a database error
 
 Every line in the journal can be a lot: a busy server sends several lines per

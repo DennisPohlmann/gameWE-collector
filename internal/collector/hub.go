@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -417,6 +418,19 @@ func (h *Hub) Known(src netip.AddrPort) bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.resolve(src) != nil
+}
+
+// PortsAt lists the ports of the servers of hlstats_Servers at ip, in
+// ascending order.
+func (h *Hub) PortsAt(ip netip.Addr) []uint16 {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	var ports []uint16
+	for _, w := range h.byIP[ip.Unmap()] {
+		ports = append(ports, w.srv.AddrPort.Port())
+	}
+	slices.Sort(ports)
+	return ports
 }
 
 // PauseGame stops the workers of every server of game between two lines

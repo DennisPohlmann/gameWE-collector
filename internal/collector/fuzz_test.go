@@ -93,7 +93,7 @@ func FuzzHTTPLogBody(f *testing.F) {
 	hub := newTestHub(st, &recorder{}, []string{"192.0.2.10:27015"}, map[string]string{"192.0.2.10:27015": "cs2"})
 	hub.Source2Hits = true
 	f.Cleanup(func() { hub.Close(context.Background()) })
-	h := newHTTPHandler(httpCfg(), hub, newRejectLog(quiet))
+	h := newHTTPHandler(httpCfg(), hub, newRejectLog(quiet, "test"), quiet)
 	f.Fuzz(func(t *testing.T, body string) {
 		if code := post(h, "192.0.2.10:51000", "/27015", body); code != 200 && code != 413 {
 			t.Fatalf("status %d", code)

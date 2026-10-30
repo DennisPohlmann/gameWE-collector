@@ -75,8 +75,16 @@ with exit code 2 when it is given.
 A post is checked before its body is read. The sender's IP and the game port
 from the URL must be a server in `hlstats_Servers` whose game is a Source 2
 game (`cs2`); every other post gets 403. Only `POST` is accepted (405
-otherwise). Lines longer than 8 KiB are dropped. Rejected posts are logged the
-first time per sender and reason, then every 1000th time.
+otherwise); a path that is not `/<game port>` (or `/<token>/<game port>`)
+gets 404. Lines longer than 8 KiB are dropped. Rejected posts are logged
+(`rejected HTTP log post`) the first time per sender and reason, then every
+5 minutes while they keep coming, with `status` (the HTTP answer), `count`
+(all), `new` (since the last line) and a `hint`. A 404 says what is wrong
+with the path (no port, missing, wrong or unexpected token); the path and
+the token themselves are never logged. A 403 for an unknown port lists the
+`configured_ports` of that IP. The first accepted post of a server (and the
+first after 10 minutes without posts) is logged as `receiving HTTP logs`
+with the server's id and name; every post at `-log-level debug`.
 
 ### features
 
@@ -236,7 +244,7 @@ another server on that host. Such packets are rejected with `known server IP
 but a port that is not in hlstats_Servers`; add the server in the web admin.
 
 Anything else is rejected and logged: the first time per source, then every
-1000th time. Use a firewall on the UDP port to keep strangers from spoofing
+5 minutes while it keeps coming (with a `hint`). Use a firewall on the UDP port to keep strangers from spoofing
 packets; the log secret (next section) also stops packets with a forged
 source address.
 
@@ -264,7 +272,7 @@ Then:
   has no log secret, all its log packets are accepted`).
 - **Secret stored**: a packet without the secret, or with another one, is
   rejected (`missing or wrong log secret`, logged the first time per source
-  and reason, then every 1000th time), with or without `rcon_password`.
+  and reason, then every 5 minutes while it keeps coming), with or without `rcon_password`.
   After a change in `hlstats_Servers` (read every minute) the previous secret
   is still accepted for two `log_address` intervals, at least two minutes, so
   there is time to change `server.cfg` too. Clearing the secret
