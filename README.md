@@ -291,7 +291,7 @@ Every step in detail: [docs/INSTALLATION.md](docs/INSTALLATION.md).
 | [docs/CONFIG.md](docs/CONFIG.md) | config file, GeoIP database, game servers and the settings in the database (`hlstats_Options`) |
 | [docs/USAGE.md](docs/USAGE.md) | in-game commands, points, the `gamewe` command line |
 | [docs/INTERFACE.md](docs/INTERFACE.md) | log lines of the plugins, RCON reply commands, raw messages |
-| [docs/DATABASE.md](docs/DATABASE.md) | database users, rights, TLS, incomplete schemas |
+| [docs/DATABASE.md](docs/DATABASE.md) | database users, rights, TLS, incomplete schemas, moving to PostgreSQL or back |
 | [docs/DB-SEMANTICS.md](docs/DB-SEMANTICS.md) | what the collector writes into which table (for the web frontend) |
 | [docs/GAMES.md](docs/GAMES.md) | games, engines, log formats |
 | [docs/MIGRATION-HLSTATSX.md](docs/MIGRATION-HLSTATSX.md) | moving from HLstatsX:CE: converting its database into a new gameWE database |

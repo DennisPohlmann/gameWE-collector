@@ -64,6 +64,8 @@ package: build geoip
 	umask 022 && install -d $(STAGE)/$(OPT)/doc/schema/postgres/init
 	install -m 0644 schema/postgres/init/00_create_database.sql $(STAGE)/$(OPT)/doc/schema/postgres/init/
 	install -m 0755 schema/postgres/init/init-db.sh $(STAGE)/$(OPT)/doc/schema/postgres/init/
+	umask 022 && install -d $(STAGE)/$(OPT)/doc/schema/move
+	install -m 0755 schema/move/move-db.sh $(STAGE)/$(OPT)/doc/schema/move/
 	install -d $(DIST)
 	tar --sort=name --owner=0 --group=0 --numeric-owner -C $(STAGE) -czf $(DIST)/$(PKG).tar.gz etc opt var
 	cd $(DIST) && sha256sum $(PKG).tar.gz > $(PKG).tar.gz.sha256

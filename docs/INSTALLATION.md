@@ -206,6 +206,7 @@ opt/gamewe/collector/doc/                       README, CHANGELOG, INSTALLATION,
                                                 LICENSE, THIRD-PARTY-LICENSES.md, licenses/, GEOIP-NOTICE
 opt/gamewe/collector/doc/schema/init/           MariaDB: 00_create_database.sql, init-db.sh (database and users; the tables are built into gamewe)
 opt/gamewe/collector/doc/schema/postgres/init/  PostgreSQL: the same two files
+opt/gamewe/collector/doc/schema/move/           move-db.sh: copy the data from MariaDB to PostgreSQL or back (DATABASE.md)
 var/lib/gamewe/collector/dbip-city-lite.mmdb    GeoIP database (DB-IP City Lite, CC BY 4.0), updated there monthly
 ```
 

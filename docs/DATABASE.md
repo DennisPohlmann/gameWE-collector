@@ -14,7 +14,8 @@ migrate` it creates the tables of a new database and brings an older one to
 the current version ([Schema versions and
 upgrades](#schema-versions-and-upgrades)). The only SQL you run by hand is
 the init script (database, users, rights). Emptying, dropping and cleaning up
-the database: [Maintenance](#maintenance-gamewe-db).
+the database: [Maintenance](#maintenance-gamewe-db); moving it from MariaDB to
+PostgreSQL or back: [Moving to PostgreSQL or back](#moving-to-postgresql-or-back).
 
 What the collector writes into which table and column is described in
 [DB-SEMANTICS.md](DB-SEMANTICS.md). The documentation names the tables
@@ -376,6 +377,72 @@ ssl_cert_file = '/etc/postgresql/server.crt'
 ssl_key_file  = '/etc/postgresql/server.key'
 ssl_ca_file   = '/etc/postgresql/ca.crt'     # for client certificates
 ```
+
+## Moving to PostgreSQL or back
+
+gameWE has no command of its own for this: `gamewe db convert` only takes
+over an HLstatsX:CE database on MariaDB. Because both databases have the same
+tables and columns (compiled into the collector), the script
+`schema/move/move-db.sh` (`/opt/gamewe/collector/doc/schema/move/` in the
+package and the image) copies every row from one to the other through the
+two clients: no dump file, no file on the database server, no FILE right.
+It works in both directions.
+
+1. **Same collector version, then stop it.** Update first if an update is
+   due, so both databases get the same schema. Stop the collector
+   (`systemctl stop gamewe-collector` or `docker stop gamewe-collector`) and
+   leave the web admin alone while copying: what changes in the old database
+   after the copy is lost. Make a backup of the old database
+   (`mariadb-dump` / `pg_dump`, [INSTALLATION.md](INSTALLATION.md)).
+2. **The new database**, empty, with the init script of its kind
+   ([A new database](#a-new-database-mariadb--mysql) or
+   [PostgreSQL](#postgresql)), then its tables from the collector with a
+   second config file that differs only in `database.type`, `host`, `port`
+   and `name` (same `table_prefix`):
+
+   ```bash
+   cp /etc/gamewe/collector/config.yaml /tmp/new-db.yaml   # edit database.* there
+   sudo -u gamewe /opt/gamewe/collector/bin/gamewe db migrate -config /tmp/new-db.yaml
+   ```
+
+3. **Copy.** As the collector user `gamewe` of both databases (it owns the
+   tables on PostgreSQL and may empty them), the passwords from `~/.my.cnf`
+   / `MYSQL_PWD` and `~/.pgpass` / `PGPASSWORD`:
+
+   ```bash
+   cd /opt/gamewe/collector/doc/schema/move
+   export MYSQL_PWD='...' PGPASSWORD='...'
+   # MariaDB -> PostgreSQL
+   MY_DB=gamewe PG_DB=gamewe MYSQL='mariadb -h db1.example.org -u gamewe' \
+     PSQL='psql -h db2.example.org -U gamewe' ./move-db.sh to-postgres
+   # PostgreSQL -> MariaDB (needs local_infile on the MariaDB server, the default)
+   MY_DB=gamewe PG_DB=gamewe MYSQL='mariadb -h db1.example.org -u gamewe' \
+     PSQL='psql -h db2.example.org -U gamewe' ./move-db.sh to-mariadb
+   # in containers: MYSQL='docker exec -i -e MYSQL_PWD mariadb mariadb -u gamewe'
+   #                PSQL='docker exec -i -e PGPASSWORD postgres psql -U gamewe'
+   # another table prefix: TABLE_PREFIX=gw
+   ```
+
+   The script checks that both databases have the same schema version,
+   empties the tables of the target, copies one table after the other (the
+   identity sequences of PostgreSQL then go on after the highest id), and
+   at the end counts the rows of every table on both sides; it stops with
+   the tables that differ. `hlstats_Livestats` (who is online now) and the
+   version table are not copied. The events tables take the longest.
+4. **Switch over.** In the collector's config set `database.type`, `host`,
+   `port` and `name` (and the password of the new `gamewe`), in the web
+   `DB_TYPE`, `DB_HOST`, `DB_PORT`, `DB_NAME` and the passwords of
+   `gamewe_web` and `gamewe_web_admin`. Then `gamewe check`, start the
+   collector and the web, and look at a few pages. Keep the old database
+   until everything works.
+
+What changes on the way: MariaDB's zero dates (`0000-00-00`) are
+`1970-01-01` on PostgreSQL ([DB-SEMANTICS.md](DB-SEMANTICS.md#postgresql)) and
+stay `1970-01-01` when moving back. Admin users, their passwords, TOTP keys,
+backup codes and API tokens move along; they keep working as long as the web
+keeps its `ADMIN_SECRET`. On the way to MariaDB the control characters form
+feed and vertical tab in a text (gameWE writes none) come out as the letters
+`f` and `v`.
 
 ## Character set: utf8mb4
 
