@@ -43,6 +43,8 @@ func TestWebKeysNotReported(t *testing.T) {
 		"gamewe_link_12": "",
 		"gamewe_totp_8c6976e5b5410415bde908bd4dee15df":                     "secret",
 		"gamewe_totpp_c2fca2aa3a976ccd7b980318e0416b0d":                    "secret",
+		"gamewe_totpb_c2fca2aa3a976ccd7b980318e0416b0d_0":                  "hmac",
+		"gamewe_totpb_c2fca2aa3a976ccd7b980318e0416b0d_9":                  "hmac",
 		"gamewe_apitoken_0123456789abcdef0123456789abcdef0123456789abcdef": "{}",
 		"gamewe_heartbeat":          "1792889000",
 		"gamewe_reset_schedule_css": "2 month",
@@ -66,7 +68,7 @@ func TestWebKeysNotReported(t *testing.T) {
 	if _, warn := FromOptions(opts); len(warn) != 0 {
 		t.Errorf("web keys reported: %q", warn)
 	}
-	for _, k := range []string{"gamewe_link_", "gamewe_link_x", "gamewe_totp_", "gamewe_totp_abc", "gamewe_apitoken_", "gamewe_apitoken_abc", "gamewe_ts_hots", "gamewe_kill_point", "gamewe_hof_", "gamewe_reset_mode_CSS",
+	for _, k := range []string{"gamewe_link_", "gamewe_link_x", "gamewe_totp_", "gamewe_totp_abc", "gamewe_totpb_", "gamewe_totpb_abc_1", "gamewe_totpb_c2fca2aa3a976ccd7b980318e0416b0d", "gamewe_totpb_c2fca2aa3a976ccd7b980318e0416b0d_x", "gamewe_apitoken_", "gamewe_apitoken_abc", "gamewe_ts_hots", "gamewe_kill_point", "gamewe_hof_", "gamewe_reset_mode_CSS",
 		"gamewe_privacy_text_", "gamewe_privacy_text_x", "gamewe_privacy_phone", "gamewe_next_reset_", "gamewe_map_satelite"} {
 		if _, warn := FromOptions(map[string]string{k: "1"}); len(warn) != 1 {
 			t.Errorf("%s: warnings %q, want one", k, warn)
@@ -81,11 +83,11 @@ func TestWebKeysNotReported(t *testing.T) {
 
 // webNames are gamewe_* names in the web's source that are no
 // hlstats_Options keys: cookies, Prometheus metrics and the prefixes of
-// the web admin's hidden keys (gamewe_totp_<hash>, gamewe_apitoken_<hash> and
+// the web admin's hidden keys (gamewe_totp_<hash>, gamewe_totpb_<hash>_<n>, gamewe_apitoken_<hash> and
 // gamewe_privacy_text_<n> are checked in TestWebKeysNotReported).
 var webNames = map[string]bool{
 	"gamewe_2fa": true, "gamewe_admin": true, "gamewe_admin_theme": true, "gamewe_consent": true,
-	"gamewe_lang": true, "gamewe_session": true, "gamewe_totp": true, "gamewe_apitoken": true, "gamewe_apitoken_": true, "gamewe_privacy_": true,
+	"gamewe_lang": true, "gamewe_session": true, "gamewe_totp": true, "gamewe_apitoken": true, "gamewe_apitoken_": true, "gamewe_totpb_": true, "gamewe_privacy_": true,
 	"gamewe_info": true, "gamewe_up": true, "gamewe_servers": true, "gamewe_players_online": true,
 	"gamewe_players_ranked": true, "gamewe_database_up": true, "gamewe_database_latency_seconds": true,
 	"gamewe_skin_preview": true,

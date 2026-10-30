@@ -236,7 +236,7 @@ func gameCode(g string) bool {
 // otherKey reports gamewe_* keys that are not collector settings but are
 // expected in hlstats_Options: web settings, header link slots
 // (gamewe_link_<n>), web admin TOTP secrets (gamewe_totp_<hash>, pending
-// gamewe_totpp_<hash>), the admins' API tokens (gamewe_apitoken_<hash>), the operator's free text of the privacy page
+// gamewe_totpp_<hash>, backup codes gamewe_totpb_<hash>_<n>), the admins' API tokens (gamewe_apitoken_<hash>), the operator's free text of the privacy page
 // (gamewe_privacy_text_<n>), the scheduled ranking resets and hall of fame per
 // game (gamewe_reset_schedule_<game>, gamewe_reset_mode_<game>,
 // gamewe_reset_last_<game>, gamewe_hof_<game>) and of all rankings
@@ -275,6 +275,10 @@ func otherKey(k string) bool {
 		if h, ok := strings.CutPrefix(k, p); ok {
 			return len(h) == 32 && strings.Trim(h, "0123456789abcdef") == ""
 		}
+	}
+	if r, ok := strings.CutPrefix(k, "gamewe_totpb_"); ok {
+		h, n, ok := strings.Cut(r, "_")
+		return ok && len(h) == 32 && strings.Trim(h, "0123456789abcdef") == "" && n != "" && strings.Trim(n, "0123456789") == ""
 	}
 	if h, ok := strings.CutPrefix(k, "gamewe_apitoken_"); ok {
 		return len(h) == 48 && strings.Trim(h, "0123456789abcdef") == ""
