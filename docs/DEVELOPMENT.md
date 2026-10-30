@@ -177,8 +177,13 @@ the next version:
 | `feat!: ...`, `fix!: ...` or a `BREAKING CHANGE:` footer | major (0.1.0 → 1.0.0) |
 | `docs`, `chore`, `ci`, `build`, `test`, `refactor`, `style` | no release |
 
-For a release it writes `VERSION` and `CHANGELOG.md`, commits them as
-`chore(release): vX.Y.Z [skip ci]`, tags `vX.Y.Z` and creates the GitHub release. The workflow then builds that tag,
-uploads the archive and its `.sha256` to the release and pushes the image tags
-`<version>`, `<major>.<minor>` and `latest`. Never edit `VERSION` or
-`CHANGELOG.md` by hand.
+For a release it writes `VERSION`, the `version` and `appVersion` of the
+Helm chart (`charts/gamewe-collector/Chart.yaml`) and `CHANGELOG.md`,
+commits them as `chore(release): vX.Y.Z [skip ci]`, tags `vX.Y.Z` and
+creates the GitHub release. The workflow then builds that tag, uploads the
+archive and its `.sha256` to the release and pushes the image tags
+`<version>`, `<major>.<minor>` and `latest`; the job `chart` publishes the
+Helm chart as `oci://ghcr.io/<owner>/charts/gamewe-collector` and as a
+`.tgz` in the release (every build lints it, `go test ./charts` checks that
+its version is the collector's). Never edit `VERSION`, `Chart.yaml`'s
+versions or `CHANGELOG.md` by hand.

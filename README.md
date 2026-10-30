@@ -40,7 +40,9 @@ Current version: see `VERSION` and [CHANGELOG.md](CHANGELOG.md).
 
 ## Requirements
 
-- Linux x86_64 (static binary) or a container runtime (Docker / Podman)
+- Linux x86_64 (static binary), a container runtime (Docker / Podman) or
+  Kubernetes with Helm (`charts/gamewe-collector`,
+  [INSTALLATION](docs/INSTALLATION.md#on-kubernetes-helm))
 - MariaDB 11.4 or 12.3, or PostgreSQL 17 or 18 (tested in CI)
 - Game servers with a [supported game](#supported-games) that can send their
   logs to the collector (UDP; HTTP for Counter-Strike 2)

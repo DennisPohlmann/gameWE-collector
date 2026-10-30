@@ -7,7 +7,9 @@ name: build
 # CHANGELOG.md, commits that as "chore(release): vX.Y.Z [skip ci]", tags
 # vX.Y.Z and creates the GitHub release. package and docker then build the
 # tag: the archive goes into the release, the image gets the tags <version>,
-# <major>.<minor> and latest. A manual run (workflow_dispatch) tests and
+# <major>.<minor> and latest, and the Helm chart charts/gamewe-collector
+# (its version set by semantic-release) goes to oci://ghcr.io/<owner>/charts
+# and into the release. A manual run (workflow_dispatch) tests and
 # builds without pushing an image or making a release, and so does a pull
 # request (e.g. from Dependabot). The image is built and scanned with Trivy
 # first (image-scan); a fixable HIGH or CRITICAL vulnerability stops the
@@ -50,6 +52,11 @@ jobs:
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
       - name: actionlint
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+      - uses: ./.github/actions/setup-helm
+      - name: helm chart
+        run: |
+          helm lint charts/gamewe-collector --strict --set config=x
+          helm template gamewe charts/gamewe-collector --set existingSecret=x --set hostNetwork=false --set service.http.enabled=true > /dev/null
 
   # Both databases, created from scratch with the init scripts and
   # gamewe db migrate: gamewe for the collector tests (they delete all
@@ -272,6 +279,36 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "v$RELEASE" dist/*.tar.gz dist/*.tar.gz.sha256 --repo "$GITHUB_REPOSITORY"
+
+  # A release also publishes the Helm chart (charts/gamewe-collector, its
+  # version set to the release by semantic-release): as an OCI artifact
+  # oci://ghcr.io/<owner>/charts/gamewe-collector and as a file in the
+  # release.
+  chart:
+    needs: [release]
+    if: needs.release.outputs.version != ''
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+      packages: write
+    env:
+      RELEASE: ${{ needs.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: v${{ needs.release.outputs.version }}
+      - uses: ./.github/actions/setup-helm
+      - name: package and publish the chart
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          grep -qx "version: $RELEASE" charts/gamewe-collector/Chart.yaml
+          mkdir -p dist
+          helm package charts/gamewe-collector --destination dist
+          echo "$REGISTRY_PASSWORD" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          helm push "dist/gamewe-collector-$RELEASE.tgz" "oci://ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/charts"
+          gh release upload "v$RELEASE" "dist/gamewe-collector-$RELEASE.tgz" --repo "$GITHUB_REPOSITORY"
 
   # Publishes on a push to main and on the weekly schedule (edge only), with
   # an SBOM and full provenance as attestations; a release also gets the

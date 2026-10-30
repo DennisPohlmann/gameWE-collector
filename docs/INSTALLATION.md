@@ -157,6 +157,41 @@ firewall-cmd --permanent --add-rich-rule='rule family=ipv4 source address=198.51
   && firewall-cmd --reload                                          # firewalld, CS2 (HTTP)
 ```
 
+### On Kubernetes (Helm)
+
+The chart `charts/gamewe-collector` runs the same image; every release
+publishes it in the same version as the collector (semantic-release sets
+`version` and `appVersion` of `Chart.yaml`), as
+`oci://ghcr.io/dennispohlmann/charts/gamewe-collector` and as a `.tgz` in
+the GitHub release. The web has its own chart in gameWE-web.
+
+```bash
+kubectl create namespace gamewe
+kubectl -n gamewe create secret generic gamewe-collector --from-file=config.yaml=/etc/gamewe/collector/config.yaml
+helm install collector oci://ghcr.io/dennispohlmann/charts/gamewe-collector --version <version> -n gamewe \
+  --set existingSecret=gamewe-collector
+kubectl -n gamewe logs -f deploy/collector-gamewe-collector
+```
+
+The config file holds the database password, so it is a Secret with the
+key `config.yaml` (`existingSecret`); `--set-file config=config.yaml`
+creates it from the values instead. The collector recognises a game server
+by the source address of its log packets, so by default it uses the host
+network of its node (`hostNetwork: true`, like `--network host` above):
+the game servers send their logs to that node's address (pin it with a
+`nodeSelector`). With `hostNetwork: false` the chart creates a Service of
+type LoadBalancer with `externalTrafficPolicy: Local` (UDP 41337, and TCP
+41338 with `service.http.enabled`); check that the load balancer keeps the
+source address. Exactly one collector runs (`replicas: 1`, strategy
+`Recreate`, also while updating). A volume at `/var/lib/gamewe`
+(`persistence`, on by default) keeps the GeoIP database; an empty one gets
+it from the monthly download at the first start (`geoip.auto_update`). The
+container runs as `nonroot` (uid 65532) with a read-only root file system.
+Update: `helm upgrade collector oci://ghcr.io/dennispohlmann/charts/gamewe-collector
+--version <new version> -n gamewe --reuse-values`. If the package on GHCR
+is private, `helm registry login ghcr.io` first. All values:
+[charts/gamewe-collector/values.yaml](../charts/gamewe-collector/values.yaml).
+
 ## B. Release archive (tar.gz)
 
 The archive `gamewe-collector-<version>-linux-amd64.tar.gz` (Linux x86_64,

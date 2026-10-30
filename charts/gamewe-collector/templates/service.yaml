@@ -1,0 +1,30 @@
+{{- if not .Values.hostNetwork }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "gamewe-collector.fullname" . }}
+  labels:
+    {{- include "gamewe-collector.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  {{- if ne .Values.service.type "ClusterIP" }}
+  externalTrafficPolicy: {{ .Values.service.externalTrafficPolicy }}
+  {{- end }}
+  ports:
+    - name: logs
+      port: {{ .Values.service.udpPort }}
+      targetPort: logs
+      protocol: UDP
+    {{- if .Values.service.http.enabled }}
+    - name: http-logs
+      port: {{ .Values.service.http.port }}
+      targetPort: http-logs
+      protocol: TCP
+    {{- end }}
+  selector:
+    {{- include "gamewe-collector.selector" . | nindent 4 }}
+{{- end }}

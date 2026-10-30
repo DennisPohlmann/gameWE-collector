@@ -1,0 +1,12 @@
+apiVersion: v2
+name: gamewe-collector
+description: gameWE collector - receives the game servers' logs and writes the stats into an HLstatsX/gameME database
+type: application
+# version and appVersion are the release of gameWE-collector: semantic-release
+# sets both with every release (.releaserc.json), never edit them by hand.
+version: 1.4.0
+appVersion: "1.4.0"
+home: https://github.com/DennisPohlmann/gameWE-collector
+sources:
+  - https://github.com/DennisPohlmann/gameWE-collector
+keywords: [hlstatsx, gameme, counter-strike, stats]

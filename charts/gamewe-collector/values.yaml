@@ -1,0 +1,76 @@
+# gameWE collector on Kubernetes. One collector per database: it takes the
+# job lock and runs the daily jobs and the scheduled resets.
+
+image:
+  repository: ghcr.io/dennispohlmann/gamewe-collector
+  # Empty: the chart's appVersion, i.e. the release this chart belongs to.
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# The collector's config.yaml (docs/CONFIG.md, config.example.yaml). It holds
+# the database password, so it is stored as a Secret. Either the name of a
+# Secret you created yourself with the key config.yaml (recommended) ...
+existingSecret: ""
+# ... or the file here; the chart then creates the Secret.
+config: ""
+#  listen:
+#    udp:
+#      enabled: true
+#      address: 0.0.0.0
+#      port: 41337
+#  database:
+#    type: mariadb
+#    host: gamewe-db
+#    user: gamewe
+#    password: "change-me"
+#    name: gamewe
+
+# The collector recognises a game server by the source address of its log
+# packets. The host network keeps it (as with Docker, network_mode: host):
+# the game servers send their logs to the node's address. Without it a
+# Service of type LoadBalancer with externalTrafficPolicy Local is created;
+# check that your load balancer keeps the source address (README, Docker).
+hostNetwork: true
+
+service:
+  # Only used without hostNetwork.
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  udpPort: 41337
+  # The HTTP logs of Counter-Strike 2 (listen.http in config.yaml).
+  http:
+    enabled: false
+    port: 41338
+  annotations: {}
+
+# GeoIP database and its monthly update (/var/lib/gamewe). Off: the copy in
+# the image, without updates between releases.
+persistence:
+  enabled: true
+  # existingClaim: ""
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 1Gi
+
+resources: {}
+#  requests: { cpu: 100m, memory: 128Mi }
+#  limits: { memory: 512Mi }
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532 # nonroot, as in the image
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

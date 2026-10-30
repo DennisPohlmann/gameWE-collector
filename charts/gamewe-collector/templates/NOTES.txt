@@ -1,0 +1,14 @@
+gameWE collector {{ .Chart.AppVersion }} is installed as {{ include "gamewe-collector.fullname" . }}.
+
+{{- if .Values.hostNetwork }}
+It listens on the host network of its node: let the game servers send their
+logs to <node address>:{{ .Values.service.udpPort }} (UDP), e.g. with a nodeSelector to a
+node with a fixed address.
+{{- else }}
+Game servers send their logs to the Service's external address, port
+{{ .Values.service.udpPort }}/UDP: kubectl -n {{ .Release.Namespace }} get svc {{ include "gamewe-collector.fullname" . }}
+Check that the source address of the packets is kept (README, Docker).
+{{- end }}
+
+Logs:    kubectl -n {{ .Release.Namespace }} logs -f deploy/{{ include "gamewe-collector.fullname" . }}
+Command: kubectl -n {{ .Release.Namespace }} exec deploy/{{ include "gamewe-collector.fullname" . }} -- /opt/gamewe/collector/bin/gamewe check -config /etc/gamewe/collector/config.yaml
