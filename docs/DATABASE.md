@@ -76,8 +76,7 @@ then warns, and a database admin grants the rights with
 `gamewe db grants -print | mariadb -u root -p gamewe`.
 
 The reference data: games `css`, `csgo`, `tf`, `dods`, `hl2mp`, `l4d`,
-`l4d2`, `insurgency`, `zps`, `ff`, `csp`, `fof`, `nmrih` and the GoldSrc games `cstrike`, `czero`, `dod`, `tfc`, `valve`,
-`ns`, with their teams (and roles where the game has them), actions with
+`l4d2`, `zps`, `fof`, `nmrih` and the GoldSrc games `cstrike`, `czero`, `dod`, `valve`, with their teams (and roles where the game has them), actions with
 rewards, weapons with modifiers, awards, ranks and ribbons (GAMES.md), and the
 `gamewe_*` options. Change them in the web admin or with `gamewe game` /
 `gamewe option`.

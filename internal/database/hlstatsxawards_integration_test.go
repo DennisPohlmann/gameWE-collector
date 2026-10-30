@@ -23,8 +23,8 @@ func TestMigrateHLstatsXAwards(t *testing.T) {
 	admin := adminIn(t, name)
 	codes := `('mvp', 'teamkills')`
 	for _, q := range []string{
-		`DELETE FROM hlstats_Awards WHERE code IN ` + codes + ` AND game IN ('css', 'tfc', 'valve', 'tf')`,
-		`DELETE FROM hlstats_Definition_Ranks_Ribbons WHERE code IN ` + codes + ` AND game_code IN ('css', 'tfc', 'valve', 'tf')`,
+		`DELETE FROM hlstats_Awards WHERE code IN ` + codes + ` AND game IN ('css', 'dod', 'valve', 'tf')`,
+		`DELETE FROM hlstats_Definition_Ranks_Ribbons WHERE code IN ` + codes + ` AND game_code IN ('css', 'dod', 'valve', 'tf')`,
 		`DELETE FROM ` + MigrationsTable + ` WHERE version >= 11`,
 		// css1: a ranking of css with the definitions of css up to version 10,
 		// and its own name for an award it already has.
@@ -61,12 +61,12 @@ func TestMigrateHLstatsXAwards(t *testing.T) {
 	}{
 		{"css", codes, 2},
 		{"css1", codes, 2},
-		{"tfc", codes, 1},
+		{"dod", codes, 1},
 		{"valve", codes, 0}, // valve is deathmatch: no teamkills
 		{"tf", `('teamkills')`, 1},
 		{"css", `('headshot', 'mostkills', 'suicide')`, 0},
 		{"css1", `('headshot', 'mostkills', 'suicide')`, 0},
-		{"tfc", `('headshot', 'mostkills', 'suicide')`, 0},
+		{"dod", `('headshot', 'mostkills', 'suicide')`, 0},
 	} {
 		if n := count(`SELECT COUNT(*) FROM hlstats_Awards WHERE game = '` + c.game + `' AND code IN ` + c.codes); n != c.want {
 			t.Errorf("%s: %d awards, want %d", c.game, n, c.want)

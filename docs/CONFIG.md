@@ -280,7 +280,7 @@ Then:
   there is time to change `server.cfg` too. Clearing the secret
   (`gamewe server set <id> -logsecret ""`, or `-` in the web admin) makes the
   collector accept all packets of the server again.
-- **GoldSrc servers** (cstrike, czero, valve, dod, tfc, ns, ... by the game's engine,
+- **GoldSrc servers** (cstrike, czero, valve, dod, ... by the game's engine,
   GAMES.md) are never checked; logged once as a note. (Assumption: HLDS has
   no `sv_logsecret`.)
 - **Source 2 servers** (cs2) are never checked either: their HTTP logs carry

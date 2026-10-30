@@ -30,16 +30,20 @@ func (e Engine) String() string {
 // longer codes first (dods before dod, tfc before tf, l4d2 before l4d,
 // cs2 and csgo before css).
 // czero (Condition Zero) logs like cstrike and uses the same AMX Mod X plugin.
+// retired: no longer supported (the game or mod is dead): not offered for a
+// new ranking and not seeded, but a ranking of an existing database keeps
+// running with its engine and data; the collector warns about it.
 var engines = []struct {
-	code   string
-	engine Engine
+	code    string
+	engine  Engine
+	retired bool
 }{
-	{"cstrike", GoldSrc}, {"czero", GoldSrc}, {"cs2", Source2}, {"csgo", Source}, {"css", Source},
-	{"dods", Source}, {"dod", GoldSrc}, {"tfc", GoldSrc}, {"tf", Source},
-	{"hl2mp", Source}, {"hl2ctf", Source}, {"l4d2", Source}, {"l4d", Source},
-	{"insurgency", Source}, {"zps", Source}, {"ff", Source}, {"csp", Source},
-	{"fof", Source}, {"nmrih", Source}, {"valve", GoldSrc}, {"ns", GoldSrc},
-	{"ts", GoldSrc}, {"dmc", GoldSrc}, {"ricochet", GoldSrc}, {"gearbox", GoldSrc},
+	{"cstrike", GoldSrc, false}, {"czero", GoldSrc, false}, {"cs2", Source2, false}, {"csgo", Source, false}, {"css", Source, false},
+	{"dods", Source, false}, {"dod", GoldSrc, false}, {"tfc", GoldSrc, true}, {"tf", Source, false},
+	{"hl2mp", Source, false}, {"hl2ctf", Source, false}, {"l4d2", Source, false}, {"l4d", Source, false},
+	{"insurgency", Source, true}, {"zps", Source, false}, {"ff", Source, true}, {"csp", Source, true},
+	{"fof", Source, false}, {"nmrih", Source, false}, {"valve", GoldSrc, false}, {"ns", GoldSrc, true},
+	{"ts", GoldSrc, false}, {"dmc", GoldSrc, false}, {"ricochet", GoldSrc, false}, {"gearbox", GoldSrc, false},
 }
 
 // Default is the realgame of a game whose realgame is empty and not
@@ -49,18 +53,18 @@ const Default = "css"
 // Resolve returns the base game and engine of a game: realgame if it is a
 // known base game, else a guess from the code's prefix (css1 is css), else
 // Default. warn says what was guessed ("" if realgame was known, or is
-// empty and the code is a base game).
+// empty and the code is a base game) or that the game is retired.
 func Resolve(realgame, code string) (base string, engine Engine, warn string) {
 	r := strings.ToLower(strings.TrimSpace(realgame))
 	for _, e := range engines {
 		if r == e.code {
-			return e.code, e.engine, ""
+			return e.code, e.engine, retiredWarn(e.retired, code, e.code)
 		}
 	}
 	c := strings.ToLower(code)
 	for _, e := range engines {
 		if r == "" && c == e.code {
-			return e.code, e.engine, "" // a base game of an old database without realgame
+			return e.code, e.engine, retiredWarn(e.retired, code, e.code) // a base game of an old database without realgame
 		}
 	}
 	for _, e := range engines {
@@ -73,21 +77,41 @@ func Resolve(realgame, code string) (base string, engine Engine, warn string) {
 
 func quote(s string) string { return `"` + s + `"` }
 
-// Known returns the known base games.
+func retiredWarn(retired bool, code, base string) string {
+	if !retired {
+		return ""
+	}
+	return "hlstats_Games " + code + ": " + base + " is no longer supported (GAMES.md); the ranking keeps running as before and its data stays"
+}
+
+// Known returns the supported base games (not the retired ones).
 func Known() []string {
 	var out []string
 	for _, e := range engines {
-		out = append(out, e.code)
+		if !e.retired {
+			out = append(out, e.code)
+		}
 	}
 	return out
 }
 
-// IsBase reports whether code is a known base game (a default ranking),
-// ignoring case.
+// Retired returns the base games that are no longer supported.
+func Retired() []string {
+	var out []string
+	for _, e := range engines {
+		if e.retired {
+			out = append(out, e.code)
+		}
+	}
+	return out
+}
+
+// IsBase reports whether code is a supported base game (a default ranking),
+// ignoring case. A retired game is not: its unused ranking can be deleted.
 func IsBase(code string) bool {
 	c := strings.ToLower(strings.TrimSpace(code))
 	for _, e := range engines {
-		if c == e.code {
+		if c == e.code && !e.retired {
 			return true
 		}
 	}

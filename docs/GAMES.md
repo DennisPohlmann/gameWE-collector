@@ -19,14 +19,12 @@ registers itself as log address, and the commands of in-game replies.
 | `tf` | Team Fortress 2 | Source |
 | `dods` | Day of Defeat: Source | Source |
 | `hl2mp`, `hl2ctf` | Half-Life 2: Deathmatch | Source |
-| `l4d`, `l4d2`, `insurgency` | Left 4 Dead 1/2 (see [Left 4 Dead](#left-4-dead)), Insurgency | Source |
-| `zps`, `ff`, `csp`, `fof`, `nmrih` | Zombie Panic! Source, Fortress Forever, CSPromod, Fistful of Frags, No More Room in Hell | Source |
+| `l4d`, `l4d2` | Left 4 Dead 1/2 (see [Left 4 Dead](#left-4-dead)) | Source |
+| `zps`, `fof`, `nmrih` | Zombie Panic! Source, Fistful of Frags, No More Room in Hell | Source |
 | `cstrike` | Counter-Strike 1.6 | GoldSrc |
 | `czero` | Counter-Strike: Condition Zero | GoldSrc |
 | `dod` | Day of Defeat | GoldSrc |
-| `tfc` | Team Fortress Classic | GoldSrc |
 | `valve` | Half-Life 1 Multiplayer | GoldSrc |
-| `ns` | Natural Selection | GoldSrc |
 | `ts`, `dmc`, `ricochet`, `gearbox` | other GoldSrc mods (no default data) | GoldSrc |
 
 A ranking cloned from a game keeps the template's realgame (`css1` ... `css6`
@@ -38,11 +36,32 @@ guesses every game from its code.
 
 `gamewe game list` shows realgame and engine of every game.
 
+## Retired games
+
+These games are no longer supported, because their servers and players are
+gone: Team Fortress Classic (`tfc`, GoldSrc), Natural Selection (`ns`,
+GoldSrc), Insurgency (`insurgency`, Source; its successor Insurgency:
+Sandstorm is not a Source game), Fortress Forever (`ff`, Source) and
+CSPromod (`csp`, Source). A new database gets no ranking and no definitions
+for them, `gamewe game add` and the web admin no longer offer them as
+realgame, and the AMX Mod X plugin no longer ships `gamewe_tfc` and
+`gamewe_ns` (the SourceMod plugin still recognizes the three Source games,
+so their servers keep logging as before).
+
+Nothing of an existing database is changed or deleted: a ranking with one
+of these realgames keeps its definitions, players and history, and its
+servers keep running with the right engine (tfc stays GoldSrc, it is not
+guessed as tf). The collector logs a warning once at start
+(`... is no longer supported`), and `gamewe game list` marks the ranking
+`(retired)`. Such a ranking is no longer a default ranking: once it has no
+servers and no players, `gamewe game delete <code>` deletes it with its
+definitions (nothing does this on its own).
+
 ## Default data
 
 The reference data (`internal/schema/mysql/seed.sql`) has teams, roles, actions (rewards), weapons (modifiers),
 awards, ranks and ribbons for css (gameME values), and for cstrike, dod,
-dods, tfc, valve, ns, tf, hl2mp and csgo the definitions of HLstatsX:CE
+dods, valve, tf, hl2mp and csgo the definitions of HLstatsX:CE
 (`sql/install.sql` of github.com/A1mDev/hlstatsx-community-edition) with these
 gameWE changes:
 
@@ -68,26 +87,23 @@ gameWE changes:
   `gamewe_cstrike`), so czero gets a copy of the cstrike definitions.
   HLstatsX:CE has no Condition Zero data of its own (it runs CZ servers as
   cstrike); a CZ server can still use a ranking with realgame cstrike;
-- zps, ff, csp, fof: teams, roles (ff), actions, weapons and awards of
-  HLstatsX:CE; a few crude ff award names are replaced by neutral ones, and
-  the ff pseudo weapon award `BOOM_HEADSHOT` is left out (`most_headshots`
-  covers it). The SourceMod plugin detects all four (`ZPS`, `FF`, `CSP`,
-  `FOF`). Not checked against live logs of these games yet;
+- zps, fof: teams, actions, weapons and awards of HLstatsX:CE. The
+  SourceMod plugin detects both (`ZPS`, `FOF`). Not checked against live
+  logs of these games yet;
 - l4d, l4d2: teams, roles (survivors and infected classes), actions,
   weapons and awards of HLstatsX:CE; CE's player-vs-player awards are left
   out, two l4d2 copy errors are fixed (`killed_jockey` was named "Hunter
   Punter", `protect_teammate` counted "hunter punts"). See
   [Left 4 Dead](#left-4-dead) below;
-- nmrih: like insurgency below (HLstatsX:CE has no data for it), no teams
-  (it is a co-op game);
-- insurgency: no weapons and actions (HLstatsX:CE has none; weapons
+- nmrih: no weapons and actions (HLstatsX:CE has no data for it; weapons
   are created with modifier 1.00 when first used), but the game-independent
-  awards, the ranks and the ribbon classes like every game;
+  awards, the ranks and the ribbon classes like every game; no teams (it is
+  a co-op game);
 - ranks and ribbon classes as css, one ribbon per daily award.
 
 **Limit:** `hlstats_Teams.teamId` and `hlstats_Roles.roleId` are tinyint in
 the HLstatsX schema: at most 255 teams and 255 roles over all games and
-rankings. The seed uses about 60 teams and 135 roles; a ranking cloned from
+rankings. The seed uses about 40 teams and 110 roles; a ranking cloned from
 css adds 3 and 8, one cloned from dod 2 and 35.
 
 ## Log transport
@@ -118,7 +134,7 @@ events (`killed`, `committed suicide with`, `triggered`, `joined team`,
 | headshot | `(headshot)` | `(headshot)`, `(headshot penetrated)` | `(customkill "headshot")` | CS 1.6 logs none: the AMX plugin logs the kill line, then `triggered "headshot"` (see below) |
 | team change | `joined team` | `switched from team <A> to <B>` | `joined team` | `joined team` |
 | round win | `Team "CT" triggered "CTs_Win"` | `SFUI_Notice_CTs_Win` (prefix removed) | `Round_Win` | `CTs_Win` |
-| kill assists | – (CS:S has no assister; Insurgency: plugin `triggered "kill_assist" against "V"`) | `"A" assisted killing "V"`, the plugin also `triggered "kill_assist" against "V"` | `triggered "kill assist" against "V"` | – |
+| kill assists | – (CS:S has no assister) | `"A" assisted killing "V"`, the plugin also `triggered "kill_assist" against "V"` | `triggered "kill assist" against "V"` | – |
 | map | `Started map "x"` | same | same | `Started map "x"` |
 
 **GoldSrc kills are held for one line:** the AMX plugin writes a headshot
@@ -143,7 +159,7 @@ engine: `STEAM_x:y:z` → `y:z`; Steam3 `[U:1:n]` → `n%2:n/2`; bots
 
 **Hitgroups** (`hlstats_Players_Weapons` hit areas) come from `weaponstats2`
 lines: the SourceMod plugin on CS:S, CS:GO, DoD:S, HL2DM (not TF2), the AMX
-plugin on cstrike, czero, dod and tfc. valve and ns have none. On CS2 they come from
+plugin on cstrike, czero and dod. valve has none. On CS2 they come from
 the game's own `attacked` lines (`features.cs2_hitgroups`), with `neck` as an
 extra area.
 

@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/netip"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -82,7 +83,10 @@ type Game struct {
 	Realgame string `json:"realgame"`
 	// Guessed: realgame is empty or unknown, the base game is guessed from
 	// the code (ListGames marks it with "?").
-	Guessed bool   `json:"realgame_guessed"`
+	Guessed bool `json:"realgame_guessed"`
+	// Retired: the base game is no longer supported (games.Retired); the
+	// ranking keeps running (ListGames marks it with "retired").
+	Retired bool   `json:"retired"`
 	Engine  string `json:"engine"`
 	Hidden  bool   `json:"hidden"`
 	// The ranking's bot settings (settings.RankBots, BotPoints, BotKills,
@@ -146,6 +150,9 @@ func (a *Admin) ListGames(ctx context.Context) error {
 		if g.Guessed {
 			rg += "?"
 		}
+		if g.Retired {
+			rg += " (retired)"
+		}
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\t%s\n", g.Code, rg, g.Engine, map[bool]string{true: "yes"}[g.Hidden], botsText(g),
 			map[bool]string{true: "blocked", false: "-"}[g.BlockVAC], g.Servers, g.Players, g.Name)
 	}
@@ -190,8 +197,9 @@ func (a *Admin) Games(ctx context.Context) ([]Game, error) {
 		if err := rows.Scan(&g.Code, &g.Name, &g.Realgame, &hidden, &g.Servers, &g.Players); err != nil {
 			return nil, err
 		}
-		_, engine, warn := games.Resolve(g.Realgame, g.Code)
-		g.Engine, g.Guessed, g.Hidden = engine.String(), warn != "", hidden == "1"
+		base, engine, warn := games.Resolve(g.Realgame, g.Code)
+		g.Retired = slices.Contains(games.Retired(), base)
+		g.Engine, g.Guessed, g.Hidden = engine.String(), warn != "" && !g.Retired, hidden == "1"
 		g.RankBots, g.BotPoints, g.BotKills, g.BotStats = set.RankBots(g.Code), set.BotPoints(g.Code), set.BotKills(g.Code), set.BotStats(g.Code)
 		g.BlockVAC = set.BlockVAC(g.Code)
 		list = append(list, g)
@@ -238,8 +246,8 @@ func (a *Admin) AddGame(ctx context.Context, code, name, template, realgame stri
 	if realgame == "" {
 		realgame, _, _ = games.Resolve("", code)
 	}
-	if base, _, warn := games.Resolve(realgame, code); warn != "" || base != strings.ToLower(realgame) {
-		return fmt.Errorf("realgame %q is not a known game (%s)", realgame, strings.Join(games.Known(), ", "))
+	if err := knownRealgame(realgame, code); err != nil {
+		return err
 	}
 	realgame = strings.ToLower(realgame)
 	existing, err := a.game(ctx, code)
@@ -341,8 +349,8 @@ func (a *Admin) SetGame(ctx context.Context, code string, f GameFields) error {
 		if col != "realgame" {
 			return fmt.Errorf("-realgame: the database has no hlstats_Games.realgame; %s", database.SchemaHint)
 		}
-		if base, _, warn := games.Resolve(*f.Realgame, code); warn != "" || base != strings.ToLower(*f.Realgame) {
-			return fmt.Errorf("realgame %q is not a known game (%s)", *f.Realgame, strings.Join(games.Known(), ", "))
+		if err := knownRealgame(*f.Realgame, code); err != nil {
+			return err
 		}
 		r := strings.ToLower(*f.Realgame)
 		f.Realgame = &r
@@ -475,6 +483,19 @@ func (a *Admin) setBotOption(ctx context.Context, game string, b botChange) erro
 	}
 	if n > 0 {
 		a.say("  %d bots of %s %s", n, game, map[bool]string{true: "ranked", false: "hidden"}[b.on])
+	}
+	return nil
+}
+
+// knownRealgame refuses a realgame that is not a supported base game: an
+// unknown one and a retired one (games.Retired).
+func knownRealgame(realgame, code string) error {
+	r := strings.ToLower(strings.TrimSpace(realgame))
+	if slices.Contains(games.Retired(), r) {
+		return fmt.Errorf("realgame %q is no longer supported (docs/GAMES.md, \"Retired games\")", realgame)
+	}
+	if base, _, warn := games.Resolve(realgame, code); warn != "" || base != strings.ToLower(realgame) {
+		return fmt.Errorf("realgame %q is not a known game (%s)", realgame, strings.Join(games.Known(), ", "))
 	}
 	return nil
 }
