@@ -1061,7 +1061,9 @@ const (
 	migrateLockPrefix = "gamewe_db_migrate."
 	migrateLockKey    = 0x67616d6577650001 // pg_advisory_lock, per database
 	jobLockPrefix     = "gamewe_jobs."
-	jobLockKey        = 0x67616d6577650002
+	// Not runLockKey (…0002): on PostgreSQL the running collector holds
+	// that one for its whole life, so its jobs would wait for themselves.
+	jobLockKey = 0x67616d6577650003
 )
 
 // migrateLock takes the migration lock on conn, waiting up to wait.

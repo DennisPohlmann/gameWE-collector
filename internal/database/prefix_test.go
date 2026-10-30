@@ -132,6 +132,14 @@ func TestPrefixLocksAndLike(t *testing.T) {
 	if a.lockKey(runLockKey) == runLockKey || a.lockKey(runLockKey) == b.lockKey(runLockKey) || a.lockKey(runLockKey) != Prefix("GW").lockKey(runLockKey) {
 		t.Error("lock keys not per prefix")
 	}
+	// PostgreSQL has one key space: a running collector holds the collector
+	// lock, its jobs take the job lock, gamewe db migrate the migration lock.
+	for _, p := range []Prefix{d, a, b} {
+		keys := map[int64]bool{p.lockKey(runLockKey): true, p.lockKey(jobLockKey): true, p.lockKey(migrateLockKey): true}
+		if len(keys) != 3 {
+			t.Errorf("prefix %q: collector, job and migration lock share a key", p)
+		}
+	}
 	if got := Prefix("my_stats").like(); got != `my\_stats\_%` {
 		t.Errorf("like = %q", got)
 	}
