@@ -37,7 +37,7 @@ be on, and both can run at the same time.
 - `listen.udp`: GoldSrc and Source servers (`logaddress_add <ip>:<port>`). On
   by default.
 - `listen.http`: Counter-Strike 2 (Source 2), which logs only over HTTP
-  (`logaddress_add_http "http://<ip>:<port>/<game port>"`). Off by default.
+  (`logaddress_add_http "http://<ip>:<port>/<token>/<game port>"`). Off by default.
   CS2 sends plain HTTP; HTTPS is not supported by the game.
 
 All keys are optional.
@@ -65,7 +65,7 @@ with exit code 2 when it is given.
 | `address` | `0.0.0.0` | IP to listen on |
 | `port` | `41338` | TCP port |
 | `public_url` | – | `http://host:port` (no path) the CS2 servers post to, registered with `logaddress_add_http` (`features.log_address.http`). The collector adds `/<token>/<game port>`. Default: `http://`, the collector's address of the RCON connection and `port`. |
-| `token` | – | a secret first path segment, 16 to 128 letters, digits, `-` or `_`. When it is set, only posts to `/<token>/<game port>` are accepted and everything else gets 404. Recommended, because CS2's HTTP logs carry no `sv_logsecret`. The token is never logged; `gamewe logaddress` and the log show it as `<token>`. |
+| `token` | – | a secret first path segment, 16 to 128 letters, digits, `-` or `_`. One token for the collector: every CS2 server uses the same one in its URL (`logaddress_add_http "http://<collector>:41338/<token>/<game port>"`); it is not `sv_logsecret` and not set per server. When it is set, only posts to `/<token>/<game port>` are accepted and everything else gets 404. Recommended, because CS2's HTTP logs carry no `sv_logsecret`. The token is never logged; `gamewe logaddress` and the log show it as `<token>`. |
 | `max_body` | `128KiB` | largest post, `4KiB` to `16MiB` (`KiB`, `MiB`, `KB`, `MB` or bytes); a larger one gets 413 |
 | `read_timeout` | `10s` | time to read one post, `1s` to `2m` |
 | `max_connections` | `64` | open connections at most (1 to 4096); more are closed at once |
@@ -74,7 +74,9 @@ with exit code 2 when it is given.
 
 A post is checked before its body is read. The sender's IP and the game port
 from the URL must be a server in `hlstats_Servers` whose game is a Source 2
-game (`cs2`); every other post gets 403. Only `POST` is accepted (405
+game (`cs2`); every other post gets 403. The port at the end of the URL is the
+game port exactly as in the web admin; the collector re-reads `hlstats_Servers`
+every minute, so a new server is accepted within about a minute. Only `POST` is accepted (405
 otherwise); a path that is not `/<game port>` (or `/<token>/<game port>`)
 gets 404. Lines longer than 8 KiB are dropped. Rejected posts are logged
 (`rejected HTTP log post`) the first time per sender and reason, then every

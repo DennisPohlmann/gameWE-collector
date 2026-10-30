@@ -187,14 +187,23 @@ plain HTTP; the game offers no HTTPS), and SourceMod and AMX Mod X do not run
 on it. Set up:
 
 1. Switch on `listen.http` in the collector's config (TCP port 41338 by
-   default; a `token` is recommended) and open the port for the CS2 servers.
+   default) with a `token` (one for all CS2 servers, not `sv_logsecret`) and
+   open the port for the CS2 servers.
 2. Add the server in the web admin or with `gamewe server add` with a game
    whose realgame is `cs2` (the seed has `cs2`).
-3. With `rcon_password` and `features.log_address.http` (default) the
-   collector registers itself (`logaddress_add_http "http://<collector>:41338/<game port>"`
-   and `log on`). By hand, in the server's `server.cfg` or start line:
-   `log on; logaddress_add_http "http://203.0.113.5:41338/27015"` (with a
-   token: `.../<token>/27015`).
+3. Start CS2 with `-usercon` (RCON, needed for the collector's checks and
+   the in-game replies). With `rcon_password` and `features.log_address.http`
+   (default) the collector registers itself
+   (`logaddress_add_http "http://<collector>:41338/<token>/<game port>"` and
+   `log on`). By hand, in the server's `server.cfg`:
+   `log on`, `logaddress_delall_http`,
+   `logaddress_add_http "http://203.0.113.5:41338/<token>/27015"`.
+   `<token>` is `listen.http.token` (left out with its `/` when no token is
+   set); the last segment is the game port exactly as in the web admin, the
+   server is found by the sender's IP and this port. The log secret is
+   ignored on CS2. 404 in the collector's log (`rejected HTTP log post`):
+   wrong path or token; 403: the IP and port are not a CS2 server of the
+   web admin ([INSTALLATION.md](INSTALLATION.md#g-troubleshooting)).
 
 The base data of `cs2` is the csgo data (see [CS:GO](#csgo)) without the VIP
 actions, the old weapon code `galil` (CS2 logs `galilar`) and the player-model

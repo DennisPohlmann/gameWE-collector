@@ -238,10 +238,13 @@ against faked log packets, `sv_logsecret` (collector docs, CONFIG.md).
 
 Counter-Strike 2 sends its logs over HTTP: add to the collector's config
 (`listen:` in `~/gamewe/collector.yaml` or in the Compose file) an
-`http:` part with `enabled: true` and `port: 41338`, restart the collector,
-open TCP 41338 for the game servers and use
-`logaddress_add_http "http://<docker host>:41338/27015"` (the game port at
-the end) instead of `logaddress_add`; details in
+`http:` part with `enabled: true`, `port: 41338` and a random `token`,
+restart the collector, open TCP 41338 for the game servers, start CS2 with
+`-usercon` and put `log on`, `logaddress_delall_http` and
+`logaddress_add_http "http://<docker host>:41338/<token>/<game port>"`
+into `server.cfg` instead of `logaddress_add` (`<token>` is
+`listen.http.token`, the same for all servers; the game port as in the web
+admin); details in
 [Counter-Strike 2](https://github.com/DennisPohlmann/gameWE-collector/blob/main/docs/GAMES.md#counter-strike-2).
 
 For production put a reverse proxy with TLS in front of the web (bind it
@@ -277,9 +280,11 @@ and the [web](https://github.com/DennisPohlmann/gameWE-web/blob/main/docs/INSTAL
    rcon_password "change-me"            // the same as in hlstats_Servers
    ```
 
-   Counter-Strike 2: switch on `listen.http` in the config and use
-   `logaddress_add_http "http://203.0.113.5:41338/27015"` (the collector's
-   IP and HTTP port, then the game server's port) instead of `logaddress_add`.
+   Counter-Strike 2 (started with `-usercon`): switch on `listen.http` with a
+   `token` in the config and use `logaddress_delall_http` and
+   `logaddress_add_http "http://203.0.113.5:41338/<token>/27015"` (the
+   collector's IP and HTTP port, `listen.http.token`, then the game server's
+   port as in the web admin) instead of `logaddress_add`.
 
 Every step in detail: [docs/INSTALLATION.md](docs/INSTALLATION.md).
 

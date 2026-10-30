@@ -30,7 +30,9 @@ listen:
     # the game servers reach the collector at another address (NAT).
     # public_address: 203.0.113.4:41337
   # HTTP: the logs of Counter-Strike 2 (Source 2), which sends them only
-  # over HTTP: logaddress_add_http "http://<collector>:41338/<game port>".
+  # over HTTP: logaddress_add_http "http://<collector>:41338/<token>/<game port>"
+  # (<token>: listen.http.token below, the same for all CS2 servers; the
+  # game port as in the web admin).
   # Plain HTTP (CS2 offers no HTTPS); open the TCP port only for the game
   # servers. Only servers of hlstats_Servers with a Source 2 game are
   # accepted.

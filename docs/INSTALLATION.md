@@ -457,24 +457,50 @@ for the in-game replies (`!rank`, `!top10`, menus) and the extra statistics
 the gameWE AMX Mod X plugin ([GAMES.md](GAMES.md)).
 
 **Counter-Strike 2**: CS2 logs only over HTTP. Switch on `listen.http` in
-the config (and open TCP 41338 for the server), add the server with a cs2
-game (`gamewe server add 198.51.100.7:27015 -game cs2 ...`), then in
-`server.cfg`:
+the config with a `token` (and open TCP 41338 for the server), add the
+server with a cs2 game (`gamewe server add 198.51.100.7:27015 -game cs2 ...`),
+start CS2 with `-usercon` (RCON is off without it) and put into `server.cfg`:
 
 ```
 log on
-logaddress_add_http "http://203.0.113.5:41338/27015"    // collector IP and HTTP port, then the game port
-rcon_password "change-me"                                // the same as in hlstats_Servers
+logaddress_delall_http
+logaddress_add_http "http://203.0.113.5:41338/<token>/27015"  // collector IP, HTTP port, listen.http.token, game port
+rcon_password "change-me"                                      // the same as in hlstats_Servers
 ```
 
-With a `listen.http.token` the URL is `http://203.0.113.5:41338/<token>/27015`.
+- `<token>` is `listen.http.token` from the collector's config file: one
+  token for the collector, the same on every CS2 server. It is not
+  `sv_logsecret` and not set per server. Without a token in the config the
+  URL has no token segment (`http://203.0.113.5:41338/27015`); a token is
+  recommended.
+- The last segment is the game server's port exactly as in the web admin
+  (`hlstats_Servers`). The collector finds the server by the sender's IP and
+  this port; a server added or changed in the web admin is picked up within
+  about a minute.
+- `logaddress_delall_http` removes old URLs (another port, an old token), so
+  the server posts to one URL only.
+- The log secret of a CS2 server is ignored (CS2's HTTP logs carry none);
+  leave it empty. The token and the firewall protect the input instead.
+
 With the RCON password the collector registers this URL itself
-(`features.log_address.http`). Without the [gameWE CounterStrikeSharp plugin](https://github.com/DennisPohlmann/gameWE-plugin-counterstrikesharp)
+(`features.log_address.http`, every minute, then `log on`). Without the
+[gameWE CounterStrikeSharp plugin](https://github.com/DennisPohlmann/gameWE-plugin-counterstrikesharp)
 there are no in-game replies and no weapon accuracy; hits per body part come
-from the game's own log. With the plugin (and `-usercon` on the CS2 start
-line) the collector answers in-game commands and stores the plugin's weapon
-statistics ([GAMES.md](GAMES.md#counter-strike-2)). `gamewe logaddress -server <id>`
-shows whether the URL is registered (the token as `<token>`).
+from the game's own log. With the plugin (and `-usercon`, the RCON password
+of `hlstats_Servers`) the collector answers in-game commands (`!rank`, ...)
+and stores the plugin's weapon statistics ([GAMES.md](GAMES.md#counter-strike-2)).
+`gamewe logaddress -server <id>` shows whether the URL is registered (the
+token as `<token>`).
+
+The collector's log says whether the posts arrive: `receiving HTTP logs`
+(server ID, name) for the first post of a server and the first after 10
+minutes without posts, and `rejected HTTP log post` with `status`, `reason`
+and `hint` for a rejected one, repeated every 5 minutes while it keeps
+coming (collector 1.6.0 and newer). 404: the path of the URL is wrong (no
+game port at the end, token missing or wrong). 403: the sender's IP and the
+port at the end are not a CS2 server of the web admin (another port, the
+server not added yet, or its ranking's game is not `cs2`); see
+[Troubleshooting](#g-troubleshooting). The token itself is never logged.
 
 Restrict the collector's ports (UDP 41337, TCP 41338 for CS2) with a firewall
 to your game servers: packets from addresses that are not in `hlstats_Servers` are
@@ -562,7 +588,7 @@ drop it (`DROP DATABASE gamewe;` and the three users).
 | `hlstats_Servers serverId N is ignored: ...` | The row's address is not an IP, the port is invalid, or its game is not in `hlstats_Games`. Fix it in the web admin. |
 | No `game server active` in the log | Check `logaddress_add` and the firewall (UDP port). |
 | `rejected log packet ... not in hlstats_Servers` | Register the shown source `IP:port` in the web admin. With `known server IP but a port ...` another game server on the same host sends logs: add it with its own port (logs are never attributed by IP alone). |
-| `rejected HTTP log post` (CS2) | `reason` and `hint` say why, `status` is what the game server got back. 403: not in `hlstats_Servers` (register the server; the URL must end with its game port, `/27015`; with `known server IP but a port ...` the URL has another port than the server in the web admin, `configured_ports` lists the right ones), `not Source 2` (the server's game must have realgame `cs2`; other games log over UDP). 404: `HTTP path ...` names the problem of the `logaddress_add_http` URL (no game port at the end, token missing, wrong or not expected). Also `larger than listen.http.max_body` or `too many open HTTP connections`. Repeated every 5 minutes while the posts keep coming. |
+| `rejected HTTP log post` (CS2) | `reason` and `hint` say why, `status` is what the game server got back. 403: the sender's IP and the port at the end of the URL are not a CS2 server in `hlstats_Servers` (register the server, it is picked up within about a minute; the URL must end with its game port, `/27015`; with `known server IP but a port ...` the URL has another port than the server in the web admin, `configured_ports` lists the right ones), `not Source 2` (the server's game must have realgame `cs2`; other games log over UDP). 404: `HTTP path ...` names the problem of the `logaddress_add_http` URL (no game port at the end, token missing, wrong or not expected; the token is `listen.http.token` of the config, not `sv_logsecret`). Also `larger than listen.http.max_body` or `too many open HTTP connections`. Repeated every 5 minutes while the posts keep coming. |
 | `rejected log packet ... missing or wrong log secret` | The server has a secret in `hlstats_Servers.log_secret` and the game server sends no or another `sv_logsecret`: set the same number in `server.cfg` and with `gamewe server set <id> -logsecret <n>` (or the web admin), or clear it with `-logsecret ""` to accept all its packets. |
 | Commands get no answer | `rcon_password` is empty or wrong (`rcon authentication failed`), the plugin is missing, or the RCON port is blocked (TCP). `gamewe check` shows servers without a password. |
 | `systemctl start` fails, `status=78/CONFIG` | The config file (or a `-` flag in `ExecStart`) is wrong, or the schema is not migrated automatically: the journal names it. Fix it, then `systemctl start gamewe-collector` (it is not restarted by itself). `gamewe config test` lists every problem of the config file with its line, `gamewe check` also tests the database, both without the service. |
