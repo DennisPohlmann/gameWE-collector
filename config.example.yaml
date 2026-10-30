@@ -46,7 +46,8 @@ listen:
     # public_url: http://203.0.113.4:41338
     # A secret first path segment (16 to 128 letters, digits, - or _): only
     # posts to /<token>/<game port> are accepted. Recommended, since CS2's
-    # HTTP logs carry no sv_logsecret.
+    # HTTP logs carry no sv_logsecret. Make one with: openssl rand -hex 24
+    # (docs/INSTALLATION.md, "Creating the token for CS2"); keep it secret.
     # token: ""
     max_body: 128KiB      # largest post (4KiB to 16MiB)
     read_timeout: 10s     # time to read one post (1s to 2m)

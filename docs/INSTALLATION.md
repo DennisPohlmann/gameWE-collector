@@ -248,7 +248,7 @@ listen:
     address: 0.0.0.0
     port: 41338                 # TCP port
     # public_url: http://203.0.113.5:41338   # URL the CS2 servers post to, if not the collector's RCON address (NAT)
-    # token: ""                 # secret path segment, 16-128 of A-Z a-z 0-9 - _ (recommended)
+    # token: ""                 # secret path segment, 16-128 of A-Z a-z 0-9 - _ (recommended; openssl rand -hex 24, see D)
     max_body: 128KiB
     read_timeout: 10s
     max_connections: 64
@@ -472,7 +472,7 @@ rcon_password "change-me"                                      // the same as in
   token for the collector, the same on every CS2 server. It is not
   `sv_logsecret` and not set per server. Without a token in the config the
   URL has no token segment (`http://203.0.113.5:41338/27015`); a token is
-  recommended.
+  recommended. How to make one: [Creating the token](#creating-the-token-for-cs2).
 - The last segment is the game server's port exactly as in the web admin
   (`hlstats_Servers`). The collector finds the server by the sender's IP and
   this port; a server added or changed in the web admin is picked up within
@@ -510,6 +510,73 @@ from the collector host with the sample game:
 ```bash
 /opt/gamewe/collector/bin/gamewe simulate -send 127.0.0.1:41337
 ```
+
+### Creating the token for CS2
+
+The token is a random string you make yourself, once for the collector:
+16 to 128 characters, only `A-Z`, `a-z`, `0-9`, `-` and `_` (no `/`, `+`
+or `=`, it is part of the URL path). The collector does not generate it.
+
+1. Make a random token on any machine:
+
+   ```bash
+   openssl rand -hex 24                           # 48 hex characters
+   ```
+
+   Without OpenSSL (Linux) or on Windows (PowerShell 7):
+
+   ```bash
+   LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 48; echo
+   ```
+
+   ```powershell
+   [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(24))
+   ```
+
+   Do not use a word, a password you use elsewhere, the RCON password or
+   the log secret; `gamewe check` warns about a token with fewer than 8
+   different characters.
+
+2. Put it into the collector's config file (archive:
+   `/etc/gamewe/collector/config.yaml`, Compose: `config/config.yaml`,
+   quick start: `~/gamewe/collector.yaml`), under `listen.http`:
+
+   ```yaml
+   listen:
+     http:
+       enabled: true
+       port: 41338
+       token: "<token>"       # the value from step 1
+   ```
+
+3. Check the file and restart the collector (the config file is read only
+   at start):
+
+   ```bash
+   # archive
+   sudo -u gamewe /opt/gamewe/collector/bin/gamewe config test
+   systemctl restart gamewe-collector
+   # Compose
+   docker compose run --rm collector config test
+   docker compose restart collector
+   # docker run / quick start
+   docker restart gamewe-collector
+   ```
+
+4. Use the same token in the URL of every CS2 server:
+   `logaddress_add_http "http://<collector IP>:41338/<token>/<game port>"`,
+   e.g. `http://203.0.113.5:41338/<token>/27015`. With the RCON password
+   stored, the collector registers this URL itself within a minute; a URL
+   in `server.cfg` has to be changed by hand.
+
+Treat the token like a password: anyone who knows it and can send from a
+CS2 server's IP can post log lines. Keep it out of chats, tickets,
+screenshots and forum posts; the collector never logs it (`gamewe
+logaddress` and the log show `<token>`). Only the URL in the CS2 server's
+`server.cfg` and the collector's config file contain it, so keep both
+readable only for the admins (`config.yaml` is `root:gamewe 0640`). If it
+leaked, make a new one (steps 1 to 4); the old URL then gets 404, and
+`logaddress_delall_http` in `server.cfg` removes it from the server.
 
 ## E. Update
 

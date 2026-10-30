@@ -187,8 +187,10 @@ plain HTTP; the game offers no HTTPS), and SourceMod and AMX Mod X do not run
 on it. Set up:
 
 1. Switch on `listen.http` in the collector's config (TCP port 41338 by
-   default) with a `token` (one for all CS2 servers, not `sv_logsecret`) and
-   open the port for the CS2 servers.
+   default) with a `token` (one for all CS2 servers, not `sv_logsecret`;
+   e.g. `openssl rand -hex 24`, see
+   [Creating the token for CS2](INSTALLATION.md#creating-the-token-for-cs2))
+   and open the port for the CS2 servers.
 2. Add the server in the web admin or with `gamewe server add` with a game
    whose realgame is `cs2` (the seed has `cs2`).
 3. Start CS2 with `-usercon` (RCON, needed for the collector's checks and
