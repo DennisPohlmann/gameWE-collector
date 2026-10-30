@@ -4,8 +4,8 @@ description: gameWE collector - receives the game servers' logs and writes the s
 type: application
 # version and appVersion are the release of gameWE-collector: semantic-release
 # sets both with every release (.releaserc.json), never edit them by hand.
-version: 1.5.0
-appVersion: "1.5.0"
+version: 1.5.1
+appVersion: "1.5.1"
 home: https://github.com/DennisPohlmann/gameWE-collector
 sources:
   - https://github.com/DennisPohlmann/gameWE-collector
