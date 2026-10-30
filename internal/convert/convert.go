@@ -116,6 +116,9 @@ var requiredTables = []string{"hlstats_Games", "hlstats_Servers", "hlstats_Playe
 // notConverted lists the CE tables that are left out, and why.
 var notConverted = []SkippedTable{
 	{Table: "hlstats_Events_Rcon", Why: "RCON commands with the RCON passwords in clear text"},
+	{Table: "hlstats_Events_Admin", Why: "no such table in gameWE (nothing showed its rows)"},
+	{Table: "hlstats_HostGroups", Why: "no such table in gameWE (settings of the old HLstatsX pages)"},
+	{Table: "hlstats_Trend", Why: "no such table in gameWE (the web draws its graphs from hlstats_server_load and the history per day)"},
 	{Table: "hlstats_Events_Statsme", Why: "no such table in gameWE (weapon statistics come from the gameWE plugin)"},
 	{Table: "hlstats_Events_Statsme2", Why: "no such table in gameWE"},
 	{Table: "hlstats_Events_StatsmeLatency", Why: "no such table in gameWE"},
@@ -791,7 +794,7 @@ func (c *conv) summary(ctx context.Context) ([]Compare, error) {
 		{"award winners", "hlstats_Players_Awards", "SELECT COUNT(*) FROM hlstats_Players_Awards", "SELECT COUNT(*) FROM hlstats_Awards_History"},
 		{"kills of all players", "hlstats_Players", "SELECT COALESCE(SUM(kills), 0) FROM hlstats_Players", ""},
 	}
-	for _, t := range append(eventTables, "hlstats_server_load", "hlstats_Trend") {
+	for _, t := range append(eventTables, "hlstats_server_load") {
 		list = append(list, compare{t, t, "SELECT COUNT(*) FROM " + t, ""})
 	}
 	var out []Compare

@@ -15,7 +15,7 @@ GRANT SELECT ON ALL TABLES IN SCHEMA public TO gamewe_web_admin;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO gamewe_web_admin;
 
 -- gamewe_web (public web pages): SELECT on every table, except hlstats_Users
--- and hlstats_Events_Rcon, and without hlstats_Servers.rcon_password,
+-- and hlstats_Events_Chat, and without hlstats_Servers.rcon_password,
 -- log_secret and log_secret_changed and hlstats_Events_Connects.ipAddress.
 GRANT SELECT ON hlstats_Actions TO gamewe_web;
 GRANT SELECT ON hlstats_Awards TO gamewe_web;
@@ -26,7 +26,6 @@ GRANT SELECT ON hlstats_ClanTags TO gamewe_web;
 GRANT SELECT ON hlstats_Clans TO gamewe_web;
 GRANT SELECT ON hlstats_Definition_Ranks_Ribbons TO gamewe_web;
 GRANT SELECT ON hlstats_Definition_Ribbons_Classes TO gamewe_web;
-GRANT SELECT ON hlstats_Events_Admin TO gamewe_web;
 GRANT SELECT ON hlstats_Events_ChangeName TO gamewe_web;
 GRANT SELECT ON hlstats_Events_ChangeRole TO gamewe_web;
 GRANT SELECT ON hlstats_Events_ChangeTeam TO gamewe_web;
@@ -44,7 +43,6 @@ GRANT SELECT ON hlstats_Events_Teamkills TO gamewe_web;
 GRANT SELECT ON hlstats_Games TO gamewe_web;
 GRANT SELECT ON hlstats_gamewe_hall_of_fame TO gamewe_web;
 GRANT SELECT ON hlstats_gamewe_jobs TO gamewe_web;
-GRANT SELECT ON hlstats_HostGroups TO gamewe_web;
 GRANT SELECT ON hlstats_Livestats TO gamewe_web;
 GRANT SELECT ON hlstats_Maps TO gamewe_web;
 GRANT SELECT ON hlstats_Options TO gamewe_web;
@@ -61,17 +59,11 @@ GRANT SELECT ON hlstats_Players_Locations TO gamewe_web;
 GRANT SELECT ON hlstats_Players_Maps TO gamewe_web;
 GRANT SELECT ON hlstats_Players_Maps_History_Months TO gamewe_web;
 GRANT SELECT ON hlstats_Players_Resets TO gamewe_web;
-GRANT SELECT ON hlstats_Players_Roles TO gamewe_web;
-GRANT SELECT ON hlstats_Players_Roles_History_Months TO gamewe_web;
-GRANT SELECT ON hlstats_Players_Teams TO gamewe_web;
-GRANT SELECT ON hlstats_Players_Teams_History_Months TO gamewe_web;
 GRANT SELECT ON hlstats_Players_Weapons TO gamewe_web;
 GRANT SELECT ON hlstats_Players_Weapons_History_Months TO gamewe_web;
 GRANT SELECT ON hlstats_Roles TO gamewe_web;
 GRANT SELECT (serverId, address, port, name, game, publicaddress, statusurl, kills, players, rounds, suicides, headshots, bombs_planted, bombs_defused, ct_wins, ts_wins, act_players, max_players, act_map, map_rounds, map_ct_wins, map_ts_wins, map_started, map_changes, ct_shots, ct_hits, ts_shots, ts_hits, map_ct_shots, map_ct_hits, map_ts_shots, map_ts_hits, display_id, lat, lng, country_code, country_name, city, state, fixed_location, account_id, vac_status, steam_status, server_version, server_os, server_vac, act_bots) ON hlstats_Servers TO gamewe_web;
-GRANT SELECT ON hlstats_Style TO gamewe_web;
 GRANT SELECT ON hlstats_Teams TO gamewe_web;
-GRANT SELECT ON hlstats_Trend TO gamewe_web;
 GRANT SELECT ON hlstats_Weapons TO gamewe_web;
 GRANT SELECT ON hlstats_server_load TO gamewe_web;
 

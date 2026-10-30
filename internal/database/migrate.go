@@ -27,7 +27,7 @@ const MigrationsTable = "hlstats_gamewe_schema_migrations"
 // LegacyMigrationsTable is the name of the version table up to collector
 // 1.4 with the default prefix (another prefix already had
 // <prefix>_gamewe_schema_migrations). gamewe db migrate copies its rows
-// into MigrationsTable; the old table is not read afterwards.
+// into MigrationsTable; gamewe db cleanup drops it afterwards.
 const LegacyMigrationsTable = "gamewe_schema_migrations"
 
 // SlowRows is the table size (estimated rows) from which a step that
@@ -87,7 +87,8 @@ type Plan struct {
 	Pending  []Migration
 	Missing  []Requirement // tables, columns and indexes of internal/schema the database lacks
 	Steps    []Step
-	Warnings []string // e.g. a recorded migration that differs from this binary's
+	Warnings []string   // e.g. a recorded migration that differs from this binary's
+	Old      []OldTable // tables gameWE no longer uses (gamewe db cleanup), named as in the database, without rows
 }
 
 // UpToDate reports whether the database has the schema of this collector.
@@ -342,6 +343,10 @@ func plan(ctx context.Context, q querier, dialect string, pfx Prefix) (*Plan, er
 		return nil, err
 	}
 	p := &Plan{Dialect: dialect, Versions: len(applied) > 0 || cat.tables[MigrationsTable], Applied: applied, Latest: Latest()}
+	for _, o := range oldIn(cat, pfx) {
+		o.Table = pfx.Table(o.Table)
+		p.Old = append(p.Old, o)
+	}
 	done := map[int]bool{}
 	for _, a := range applied {
 		done[a.Version] = true
@@ -389,7 +394,7 @@ func plan(ctx context.Context, q querier, dialect string, pfx Prefix) (*Plan, er
 	}
 	if legacy > 0 {
 		p.Steps = append(p.Steps, Step{Name: "setup", Table: MigrationsTable,
-			What: fmt.Sprintf("copy the %d schema versions from %s (the old name, without the table prefix); the old table stays", legacy, LegacyMigrationsTable),
+			What: fmt.Sprintf("copy the %d schema versions from %s (the old name, without the table prefix); gamewe db cleanup drops the old table afterwards", legacy, LegacyMigrationsTable),
 			kind: stepExec, stmts: []string{copyVersionsSQL(dialect)}})
 	}
 	if p.Kind == KindEmpty {

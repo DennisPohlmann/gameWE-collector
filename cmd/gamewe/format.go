@@ -153,6 +153,8 @@ type planDoc struct {
 	Steps    []stepDoc    `json:"steps"`
 	Warnings []string     `json:"warnings,omitempty"`
 	Missing  []string     `json:"missing,omitempty"`
+	// OldTables are the tables gameWE no longer uses (gamewe db cleanup).
+	OldTables []string `json:"old_tables,omitempty"`
 }
 
 type appliedDoc struct {
@@ -191,6 +193,9 @@ func newPlanDoc(p *database.Plan) *planDoc {
 	}
 	for _, r := range p.Missing {
 		d.Missing = append(d.Missing, strings.TrimPrefix(r.String(), "schema incomplete: missing "))
+	}
+	for _, o := range p.Old {
+		d.OldTables = append(d.OldTables, o.Table)
 	}
 	return d
 }

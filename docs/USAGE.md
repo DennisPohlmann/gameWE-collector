@@ -179,8 +179,9 @@ command except `run` also takes `-o FORMAT` for scripts
 **Every command that changes something asks first.** It shows what it is
 going to do (the plan, the rows per table, the players, the change) and asks
 `[y/N]` (`y`, `yes`, `j`, `ja`; anything else changes nothing). The most
-destructive ones (`db reset`, `db drop`, `reset`) want the database name or
-game code typed instead.
+destructive ones (`db reset`, `db drop`, `db cleanup`, `reset`) want the
+database name or game code typed instead; `db cleanup` has no `--force` at
+all.
 
 - `--dry-run` (`-n`): only show it, change nothing (exit code 0; `db migrate
   -n`: 2 when a migration is pending).
@@ -341,6 +342,9 @@ gamewe db purge -older-than 90d  # delete the events older than 90 days (--dry-r
 gamewe db optimize               # give the space of deleted rows back (OPTIMIZE TABLE / VACUUM ANALYZE)
 gamewe db reset                  # empty every table, reference data again: as new (asks for the database name, --force)
 gamewe db drop                   # drop all gameWE tables (-print: the SQL for a database admin; MariaDB needs DROP)
+gamewe db cleanup -n             # list the old tables gameWE no longer uses, with rows and why
+gamewe db cleanup                # the same list, then drop them after typing the database name (no --force)
+gamewe db cleanup -print | mariadb -u root -p gamewe   # MariaDB: the collector user has no DROP right
 gamewe db convert -from hlstatsx -n   # HLstatsX:CE -> this new gameWE database: the plan only (MIGRATION-HLSTATSX.md)
 gamewe db convert -from hlstatsx -source-timezone Europe/Berlin   # plan, then "Convert now? [y/N]" (--force)
 gamewe db convert -from stats -source-prefix ce -n   # CE with DB_PREFIX ce (DATABASE.md, "Table prefix")
@@ -641,7 +645,7 @@ What each mode clears:
 | | `player-stats` | `all-stats` | `all` |
 | --- | --- | --- | --- |
 | Player statistics: `hlstats_Events_*`, `hlstats_Players_History`, `hlstats_Players_{Weapons,Actions,Maps,Roles,Teams}` and their `_History_Months`, `hlstats_Awards_History`, the award winners, the totals summed from player events in `hlstats_Weapons`, `_Actions`, `_Teams`, `_Roles`, `_Maps`; skill (back to the start skill) and counters of `hlstats_Players`, `hlstats_PlayersInactive`, `hlstats_PlayerNames` | yes | yes | yes |
-| Server statistics: the counters of `hlstats_Servers` (`kills`, `players`, `rounds`, `suicides`, `headshots`, `bombs_*`, `ct_wins`/`ts_wins`, `act_players`, `map_*`, shots and hits), `hlstats_server_load` (load history), `hlstats_Trend` | no | yes | yes |
+| Server statistics: the counters of `hlstats_Servers` (`kills`, `players`, `rounds`, `suicides`, `headshots`, `bombs_*`, `ct_wins`/`ts_wins`, `act_players`, `map_*`, shots and hits), `hlstats_server_load` (load history) | no | yes | yes |
 | Players: `hlstats_Players`, `hlstats_PlayersInactive`, `hlstats_PlayerNames`, `hlstats_PlayerUniqueIds`, `hlstats_Players_Data`, `hlstats_Players_Resets`, `hlstats_Clans` | kept | kept | deleted |
 
 The live view (`hlstats_Livestats`) is cleared in every mode: the collector

@@ -105,7 +105,7 @@ column names, so the columns that are new in gameWE keep their defaults.
 
 ```bash
 cd ~/gameme
-SKIP="'hlstats_Events_Rcon','hlstats_Livestats','hlstats_Options'"
+SKIP="'hlstats_Events_Rcon','hlstats_Livestats','hlstats_Options','hlstats_Events_Admin','hlstats_HostGroups','hlstats_Style','hlstats_Trend','hlstats_Players_Roles','hlstats_Players_Roles_History_Months','hlstats_Players_Teams','hlstats_Players_Teams_History_Months'"
 TABLES=$(docker exec gameme-import mariadb -uroot -pchange-me -N -e \
   "SELECT table_name FROM information_schema.tables WHERE table_schema = 'gameme_import' AND table_name NOT IN ($SKIP) ORDER BY 1")
 
@@ -130,14 +130,15 @@ password prompt (socket, or `~/.my.cnf`):
 
 ```bash
 TABLES=$(mariadb -N -e "SELECT table_name FROM information_schema.tables WHERE table_schema = 'gamewe'
-  AND table_name NOT IN ('hlstats_Events_Rcon','hlstats_Livestats','hlstats_Options','hlstats_Events_Latency','hlstats_gamewe_jobs')")
+  AND table_name LIKE 'hlstats\_%' AND table_name NOT IN ('hlstats_Livestats','hlstats_Options','hlstats_Events_Latency','hlstats_gamewe_jobs','hlstats_gamewe_schema_migrations')")
 for t in $TABLES; do mariadb gamewe -e "TRUNCATE TABLE \`$t\`"; done
 mariadb --default-character-set=utf8mb4 gamewe < gameme-data.sql
 mariadb --default-character-set=utf8mb4 gamewe < gameme-options.sql
 ```
 
 These are the same tables as in the dump (gameWE has every table of the
-export, plus `hlstats_Events_Latency` and `hlstats_gamewe_jobs`). The rights
+export except the skipped ones, plus its own tables such as
+`hlstats_Events_Latency` and `hlstats_gamewe_jobs`). The rights
 of the web users stay: `TRUNCATE` keeps the tables. `ERROR 1062 Duplicate
 entry` means a table was not emptied; `Incorrect string value` means the text
 was not dumped with `--default-character-set=latin1`.
@@ -202,7 +203,8 @@ mariadb -u root -p -N -e \
 diff rows-gameme.txt rows-gamewe.txt
 ```
 
-The only differences should be `hlstats_Events_Rcon` (0, not copied),
+The only differences should be the skipped tables (gameWE does not have
+them),
 `hlstats_Options` and the tables the seed added rows to
 (`hlstats_Games`, `_Weapons`, `_Actions`, `_Teams`, `_Roles`, `_Awards`,
 `_Definition_*`, `_ClanTags`), and the new gameWE tables
@@ -249,8 +251,9 @@ columns. Differences:
 | What | Why |
 |------|-----|
 | `hlstats_Events_Rcon` | the RCON commands of the old servers, with the RCON passwords in clear text |
+| `hlstats_Events_Admin`, `hlstats_Trend`, `hlstats_HostGroups`, `hlstats_Style`, `hlstats_Players_Roles*`, `hlstats_Players_Teams*` | gameWE has no such tables since collector 1.5: nothing wrote or read them |
 | `hlstats_Livestats` | who is online now; empty in the export, rebuilt by the collector |
 | RCON passwords | not in the export |
-| gameME's web settings for its own pages (styles, colors in `hlstats_Options` / `hlstats_Style`) | copied, but the gameWE web does not use them |
+| gameME's web settings for its own pages (in `hlstats_Options`) | copied, but the gameWE web does not use them |
 | Events after the export | gameME still collected them; see step 7 |
 | Ping awards for old days | the export has no latency samples; `latency` awards start with the switch |

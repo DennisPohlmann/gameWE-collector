@@ -603,3 +603,114 @@ func oneFrag(t *testing.T, out, frags string) {
 		t.Errorf("no line with 1 row of %s", frags)
 	}
 }
+
+// gamewe db cleanup: lists the old tables with their rows (status and
+// migrate point to it), leaves unknown tables alone, has no --force,
+// refuses without a terminal and a wrong answer, and drops exactly the old
+// tables after the database name (MariaDB: the collector user has no DROP
+// right, -print as root does it).
+func TestMigrateCleanup(t *testing.T) {
+	typ := database.MigrateTestEnv()
+	if typ == "" {
+		t.Skip("set GAMEWE_TEST_MIGRATE_* to run (creates and drops databases mig_*)")
+	}
+	ctx := context.Background()
+	name := "mig_cleanup"
+	if err := database.CreateTestDatabase(ctx, name, false); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.DropTestDatabase(context.Background(), name) })
+	d := database.TestConfig(name, "gamewe", database.TestPassword("gamewe"))
+	d.AutoMigrate = false
+	db, err := database.Open(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	admin, err := database.AdminDB(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Close()
+	pfx := tablePrefix(d)
+	bin := buildGamewe(t)
+	cfg := writeConfig(t, d)
+
+	out, code := gw(t, bin, "db", "init", "--force", "-config", cfg)
+	expect(t, out, code, 0, "done: the database has schema version")
+	out, code = gw(t, bin, "db", "cleanup", "-config", cfg)
+	expect(t, out, code, 0, "has no old tables: nothing to clean up")
+
+	// Two old tables of HLstatsX (one with rows), one of CE, the old
+	// version table (default prefix) and a table of someone else.
+	stmts := []string{
+		`CREATE TABLE hlstats_Trend (timestamp integer NOT NULL, game varchar(32) NOT NULL)`,
+		`INSERT INTO hlstats_Trend (timestamp, game) VALUES (1, 'css'), (2, 'css')`,
+		`CREATE TABLE hlstats_Players_Roles (player_id integer NOT NULL)`,
+		`CREATE TABLE hlstats_Ribbons (ribbonId integer NOT NULL)`,
+		`CREATE TABLE hlstats_zz_custom (id integer NOT NULL)`,
+	}
+	old := []string{"hlstats_Trend", "hlstats_Players_Roles", "hlstats_Ribbons"}
+	if pfx.Default() {
+		stmts = append(stmts, `CREATE TABLE gamewe_schema_migrations AS SELECT * FROM hlstats_gamewe_schema_migrations`)
+		old = append(old, database.LegacyMigrationsTable)
+	}
+	for _, q := range stmts {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	names := make([]string, len(old))
+	for i, o := range old {
+		names[i] = pfx.Table(o)
+	}
+	out, code = gw(t, bin, "db", "status", "-config", cfg)
+	expect(t, out, code, 0, "up to date", fmt.Sprintf("old:       %d tables gameWE no longer uses", len(old)), "db cleanup -config "+cfg)
+	out, code = gw(t, bin, "db", "migrate", "-n", "-config", cfg)
+	expect(t, out, code, 0, "The database is up to date.", "note:      "+fmt.Sprint(len(old))+" tables")
+	out, code = gw(t, bin, "db", "cleanup", "-n", "-config", cfg)
+	expect(t, out, code, 0, append(names, "gameWE no longer uses these", "totals over time", "Left alone", pfx.Table("hlstats_zz_custom"), "dry run: nothing changed")...)
+	out, code = gw(t, bin, "db", "cleanup", "-force", "-config", cfg)
+	expect(t, out, code, 2, "flag provided but not defined: -force")
+	out, code = gw(t, bin, "db", "cleanup", "-config", cfg) // stdin is no terminal
+	expect(t, out, code, 1, "Make a backup before cleaning up", "no interactive confirmation possible", "nothing dropped", "-print")
+	out, code = gw(t, bin, "db", "cleanup", "-print", "-config", cfg)
+	expect(t, out, code, 0, append(names, "-- gamewe db cleanup", "DROP TABLE IF EXISTS ")...)
+	if strings.Contains(out, pfx.Table("hlstats_zz_custom")) || strings.Contains(out, pfx.Table("hlstats_Players")+",") {
+		t.Errorf("-print drops more than the old tables:\n%s", out)
+	}
+	sqlOut := out
+
+	run := func(answer string) (string, error) {
+		var b bytes.Buffer
+		err := dbCleanup(ctx, db, d, false, dbIO{in: strings.NewReader(answer), out: &b, interactive: true})
+		t.Logf("answer %q: %v\n%s", answer, err, b.String())
+		return b.String(), err
+	}
+	if s, err := run("y\n"); err == nil || !strings.Contains(err.Error(), "not confirmed, nothing dropped") || !strings.Contains(s, "Type the database name ("+name+")") {
+		t.Errorf("wrong answer: %v", err)
+	}
+	_, err = run(name + "\n")
+	if typ == config.MySQL {
+		if err == nil || !strings.Contains(err.Error(), "may not drop tables") || !strings.Contains(err.Error(), "db cleanup -print | mariadb -u root -p "+name) {
+			t.Fatalf("MariaDB without DROP right: %v", err)
+		}
+		if err := database.RunTestScript(ctx, admin, sqlOut); err != nil {
+			t.Fatal(err)
+		}
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	out, code = gw(t, bin, "db", "cleanup", "-config", cfg)
+	expect(t, out, code, 0, "has no old tables: nothing to clean up", "Left alone", pfx.Table("hlstats_zz_custom"))
+	var n int
+	if err := admin.QueryRow(`SELECT COUNT(*) FROM hlstats_zz_custom`).Scan(&n); err != nil {
+		t.Errorf("the unknown table was dropped: %v", err)
+	}
+	out, code = gw(t, bin, "db", "status", "-config", cfg)
+	expect(t, out, code, 0, "up to date")
+	if strings.Contains(out, "old:") {
+		t.Errorf("status still names old tables:\n%s", out)
+	}
+	runStarts(t, bin, cfg)
+}

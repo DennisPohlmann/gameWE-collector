@@ -115,7 +115,7 @@ the audit summary of `security-privacy-audit`.
   blocking (`RconReplier`).
 - Never log passwords, RCON passwords, the DB DSN or full config.
 - DB users: the collector user writes, `gamewe_web` gets SELECT only and
-  no `hlstats_Users`, `hlstats_Events_Rcon`, `hlstats_Events_Chat`,
+  no `hlstats_Users`, `hlstats_Events_Chat`,
   `hlstats_Servers.rcon_password`, `log_secret`, `log_secret_changed`,
   `hlstats_Events_Connects.ipAddress`
   (`internal/schema/mysql/grants.sql` and the generated Postgres file). A

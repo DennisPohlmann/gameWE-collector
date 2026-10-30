@@ -3,7 +3,7 @@
 gameWE replaces the HLstatsX:CE daemon (`hlstats.pl`) and its web pages. Its
 database is the gameME-style HLstatsX schema, not the CE schema, so the CE
 data is converted on the way: players, rankings, names, clans, daily history,
-award winners, events, server load and trend move over, and the collector
+award winners, events and server load move over, and the collector
 carries on from there. Moving from gameME instead is
 [MIGRATION-GAMEME.md](MIGRATION-GAMEME.md).
 
@@ -268,7 +268,7 @@ and points to `gamewe db convert`.)
 |-------------|--------|-----|
 | `hlstats_Games` | `hlstats_Games` | games gameWE does not have are added (code, name, hidden, realgame); gameWE's own games keep their values |
 | `hlstats_Servers` | `hlstats_Servers` | same `serverId`; address, port, name, game, RCON password, counters; `sortorder` → `display_id`; location is looked up again by the collector |
-| `hlstats_Users`, `hlstats_HostGroups` | the same | copied |
+| `hlstats_Users` | the same | copied |
 | `hlstats_Teams`, `_Roles`, `_Weapons`, `_Actions`, `_Awards` | the same | by (game, code): missing codes added, counters (`kills`, `headshots`, `count`) taken over; codes that only appear in events are added |
 | `hlstats_Maps_Counts` and the map names of the events | `hlstats_Maps` | one row per (game, map) with `kills`, `headshots` |
 | `hlstats_Clans` | `hlstats_Clans` | same `clanId`; `hidden`, `mapregion` dropped |
@@ -280,16 +280,16 @@ and points to `gamewe db convert`.)
 | `hlstats_Events_Frags`, `_Teamkills`, `_Suicides` | the same | weapon → id; Frags: positions kept, `killerRole`, `victimRole` dropped |
 | `hlstats_Events_PlayerActions`, `_PlayerPlayerActions`, `_TeamBonuses` | the same | action → gameWE action id; positions dropped |
 | `hlstats_Events_Connects` | the same | IPv4 → integer (IPv6 and others → 0); `eventTime_Disconnect` dropped |
-| `hlstats_Events_Entries`, `_Disconnects`, `_ChangeName`, `_Admin`, `_Chat`, `_Latency` | the same | time, server, game, map converted |
+| `hlstats_Events_Entries`, `_Disconnects`, `_ChangeName`, `_Chat`, `_Latency` | the same | time, server, game, map converted |
 | `hlstats_Events_ChangeTeam`, `_ChangeRole` | the same | team / role → id |
 | `hlstats_server_load` | the same | map → id, `uptime` and `fps` as numbers |
-| `hlstats_Trend` | the same | copied |
 
 ## What is not migrated
 
 | CE table / data | Why |
 |-----------------|-----|
 | `hlstats_Events_Rcon` | RCON commands with the RCON passwords in clear text |
+| `hlstats_Events_Admin`, `hlstats_HostGroups`, `hlstats_Trend` | no such tables in gameWE since collector 1.5 (nothing read them) |
 | `hlstats_Events_Statsme`, `_Statsme2`, `_StatsmeLatency`, `_StatsmeTime` | no such tables in gameWE; the weapon statistics come from the gameWE plugin (`hlstats_Players_Weapons`) from now on |
 | `hlstats_Livestats` | who is online now; rebuilt by the collector |
 | `hlstats_Options`, `_Options_Choices`, `hlstats_Servers_Config*`, `_Servers_VoiceComm` | CE's settings and server configuration; gameWE has its own (`gamewe_*`) |

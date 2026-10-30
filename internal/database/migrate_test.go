@@ -209,7 +209,7 @@ func TestPurgeTables(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(tables) < 15 || !slices.Contains(tables, "hlstats_Events_Frags") || slices.ContainsFunc(tables, func(s string) bool {
+		if len(tables) < 14 || !slices.Contains(tables, "hlstats_Events_Frags") || slices.ContainsFunc(tables, func(s string) bool {
 			return !strings.HasPrefix(s, "hlstats_Events_")
 		}) {
 			t.Errorf("%s: %v", dialect, tables)

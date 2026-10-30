@@ -343,7 +343,7 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO gamewe_web_admin;
 	n := 0
 	for _, line := range strings.Split(mysql, "\n") {
 		if strings.HasPrefix(line, "-- gamewe_web (public web pages)") {
-			out.WriteString("-- gamewe_web (public web pages): SELECT on every table, except hlstats_Users\n-- and hlstats_Events_Rcon, and without hlstats_Servers.rcon_password,\n-- log_secret and log_secret_changed and hlstats_Events_Connects.ipAddress.\n")
+			out.WriteString("-- gamewe_web (public web pages): SELECT on every table, except hlstats_Users\n-- and hlstats_Events_Chat, and without hlstats_Servers.rcon_password,\n-- log_secret and log_secret_changed and hlstats_Events_Connects.ipAddress.\n")
 		}
 		if strings.HasPrefix(line, "-- gamewe_web_admin (web admin pages)") {
 			out.WriteString("\n-- gamewe_web_admin: edits the settings and reference tables, and on\n-- players only skill, hideranking and clan.\n")

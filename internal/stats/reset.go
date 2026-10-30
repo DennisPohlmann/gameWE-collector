@@ -16,8 +16,8 @@ import (
 // the award winners and the ranking totals summed from player events
 // (hlstats_Weapons, _Actions, _Teams, _Roles, _Maps); the players keep
 // their names and ids with the start skill and zero counters.
-// Server statistics: the counters in hlstats_Servers, hlstats_server_load
-// and hlstats_Trend. The live view (hlstats_Livestats) is cleared in every
+// Server statistics: the counters in hlstats_Servers and
+// hlstats_server_load. The live view (hlstats_Livestats) is cleared in every
 // mode: the collector forgets the players of the paused servers.
 const (
 	// ResetPlayerStats resets the player statistics and keeps the players
@@ -70,11 +70,11 @@ type TableCount struct {
 var resetEvents = []string{
 	"Frags", "Teamkills", "Suicides", "PlayerActions", "PlayerPlayerActions", "TeamBonuses",
 	"Connects", "Disconnects", "Entries", "ChangeName", "ChangeTeam", "ChangeRole", "Chat",
-	"Admin", "Rcon", "Latency",
+	"Latency",
 }
 
 // Per-player tables with weekly rows and monthly histories (game_id).
-var resetPlayerTables = []string{"Weapons", "Actions", "Maps", "Roles", "Teams"}
+var resetPlayerTables = []string{"Weapons", "Actions", "Maps"}
 
 var (
 	resetPlayerCounters = []string{
@@ -139,7 +139,6 @@ func resetSteps(mode string) []resetStep {
 	if mode != ResetPlayerStats {
 		steps = append(steps,
 			resetStep{table: "hlstats_server_load", where: servers, args: byGame},
-			resetStep{table: "hlstats_Trend", where: "game = ?", args: byGame},
 			resetStep{table: "hlstats_Servers", set: zeroCols(resetServerCounters), where: "game = ?", args: byGame},
 		)
 	}

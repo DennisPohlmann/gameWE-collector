@@ -39,7 +39,7 @@ func TestResetStepsByMode(t *testing.T) {
 		}
 		return m
 	}
-	server := []string{"hlstats_server_load", "hlstats_Trend", "hlstats_Servers"}
+	server := []string{"hlstats_server_load", "hlstats_Servers"}
 	player := []string{"hlstats_Events_Frags", "hlstats_Players_History", "hlstats_Players_Weapons", "hlstats_Weapons", "hlstats_Maps", "hlstats_Livestats"}
 	for _, c := range []struct {
 		mode         string

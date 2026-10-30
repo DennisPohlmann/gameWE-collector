@@ -137,14 +137,6 @@ CREATE TABLE `hlstats_Definition_Ribbons_Classes` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `game` (`game_code`,`class`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-CREATE TABLE `hlstats_Events_Admin` (
-  `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
-  `game_id` tinyint(3) unsigned NOT NULL DEFAULT 0,
-  `map` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `type` varchar(255) NOT NULL DEFAULT 'Unknown',
-  `message` mediumtext NOT NULL,
-  `playerName` varchar(255) NOT NULL DEFAULT ''
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Events_ChangeName` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
   `game_id` tinyint(3) unsigned NOT NULL DEFAULT 0,
@@ -299,16 +291,6 @@ CREATE TABLE `hlstats_Events_PlayerPlayerActions` (
   KEY `server_id` (`server_id`,`timestamp_id`),
   KEY `game_time` (`game_id`,`timestamp_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-CREATE TABLE `hlstats_Events_Rcon` (
-  `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
-  `game_id` tinyint(3) unsigned NOT NULL DEFAULT 0,
-  `map` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `type` varchar(6) NOT NULL DEFAULT 'UNK',
-  `remoteIp` varchar(32) NOT NULL DEFAULT '',
-  `password` varchar(255) NOT NULL DEFAULT '',
-  `command` varchar(255) NOT NULL DEFAULT '',
-  KEY `timestamp_id` (`timestamp_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Events_Suicides` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
   `game_id` tinyint(3) unsigned NOT NULL DEFAULT 0,
@@ -358,12 +340,6 @@ CREATE TABLE `hlstats_Games` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `code` (`code`),
   KEY `display_id` (`display_id`,`code`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-CREATE TABLE `hlstats_HostGroups` (
-  `id` mediumint(8) unsigned NOT NULL AUTO_INCREMENT,
-  `pattern` varchar(255) NOT NULL DEFAULT '',
-  `name` varchar(255) NOT NULL DEFAULT '',
-  PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Livestats` (
   `player_id` mediumint(8) unsigned NOT NULL DEFAULT 0,
@@ -731,108 +707,6 @@ CREATE TABLE `hlstats_Players_Resets` (
   `timestamp` int(10) unsigned NOT NULL,
   KEY `player_id` (`player_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-CREATE TABLE `hlstats_Players_Roles` (
-  `player_id` mediumint(8) unsigned NOT NULL,
-  `yearweek_id` mediumint(8) unsigned NOT NULL,
-  `game_id` tinyint(3) unsigned NOT NULL,
-  `role_id` smallint(5) unsigned NOT NULL,
-  `time_played` int(10) unsigned NOT NULL DEFAULT 0,
-  `count_played` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `skill_change` mediumint(8) unsigned NOT NULL DEFAULT 0,
-  `kills` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `deaths` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `suicides` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `headshots` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `shots` int(10) unsigned NOT NULL DEFAULT 0,
-  `hits` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `kill_assists` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `kill_assists_medic` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `kills_assisted` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `rounds` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `survived_count` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `survived` float(8,2) unsigned NOT NULL DEFAULT 0.00,
-  `wins` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `losses` smallint(5) unsigned NOT NULL DEFAULT 0,
-  UNIQUE KEY `player_id` (`player_id`,`yearweek_id`,`game_id`,`role_id`),
-  KEY `role_id` (`role_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-CREATE TABLE `hlstats_Players_Roles_History_Months` (
-  `player_id` mediumint(8) unsigned NOT NULL,
-  `year_id` smallint(5) unsigned NOT NULL,
-  `month_id` tinyint(3) unsigned NOT NULL,
-  `game_id` tinyint(3) unsigned NOT NULL,
-  `role_id` smallint(5) unsigned NOT NULL,
-  `time_played` int(10) unsigned NOT NULL DEFAULT 0,
-  `count_played` mediumint(8) unsigned NOT NULL DEFAULT 0,
-  `skill_change` mediumint(8) unsigned NOT NULL DEFAULT 0,
-  `kills` mediumint(8) unsigned NOT NULL DEFAULT 0,
-  `deaths` mediumint(8) unsigned NOT NULL DEFAULT 0,
-  `suicides` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `headshots` mediumint(8) unsigned NOT NULL DEFAULT 0,
-  `shots` int(10) unsigned NOT NULL DEFAULT 0,
-  `hits` int(10) unsigned NOT NULL DEFAULT 0,
-  `kill_assists` mediumint(8) unsigned NOT NULL DEFAULT 0,
-  `kill_assists_medic` mediumint(8) unsigned NOT NULL DEFAULT 0,
-  `kills_assisted` mediumint(8) unsigned NOT NULL DEFAULT 0,
-  `rounds` mediumint(8) unsigned NOT NULL DEFAULT 0,
-  `survived_count` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `survived` float(8,2) unsigned NOT NULL DEFAULT 0.00,
-  `wins` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `losses` smallint(5) unsigned NOT NULL DEFAULT 0,
-  UNIQUE KEY `player_id` (`player_id`,`year_id`,`month_id`,`game_id`,`role_id`),
-  KEY `role_id` (`role_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-CREATE TABLE `hlstats_Players_Teams` (
-  `player_id` mediumint(8) unsigned NOT NULL,
-  `yearweek_id` mediumint(8) unsigned NOT NULL,
-  `game_id` tinyint(3) unsigned NOT NULL,
-  `team_id` smallint(5) unsigned NOT NULL,
-  `time_played` int(10) unsigned NOT NULL DEFAULT 0,
-  `count_played` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `skill_change` mediumint(8) unsigned NOT NULL DEFAULT 0,
-  `kills` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `deaths` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `suicides` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `headshots` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `shots` int(10) unsigned NOT NULL DEFAULT 0,
-  `hits` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `kill_assists` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `kill_assists_medic` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `kills_assisted` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `rounds` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `survived_count` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `survived` float(8,2) unsigned NOT NULL DEFAULT 0.00,
-  `wins` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `losses` smallint(5) unsigned NOT NULL DEFAULT 0,
-  UNIQUE KEY `player_id` (`player_id`,`yearweek_id`,`game_id`,`team_id`),
-  KEY `team_id` (`team_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-CREATE TABLE `hlstats_Players_Teams_History_Months` (
-  `player_id` mediumint(8) unsigned NOT NULL,
-  `year_id` smallint(5) unsigned NOT NULL,
-  `month_id` tinyint(3) unsigned NOT NULL,
-  `game_id` tinyint(3) unsigned NOT NULL,
-  `team_id` smallint(5) unsigned NOT NULL,
-  `time_played` int(10) unsigned NOT NULL DEFAULT 0,
-  `count_played` mediumint(8) unsigned NOT NULL DEFAULT 0,
-  `skill_change` mediumint(8) unsigned NOT NULL DEFAULT 0,
-  `kills` mediumint(8) unsigned NOT NULL DEFAULT 0,
-  `deaths` mediumint(8) unsigned NOT NULL DEFAULT 0,
-  `suicides` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `headshots` mediumint(8) unsigned NOT NULL DEFAULT 0,
-  `shots` int(10) unsigned NOT NULL DEFAULT 0,
-  `hits` int(10) unsigned NOT NULL DEFAULT 0,
-  `kill_assists` mediumint(8) unsigned NOT NULL DEFAULT 0,
-  `kill_assists_medic` mediumint(8) unsigned NOT NULL DEFAULT 0,
-  `kills_assisted` mediumint(8) unsigned NOT NULL DEFAULT 0,
-  `rounds` mediumint(8) unsigned NOT NULL DEFAULT 0,
-  `survived_count` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `survived` float(8,2) unsigned NOT NULL DEFAULT 0.00,
-  `wins` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `losses` smallint(5) unsigned NOT NULL DEFAULT 0,
-  UNIQUE KEY `player_id` (`player_id`,`year_id`,`month_id`,`game_id`,`team_id`),
-  KEY `team_id` (`team_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Players_Weapons` (
   `player_id` mediumint(8) unsigned NOT NULL,
   `yearweek_id` mediumint(8) unsigned NOT NULL,
@@ -957,18 +831,6 @@ CREATE TABLE `hlstats_Servers` (
   KEY `display_id` (`display_id`,`serverId`),
   KEY `account_id` (`account_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-CREATE TABLE `hlstats_Style` (
-  `keyname` varchar(32) NOT NULL DEFAULT '',
-  `def` varchar(255) NOT NULL DEFAULT '',
-  `black` varchar(255) NOT NULL DEFAULT '',
-  `light_blue` varchar(255) NOT NULL DEFAULT '',
-  `grey` varchar(255) NOT NULL DEFAULT '',
-  `ua_style` varchar(255) NOT NULL DEFAULT '',
-  `red` varchar(255) NOT NULL DEFAULT '',
-  `light_grey` varchar(255) NOT NULL DEFAULT '',
-  `white` varchar(255) NOT NULL DEFAULT '',
-  PRIMARY KEY (`keyname`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Teams` (
   `teamId` smallint(5) unsigned NOT NULL AUTO_INCREMENT,
   `game` varchar(10) NOT NULL DEFAULT 'valve',
@@ -988,17 +850,6 @@ CREATE TABLE `hlstats_Teams` (
   `custom_wins` bigint(20) unsigned NOT NULL DEFAULT 0,
   PRIMARY KEY (`teamId`),
   UNIQUE KEY `game` (`game`,`code`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-CREATE TABLE `hlstats_Trend` (
-  `timestamp` int(11) NOT NULL DEFAULT 0,
-  `game` char(10) NOT NULL DEFAULT '',
-  `players` int(10) unsigned NOT NULL DEFAULT 0,
-  `kills` int(10) unsigned NOT NULL DEFAULT 0,
-  `headshots` int(10) unsigned NOT NULL DEFAULT 0,
-  `servers` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `act_slots` smallint(5) unsigned NOT NULL DEFAULT 0,
-  `max_slots` smallint(5) unsigned NOT NULL DEFAULT 0,
-  KEY `timestamp` (`timestamp`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Users` (
   `username` varchar(128) NOT NULL DEFAULT '',

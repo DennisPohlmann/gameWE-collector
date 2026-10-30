@@ -36,8 +36,7 @@ func (s step) available(p *Plan) bool { return len(s.missing(p)) == 0 }
 var eventTables = []string{"hlstats_Events_Frags", "hlstats_Events_Teamkills", "hlstats_Events_Suicides",
 	"hlstats_Events_PlayerActions", "hlstats_Events_PlayerPlayerActions", "hlstats_Events_TeamBonuses",
 	"hlstats_Events_Connects", "hlstats_Events_Entries", "hlstats_Events_Disconnects", "hlstats_Events_ChangeTeam",
-	"hlstats_Events_ChangeRole", "hlstats_Events_ChangeName", "hlstats_Events_Chat", "hlstats_Events_Latency",
-	"hlstats_Events_Admin"}
+	"hlstats_Events_ChangeRole", "hlstats_Events_ChangeName", "hlstats_Events_Chat", "hlstats_Events_Latency"}
 
 // codes inserts (game, code, name = code) for the codes that only appear
 // in the events of a CE table (column col), as the SQL script does.
@@ -287,10 +286,6 @@ FROM hlstats_Servers`, "hlstats_Servers", []string{"serverId", "address", "port"
 			note: "the web replaces the MD5 passwords with scrypt at the next sign-in",
 			parts: []part{copyRows("hlstats_Users", `SELECT username, password, acclevel, playerId FROM hlstats_Users`,
 				"hlstats_Users", []string{"username", "password", "acclevel", "playerId"}, flags("t..."), true)}},
-
-		{name: "host groups", from: "hlstats_HostGroups", table: "hlstats_HostGroups", count: "hlstats_HostGroups",
-			parts: []part{copyRows("hlstats_HostGroups", `SELECT id, pattern, name FROM hlstats_HostGroups`,
-				"hlstats_HostGroups", []string{"id", "pattern", "name"}, flags(".tt"), false)}},
 
 		{name: "teams", from: "hlstats_Teams, team codes of the events", table: "hlstats_Teams", count: "hlstats_Teams",
 			needs: []string{"hlstats_Events_ChangeTeam"},
@@ -557,10 +552,6 @@ FROM hlstats_Players_History WHERE eventTime IS NOT NULL`, "hlstats_Players_Hist
 			parts: []part{c.plainEvent("hlstats_Events_Latency", true, true, []string{"e.playerId", "LEAST(e.ping, 65535)"},
 				[]string{"playerId", "ping"}, flags(".."))}},
 
-		{name: "admin events", from: "hlstats_Events_Admin", table: "hlstats_Events_Admin", count: "hlstats_Events_Admin",
-			parts: []part{c.plainEvent("hlstats_Events_Admin", false, true, []string{"e.type", "e.message", "e.playerName"},
-				[]string{"type", "message", "playerName"}, flags("ttt"))}},
-
 		{name: "server load", from: "hlstats_server_load", table: "hlstats_server_load", count: "hlstats_server_load",
 			note: "map -> id, uptime and fps as numbers",
 			parts: []part{{
@@ -582,12 +573,5 @@ FROM hlstats_server_load l JOIN hlstats_Servers s ON s.serverId = l.server_id`,
 					return []any{str(v[0]), str(v[1]), str(v[2]), str(v[3]), str(v[4]), mid, str(v[7]), str(v[8])}, true, nil
 				},
 			}}},
-
-		{name: "trend", from: "hlstats_Trend", table: "hlstats_Trend", count: "hlstats_Trend",
-			parts: []part{copyRows("hlstats_Trend", `SELECT timestamp, game, GREATEST(players, 0), GREATEST(kills, 0), GREATEST(headshots, 0),
-    LEAST(GREATEST(servers, 0), 65535), LEAST(GREATEST(act_slots, 0), 65535),
-    LEAST(GREATEST(max_slots, 0), 65535)
-FROM hlstats_Trend`, "hlstats_Trend", []string{"timestamp", "game", "players", "kills", "headshots", "servers", "act_slots", "max_slots"},
-				flags(".t......"), false)}},
 	}
 }

@@ -59,6 +59,13 @@ const dbUsage = `usage:
         DROP right, which the collector user has not on MariaDB: -print only
         prints the SQL, to run it as a database admin. Afterwards db init
         (or the next start) creates them again
+  gamewe db cleanup [-config FILE] [--dry-run|-n] [-print]
+        drop the tables gameWE no longer uses (old HLstatsX tables nothing
+        writes or reads, leftovers of HLstatsX:CE, the old name of the version
+        table): lists them with their rows and why, then asks to type the
+        database name; there is no --force. Other tables stay. Needs the DROP
+        right, which the collector user has not on MariaDB: -print only
+        prints the SQL, to run it as a database admin
   gamewe db convert -from CE [-config FILE] [-source-timezone ZONE]
                     [-source-prefix PREFIX] [-mojibake auto|repair|keep]
                     [--dry-run|-n] [--force|-f]
@@ -73,10 +80,10 @@ const dbUsage = `usage:
         tables; -source-prefix: DB_PREFIX of CE, default hlstats (CE and
         gameWE may share one database when the prefixes differ). MariaDB /
         MySQL only; docs/MIGRATION-HLSTATSX.md
-Every db command that changes something shows the plan and asks [y/N] (reset
-and drop: type the database name); --dry-run (-n) only shows it, --force
-(-f; older names -yes, -y) does not ask; without a terminal and without
---force it changes nothing.
+Every db command that changes something shows the plan and asks [y/N] (reset,
+drop and cleanup: type the database name); --dry-run (-n) only shows it, --force
+(-f; older names -yes, -y) does not ask (cleanup has no --force); without a
+terminal and without --force it changes nothing.
 migrate, convert, reset and drop refuse while a collector runs on the database (stop
 it first: systemctl stop gamewe-collector); reset and drop ask to type the
 database name unless --force. Make a backup first.
@@ -248,6 +255,8 @@ func dbCmd(args []string) error {
 		return maint(dbOptimizeCmd)
 	case "convert":
 		return maint(dbConvertCmd)
+	case "cleanup":
+		return maint(dbCleanupCmd)
 	}
 	return exitError{2, fmt.Sprintf("unknown command %q\n\n%s", "db "+args[0], dbUsage)}
 }
@@ -420,7 +429,7 @@ func backupAdvice(d config.Database, stamp string) string { return backupFor(d, 
 
 // backupFor is the backup recommendation before gamewe db what.
 func backupFor(d config.Database, what, stamp string) string {
-	ing := map[string]string{"migrate": "migrating", "drop": "dropping", "reset": "resetting"}[what]
+	ing := map[string]string{"migrate": "migrating", "drop": "dropping", "reset": "resetting", "cleanup": "cleaning up"}[what]
 	if d.Type == config.Postgres {
 		return fmt.Sprintf("Make a backup before %s, e.g.:\n  pg_dump -U postgres -h %s -Fc %s > %s-before-%s-%s.dump", ing, d.Host, d.Name, d.Name, what, stamp)
 	}
@@ -478,6 +487,9 @@ func migrate(ctx context.Context, db *database.DB, d config.Database, f migrateF
 	printPlan(out, p)
 	if p.UpToDate() {
 		fmt.Fprintln(out, "The database is up to date.")
+		if h := oldTablesHint(p); h != "" {
+			fmt.Fprintf(out, "note:      %s\n", h)
+		}
 		return nil
 	}
 	if why, err := database.PostgresRights(ctx, db); err != nil {
@@ -530,6 +542,9 @@ func migrate(ctx context.Context, db *database.DB, d config.Database, f migrateF
 		return nil
 	}
 	fmt.Fprintf(out, "done: the database has schema version %d.\n", database.Latest())
+	if h := oldTablesHint(res.Plan); h != "" {
+		fmt.Fprintf(out, "note:      %s\n", h)
+	}
 	return nil
 }
 
@@ -599,6 +614,9 @@ func printStatus(out io.Writer, p *database.Plan) {
 	}
 	for _, r := range p.Missing {
 		fmt.Fprintf(out, "missing:   %s\n", strings.TrimPrefix(r.String(), "schema incomplete: missing "))
+	}
+	if h := oldTablesHint(p); h != "" {
+		fmt.Fprintf(out, "old:       %s\n", h)
 	}
 }
 

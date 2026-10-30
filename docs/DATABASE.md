@@ -55,7 +55,7 @@ host.
 | User | Rights | For |
 |------|--------|-----|
 | `gamewe` | SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX on the database, WITH GRANT OPTION | the collector, and `gamewe db migrate` |
-| `gamewe_web` | SELECT on all tables except `hlstats_Users`, `hlstats_Events_Rcon` and `hlstats_Events_Chat`; on `hlstats_Servers` not on `rcon_password`, `log_secret`, `log_secret_changed`, on `hlstats_Events_Connects` not on `ipAddress` | the public web pages |
+| `gamewe_web` | SELECT on all tables except `hlstats_Users` and `hlstats_Events_Chat`; on `hlstats_Servers` not on `rcon_password`, `log_secret`, `log_secret_changed`, on `hlstats_Events_Connects` not on `ipAddress` | the public web pages |
 | `gamewe_web_admin` | SELECT on all tables (including `rcon_password`, to manage servers); INSERT, UPDATE, DELETE on `hlstats_Options`, `_Games`, `_Servers`, `_Clans`, `_Weapons`, `_Actions`, `_Teams`, `_Roles`, `_Awards`, `_Definition_Ranks_Ribbons`, `_Users`; on `hlstats_Players` only UPDATE of `skill`, `hideranking`, `clan`; INSERT on `hlstats_gamewe_jobs` | the web admin pages |
 
 The collector itself only reads and writes rows (`DELETE` is needed for
@@ -94,7 +94,7 @@ The table `hlstats_gamewe_schema_migrations` records the schema versions
 was called `gamewe_schema_migrations` (without the table prefix, unlike every
 other table): `gamewe db migrate` (or the start with `auto_migrate`) copies
 its versions into the new table and changes nothing else; the old table
-stays (nothing reads it any more) and can be dropped. The collector checks the
+stays (nothing reads it any more) until `gamewe db cleanup` drops it. The collector checks the
 database at every start against the schema compiled into it (a version is
 missing, or a table, column or index of the current schema):
 
@@ -270,6 +270,7 @@ from an old HLstatsX, are listed and left alone.
 | `gamewe db optimize` | gives the space of deleted rows back to the disk and renews the table statistics (MariaDB `OPTIMIZE TABLE`, PostgreSQL `VACUUM ANALYZE`), e.g. after `purge`. MyISAM tables are locked while they are rebuilt: run it at a quiet time | the collector user |
 | `gamewe db reset` | **empties every table** and loads the reference data again, the AUTO_INCREMENT / identity counters start at 1: the database is as new. Everything goes, also the game servers, the settings (`hlstats_Options`), the admin logins (`hlstats_Users`) and own games or changed definitions; the tables and schema versions stay. Asks to type the database name. For one ranking only: `gamewe reset GAME -mode all` | the collector user (PostgreSQL: owner of the tables, for `TRUNCATE`) |
 | `gamewe db convert -from CE` | copies an **HLstatsX:CE** database into this gameWE database, which must be new (no tables) or have no data yet (no players, servers, clans, frags): creates the schema, converts every table (event times to UTC, names and codes to ids, character sets to utf8mb4) and compares the rows of both at the end. The CE database is only read (a read-only session). Shows the plan and asks `[y/N]`; `--dry-run`, `--force`, `-source-timezone`, `-mojibake`. MariaDB / MySQL only. [MIGRATION-HLSTATSX.md](MIGRATION-HLSTATSX.md) | the collector user; SELECT on the CE database |
+| `gamewe db cleanup` | **drops the tables gameWE no longer uses**: the HLstatsX tables nothing wrote or read (`hlstats_Players_Roles*`, `hlstats_Players_Teams*`, `hlstats_Trend`, `hlstats_Events_Admin`, `hlstats_Events_Rcon`, `hlstats_Style`, `hlstats_HostGroups`; part of the schema up to collector 1.4), tables left over from HLstatsX:CE (`hlstats_Ranks`, `hlstats_Ribbons`, `hlstats_Players_Awards`, ...) and the version table of its old name `gamewe_schema_migrations` (its versions are in `hlstats_gamewe_schema_migrations` since collector 1.5). It lists the tables it finds with their rows and why, then asks to type the database name; there is **no `--force`**, without a terminal it drops nothing. Other tables (not gameWE's and not known as old) are listed and left alone. Only names compiled into the collector are dropped, never one read from the database. The schema must be up to date (`gamewe db migrate` first). `gamewe db status` and `migrate` name the old tables they find. `--dry-run` only lists | DROP: on MariaDB a database admin, `gamewe db cleanup -print \| mariadb -u root -p gamewe` (`-print` prints the `DROP TABLE IF EXISTS ...` of every old table with a comment per table; run `--dry-run` first to see what is there); on PostgreSQL the collector (owner) |
 | `gamewe db drop` | **drops all tables** of the gameWE schema. Afterwards `gamewe db init` (or the next start) creates them again. Asks to type the database name | DROP: on MariaDB a database admin, `gamewe db drop -print \| mariadb -u root -p gamewe` (`-print` only prints the `DROP TABLE IF EXISTS ...`); on PostgreSQL the collector (owner) |
 
 `migrate`, `convert`, `reset` and `drop` refuse while a collector runs on the database
@@ -350,7 +351,7 @@ rights:
 | Role | Rights |
 |------|--------|
 | `gamewe` | owner of the tables; CREATE on the schema `public` |
-| `gamewe_web` | SELECT on all tables except `hlstats_Users`, `hlstats_Events_Rcon` and `hlstats_Events_Chat`; on `hlstats_Servers` not on `rcon_password`, `log_secret`, `log_secret_changed`, on `hlstats_Events_Connects` not on `ipAddress` (column rights: name the columns, `SELECT *` fails) |
+| `gamewe_web` | SELECT on all tables except `hlstats_Users` and `hlstats_Events_Chat`; on `hlstats_Servers` not on `rcon_password`, `log_secret`, `log_secret_changed`, on `hlstats_Events_Connects` not on `ipAddress` (column rights: name the columns, `SELECT *` fails) |
 | `gamewe_web_admin` | SELECT on all tables and USAGE on all sequences; INSERT, UPDATE, DELETE on the same tables as on MariaDB; on `hlstats_Players` only UPDATE of `skill`, `hideranking`, `clan` |
 
 A database created with the init scripts before this version belongs to

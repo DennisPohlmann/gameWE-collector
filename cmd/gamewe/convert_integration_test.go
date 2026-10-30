@@ -418,8 +418,10 @@ func TestConvertHLstatsXCE(t *testing.T) {
 			t.Errorf("%s = %d, gameWE %s = %d", c.ce, a, c.gw, b)
 		}
 	}
-	if n := one[int64](t, gdb, `SELECT COUNT(*) FROM hlstats_Events_Rcon`); n != 0 {
-		t.Errorf("hlstats_Events_Rcon copied: %d rows", n)
+	// Not copied, and gameWE has no such tables.
+	if n := one[int64](t, gdb, `SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()
+		AND TABLE_NAME IN ('hlstats_Events_Rcon', 'hlstats_Events_Admin', 'hlstats_HostGroups', 'hlstats_Trend')`); n != 0 {
+		t.Errorf("%d tables gameWE has no longer are in the converted database", n)
 	}
 
 	// samples

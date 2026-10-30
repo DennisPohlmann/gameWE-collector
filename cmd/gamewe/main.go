@@ -62,10 +62,11 @@ Usage:
                                    grant the web users their table rights again
   gamewe db seed    [-config FILE] [-print]
                                    add missing reference data (existing rows stay)
-  gamewe db init|purge|optimize|reset|drop ...
+  gamewe db init|purge|optimize|reset|drop|cleanup ...
                                    tables of a new database; delete events older than
                                    -older-than DAYS; give the space back; empty every table;
-                                   drop the tables (see "gamewe db help")
+                                   drop the tables; drop the old tables gameWE no longer
+                                   uses (see "gamewe db help")
   gamewe simulate [-config FILE] [-file LOG] [-game CODE] [-server IP:PORT] [-send HOST:PORT]
                                    replay sample log lines into the database, or send
                                    them as UDP log packets to a running collector

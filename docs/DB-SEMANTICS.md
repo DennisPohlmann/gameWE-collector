@@ -12,7 +12,7 @@ variant are listed in [PostgreSQL](#postgresql) at the end.
 - **Hidden from the web user:** the read-only web user `gamewe_web` cannot read
   `hlstats_Servers.rcon_password`, `log_secret`, `log_secret_changed`, `hlstats_Events_Connects.ipAddress` (column
   rights: name the columns you need, `SELECT *` on those tables is refused),
-  `hlstats_Users` and `hlstats_Events_Rcon`. `gamewe_web_admin` reads all of them.
+  `hlstats_Users` and `hlstats_Events_Chat`. `gamewe_web_admin` reads all of them.
 - **Character set:** all tables are **utf8mb4** (`utf8mb4_unicode_ci`). Readers must connect with
   `utf8mb4`. Player names, chat and map names can contain any Unicode
   character, including emoji. PostgreSQL databases are UTF8.
@@ -348,6 +348,12 @@ players, clans, counters or award winners.
 
 ## Tables the collector does not fill
 
+Up to collector 1.4 the schema also had `hlstats_Players_Roles*`,
+`hlstats_Players_Teams*`, `hlstats_Trend`, `hlstats_Events_Admin`,
+`hlstats_Events_Rcon`, `hlstats_Style` and `hlstats_HostGroups` of the
+HLstatsX schema: nothing wrote or read them. A new database no longer has
+them; `gamewe db cleanup` drops them from an older one (DATABASE.md).
+
 These are left to the web frontend or the web admin, or not filled at all
 (a ranking reset may still clear some of them):
 
@@ -355,8 +361,7 @@ These are left to the web frontend or the web admin, or not filled at all
   [Daily awards, ribbons, ranks](#daily-awards-ribbons-ranks)). The `daily_award`
   columns of `hlstats_Players_Weapons` / `_Actions` are not written.
 - **Clans:** `homepage` and `flag` of `hlstats_Clans`.
-- **Roles and teams per player:** `hlstats_Players_Roles*`,
-  `hlstats_Players_Teams*`; `kill_assists`, `flags_captured`, `custom_wins` of
+- **Roles and teams:** `kill_assists`, `flags_captured`, `custom_wins` of
   `hlstats_Roles` and `hlstats_Teams`.
 - **Per-map player stats:** `hlstats_Players_Maps` apart from `shots` and
   `hits`, `hlstats_Players_Maps_History_Months`; `hlstats_Maps.teama_wins`
@@ -366,9 +371,7 @@ These are left to the web frontend or the web admin, or not filled at all
   `hlstats_Players_Resets` gets a row (`player_id`, `timestamp`) only when a
   player resets the own stats in game (`!gamewe_reset` with
   `gamewe_player_reset` = 1, USAGE.md); `sort_skill` is set with it.
-- **Trends:** `hlstats_Trend`.
-- **Other events:** `hlstats_Events_Admin`, `hlstats_Events_Rcon`.
-- **Web and admin:** `hlstats_Style`, `hlstats_Users`, `hlstats_HostGroups`;
+- **Web and admin:** `hlstats_Users`;
   `hlstats_Options` only `gamewe_heartbeat`, `gamewe_collector_version`
   (written at start), `gamewe_reset_last_<game>` and the plan of its jobs
   for the web admin (`gamewe_next_*`, CONFIG.md; the collector reads the
