@@ -230,8 +230,9 @@ command except `run`, `version` and `help` first prints one line on stderr,
 `gamewe: update available: 0.17.0 (running 0.16.0), https://github.com/...`,
 and then does its work as usual (stdout, exit code and `-o` output stay the
 same). `gamewe run` logs it as a warning at start and once a day, and writes
-its version to `hlstats_Options` (`gamewe_collector_version`) for the web
-admin. Nothing is updated automatically; see
+its version and where it runs (`docker`, `container` or empty) to
+`hlstats_Options` (`gamewe_collector_version`, `gamewe_collector_runtime`)
+for the web admin. Nothing is updated automatically; see
 [`features.update_check`](CONFIG.md#features) to turn it off.
 
 ### Checking the config file

@@ -146,6 +146,11 @@ const HeartbeatKey = "gamewe_heartbeat"
 // the latest release.
 const VersionKey = "gamewe_collector_version"
 
+// RuntimeKey is the hlstats_Options key with where the collector runs
+// ("docker", "container" or "" on the host), written with VersionKey; the
+// web admin shows it after the version.
+const RuntimeKey = "gamewe_collector_runtime"
+
 // HeartbeatInterval and HeartbeatFresh: a heartbeat younger than
 // HeartbeatFresh means a collector runs and will do queued jobs.
 const (

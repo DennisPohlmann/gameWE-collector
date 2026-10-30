@@ -244,13 +244,13 @@ func gameCode(g string) bool {
 // schedule the web admin turned off), the bot settings per game
 // (gamewe_rank_bots_<game>, gamewe_bot_points_<game>, gamewe_bot_kills_<game>,
 // gamewe_bot_stats_<game>), the VAC block per game
-// (gamewe_block_vac_<game>), the collector's heartbeat, version and job
+// (gamewe_block_vac_<game>), the collector's heartbeat, version, runtime and job
 // plan (gamewe_next_awards, gamewe_next_bans, gamewe_next_inactive, gamewe_next_resets,
 // gamewe_next_reset_<game>) and retired keys that the migrations delete.
 func otherKey(k string) bool {
 	switch k {
 	case "gamewe_reset_schedule", "gamewe_reset_mode", "gamewe_reset_paused", // the scheduled reset of all rankings
-		"gamewe_heartbeat", "gamewe_collector_version", // written by the collector
+		"gamewe_heartbeat", "gamewe_collector_version", "gamewe_collector_runtime", // written by the collector
 		"gamewe_next_awards", "gamewe_next_bans", "gamewe_next_inactive", "gamewe_next_resets", // the job plan, written by the collector
 		"gamewe_daily_awards",                    // 1.4.x; now features.daily_awards in the config file
 		"gamewe_default_game",                    // old web setting nothing reads; migration 13 deletes both

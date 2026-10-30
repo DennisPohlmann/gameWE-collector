@@ -248,6 +248,15 @@ func TestIntegrationResetJob(t *testing.T) {
 	if beat, err := store.LastHeartbeat(ctx); err != nil || time.Since(beat) > time.Minute {
 		t.Errorf("heartbeat %v %v", beat, err)
 	}
+	// with the version, where the collector runs (the admin menu shows it)
+	for _, rt := range []string{"docker", ""} {
+		if err := (&Jobs{Store: store, Log: jobs.Log, Version: "9.9.9", Runtime: rt}).Beat(ctx, true); err != nil {
+			t.Fatal(err)
+		}
+		if n := q(t, db, `SELECT COUNT(*) FROM hlstats_Options WHERE keyname = '`+stats.RuntimeKey+`' AND value = '`+rt+`'`); n != 1 {
+			t.Errorf("runtime %q not written", rt)
+		}
+	}
 
 	// A template (a ranking without servers) is not reset, also when an
 	// older web queued it.

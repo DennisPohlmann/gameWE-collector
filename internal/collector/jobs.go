@@ -34,8 +34,10 @@ type Jobs struct {
 	Inactive InactiveConfig
 	Awards   AwardsConfig
 	// Version is written to hlstats_Options with the first heartbeat
-	// (stats.VersionKey); empty: not written (tests).
+	// (stats.VersionKey); empty: not written (tests). Runtime goes with it
+	// (stats.RuntimeKey: localrun.Runtime, "" on the host).
 	Version string
+	Runtime string
 	// Lock takes the job lock of the database (database.JobLock) for a
 	// reset and a move of inactive players; nil: none (tests).
 	Lock func(ctx context.Context) (release func(), err error)
@@ -144,11 +146,14 @@ func (j *Jobs) beatLoop(ctx context.Context) {
 }
 
 // Beat writes the heartbeat and, with version, the collector's version
-// (Version, when set).
+// and where it runs (Version, when set; Runtime).
 func (j *Jobs) Beat(ctx context.Context, version bool) error {
 	if version && j.Version != "" {
 		if err := j.Store.SetVersion(ctx, j.Version); err != nil {
 			return fmt.Errorf("version: %w", err)
+		}
+		if err := j.Store.SetOption(ctx, stats.RuntimeKey, j.Runtime); err != nil {
+			return fmt.Errorf("runtime: %w", err)
 		}
 	}
 	if err := j.Store.Heartbeat(ctx, j.now()); err != nil {
