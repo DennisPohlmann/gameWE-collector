@@ -1580,3 +1580,32 @@ func TestIntegrationCS2Plugin(t *testing.T) {
 		}
 	}
 }
+
+// A chat line and a name in an old code page (Windows-1251, no UTF-8) are
+// kept with U+FFFD for the bad bytes; the database refused the whole event
+// before (MariaDB error 1366).
+func TestIntegrationInvalidUTF8(t *testing.T) {
+	db := testDB(t)
+	addr := "198.51.100.9:27015"
+	hub := dbHub(t, db, &recorder{}, [][2]string{{addr, "css"}})
+	now := time.Now().UTC()
+	for _, l := range []string{
+		`Started map "de_dust2" (CRC "1")`,
+		"\"\xc8\xe2\xe0\xed<2><STEAM_1:0:91><>\" entered the game",
+		"\"\xc8\xe2\xe0\xed<2><STEAM_1:0:91><CT>\" say \"\xc3\xee \xe2 \xef\xf0\xe5\xee\xea\xf2\"",
+	} {
+		if err := hub.Dispatch(netip.MustParseAddrPort(addr), pkt(l), now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	hub.Close(context.Background())
+	var msg string
+	if err := db.QueryRow(`SELECT message FROM hlstats_Events_Chat`).Scan(&msg); err != nil || msg != "� � �" {
+		t.Errorf("chat message %q (%v), want %q", msg, err, "� � �")
+	}
+	var name string
+	if err := db.QueryRow(`SELECT d.lastName FROM hlstats_Players_Data d JOIN hlstats_PlayerUniqueIds u USING (playerId)
+		WHERE u.uniqueId = '0:91'`).Scan(&name); err != nil || name != "�" {
+		t.Errorf("stored name %q (%v), want %q", name, err, "�")
+	}
+}

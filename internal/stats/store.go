@@ -144,7 +144,12 @@ type Live struct {
 	Connected int64
 }
 
+// clip bounds s to n characters of valid UTF-8 for a text column. Bytes
+// that are no UTF-8 (a chat line or name in an old code page such as
+// Windows-1251) become U+FFFD: MariaDB refuses them in utf8mb4 (error 1366),
+// PostgreSQL in UTF8, and the whole event would be lost.
 func clip(s string, n int) string {
+	s = strings.ToValidUTF8(s, "�")
 	if utf8.RuneCountInString(s) <= n {
 		return s
 	}

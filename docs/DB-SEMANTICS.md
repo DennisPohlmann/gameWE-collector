@@ -15,7 +15,8 @@ variant are listed in [PostgreSQL](#postgresql) at the end.
   `hlstats_Users` and `hlstats_Events_Chat`. `gamewe_web_admin` reads all of them.
 - **Character set:** all tables are **utf8mb4** (`utf8mb4_unicode_ci`). Readers must connect with
   `utf8mb4`. Player names, chat and map names can contain any Unicode
-  character, including emoji. PostgreSQL databases are UTF8.
+  character, including emoji. PostgreSQL databases are UTF8. Bytes of a log line that are no valid
+  UTF-8 are stored as U+FFFD (`�`).
 
 - **`timestamp_id`** in all `hlstats_Events_*` tables is the **Unix time in
   seconds (UTC)** of the event, as received by the collector. This is confirmed

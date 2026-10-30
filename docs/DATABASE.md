@@ -449,6 +449,9 @@ feed and vertical tab in a text (gameWE writes none) come out as the letters
 
 gameWE reads and writes **utf8mb4** only (`utf8mb4_unicode_ci`). Names with
 umlauts, Cyrillic, emoji and so on are stored exactly as the game logs them.
+Bytes in a log line that are no valid UTF-8 (a chat line or name typed in an
+old code page such as Windows-1251) are stored as `�` (U+FFFD), so the event
+is kept instead of being refused by the database.
 Every reader of the database (the web frontend, scripts) must connect with
 `utf8mb4` as well.
 
