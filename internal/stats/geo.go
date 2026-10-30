@@ -87,16 +87,18 @@ func (s *Store) RecordServerLoad(ctx context.Context, l Load) error {
 			c(l.CPU, 65535), c(l.FPS, 65535), c(l.Uptime, 65535)}})
 }
 
-// ServerStatus stores what the RCON "status" of a game server says:
-// hlstats_Servers.max_players, the name if none is set, and the players'
-// pings in the live view (by uniqueId).
+// ServerStatus stores what the game server says about itself (RCON
+// "status", or A2S_INFO): hlstats_Servers.max_players and name, each only
+// when given (> 0, not empty), and the players' pings in the live view (by
+// uniqueId). A name or slot count set by hand in the web admin is
+// overwritten.
 func (s *Store) ServerStatus(ctx context.Context, serverID int64, hostname string, maxPlayers int, pings map[string]int) error {
 	steps := []step{}
 	if maxPlayers > 0 {
 		steps = append(steps, step{`UPDATE hlstats_Servers SET max_players = ? WHERE serverId = ?`, []any{maxPlayers, serverID}})
 	}
-	if hostname != "" {
-		steps = append(steps, step{`UPDATE hlstats_Servers SET name = ? WHERE serverId = ? AND name = ''`, []any{clip(hostname, 255), serverID}})
+	if name := ServerName(hostname); name != "" {
+		steps = append(steps, step{`UPDATE hlstats_Servers SET name = ? WHERE serverId = ?`, []any{name, serverID}})
 	}
 	for uid, ping := range pings {
 		steps = append(steps, step{`UPDATE hlstats_Livestats SET ping = ? WHERE server_id = ? AND unique_id = ?`,

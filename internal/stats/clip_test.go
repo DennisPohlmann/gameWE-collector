@@ -3,6 +3,7 @@
 package stats
 
 import (
+	"strings"
 	"testing"
 	"unicode/utf8"
 )
@@ -24,6 +25,21 @@ func TestClip(t *testing.T) {
 		got := clip(c.in, c.n)
 		if got != c.want || !utf8.ValidString(got) {
 			t.Errorf("clip(%q, %d) = %q, want %q", c.in, c.n, got, c.want)
+		}
+	}
+}
+
+func TestServerName(t *testing.T) {
+	long := strings.Repeat("ä", 300)
+	for _, c := range []struct{ in, want string }{
+		{"  Example Server  ", "Example Server"},
+		{"Bad\x1b[31m\nname\x00", "Bad[31mname"},
+		{"Server \xff 1", "Server � 1"},
+		{"\t\n", ""},
+		{long, long[:2*255]},
+	} {
+		if got := ServerName(c.in); got != c.want {
+			t.Errorf("ServerName(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}
 }

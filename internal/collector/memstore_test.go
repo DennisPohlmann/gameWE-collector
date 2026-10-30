@@ -42,6 +42,7 @@ type memStore struct {
 	active       []int // SetActivePlayers values
 	activeBots   []int // and their bots
 	status       []string
+	names        []string // names written by ServerStatus
 	infos        []stats.ServerInfo // ServerInfo writes
 	maps         []string           // MapStarted calls
 	connects     []string           // "player:ip" of each Connect
@@ -215,9 +216,12 @@ func (m *memStore) MapStarted(_ context.Context, _ stats.Ev, name string) (int, 
 	return 2, nil
 }
 
-func (m *memStore) ServerStatus(_ context.Context, id int64, _ string, maxPlayers int, pings map[string]int) error {
+func (m *memStore) ServerStatus(_ context.Context, id int64, name string, maxPlayers int, pings map[string]int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if name != "" {
+		m.names = append(m.names, name)
+	}
 	m.status = append(m.status, fmt.Sprintf("%d:%d:%d", id, maxPlayers, len(pings)))
 	return nil
 }

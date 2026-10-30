@@ -951,6 +951,7 @@ func TestIntegrationStatus(t *testing.T) {
 	}{
 		{"act_players", count(t, db, `SELECT act_players FROM hlstats_Servers`), 2},
 		{"max_players", count(t, db, `SELECT max_players FROM hlstats_Servers`), 32},
+		{"name", count(t, db, `SELECT COUNT(*) FROM hlstats_Servers WHERE name = 'Status Test'`), 1},
 		{"act_map", count(t, db, `SELECT COUNT(*) FROM hlstats_Servers WHERE act_map = 'de_dust2' AND map_started = ?`, now.Unix()), 1},
 		{"live rows", count(t, db, `SELECT COUNT(*) FROM hlstats_Livestats l JOIN hlstats_Servers s ON s.serverId = l.server_id WHERE l.player_hidden = 0`), 2},
 		{"bot live", count(t, db, `SELECT COUNT(*) FROM hlstats_Livestats WHERE unique_id = 'BOT:Bot Bob' AND name = 'Bot Bob'`), 1},

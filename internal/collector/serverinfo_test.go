@@ -55,16 +55,16 @@ func TestParseA2SInfo(t *testing.T) {
 		in   []byte
 		want stats.ServerInfo
 	}{
-		{"source linux secure", a2sSourceReply(240, 'l', 1, "9540945"), stats.ServerInfo{Version: "9540945", OS: OSLinux, VAC: VACSecure, MaxPlayers: 24}},
-		{"cs2 windows insecure", a2sSourceReply(730, 'w', 0, "1.40.2.2"), stats.ServerInfo{Version: "1.40.2.2", OS: OSWindows, VAC: VACInsecure, MaxPlayers: 24}},
-		{"mac", a2sSourceReply(440, 'm', 1, "8622567"), stats.ServerInfo{Version: "8622567", OS: OSMac, VAC: VACSecure, MaxPlayers: 24}},
-		{"the ship", a2sSourceReply(2400, 'w', 1, "1.0.0.4"), stats.ServerInfo{Version: "1.0.0.4", OS: OSWindows, VAC: VACSecure, MaxPlayers: 24}},
-		{"goldsrc version suffix", a2sSourceReply(10, 'l', 1, "1.1.2.7/Stdio"), stats.ServerInfo{Version: "1.1.2.7", OS: OSLinux, VAC: VACSecure, MaxPlayers: 24}},
-		{"unknown env and vac", a2sSourceReply(240, 'x', 7, "1"), stats.ServerInfo{Version: "1", MaxPlayers: 24}},
+		{"source linux secure", a2sSourceReply(240, 'l', 1, "9540945"), stats.ServerInfo{Version: "9540945", OS: OSLinux, VAC: VACSecure, MaxPlayers: 24, Name: "Example Server"}},
+		{"cs2 windows insecure", a2sSourceReply(730, 'w', 0, "1.40.2.2"), stats.ServerInfo{Version: "1.40.2.2", OS: OSWindows, VAC: VACInsecure, MaxPlayers: 24, Name: "Example Server"}},
+		{"mac", a2sSourceReply(440, 'm', 1, "8622567"), stats.ServerInfo{Version: "8622567", OS: OSMac, VAC: VACSecure, MaxPlayers: 24, Name: "Example Server"}},
+		{"the ship", a2sSourceReply(2400, 'w', 1, "1.0.0.4"), stats.ServerInfo{Version: "1.0.0.4", OS: OSWindows, VAC: VACSecure, MaxPlayers: 24, Name: "Example Server"}},
+		{"goldsrc version suffix", a2sSourceReply(10, 'l', 1, "1.1.2.7/Stdio"), stats.ServerInfo{Version: "1.1.2.7", OS: OSLinux, VAC: VACSecure, MaxPlayers: 24, Name: "Example Server"}},
+		{"unknown env and vac", a2sSourceReply(240, 'x', 7, "1"), stats.ServerInfo{Version: "1", MaxPlayers: 24, Name: "Example Server"}},
 		{"hostile version", a2sSourceReply(240, 'l', 1, "1.0\x1b[31m\n<b>\xff"+strings.Repeat("9", 100)), stats.ServerInfo{
-			Version: ("1.0[31m<b>" + strings.Repeat("9", 100))[:maxVersionLen], OS: OSLinux, VAC: VACSecure, MaxPlayers: 24}},
-		{"goldsrc m", a2sGoldSrcReply('l', 1, false), stats.ServerInfo{OS: OSLinux, VAC: VACSecure, MaxPlayers: 32}},
-		{"goldsrc m mod", a2sGoldSrcReply('w', 0, true), stats.ServerInfo{OS: OSWindows, VAC: VACInsecure, MaxPlayers: 32}},
+			Version: ("1.0[31m<b>" + strings.Repeat("9", 100))[:maxVersionLen], OS: OSLinux, VAC: VACSecure, MaxPlayers: 24, Name: "Example Server"}},
+		{"goldsrc m", a2sGoldSrcReply('l', 1, false), stats.ServerInfo{OS: OSLinux, VAC: VACSecure, MaxPlayers: 32, Name: "Example CS 1.6"}},
+		{"goldsrc m mod", a2sGoldSrcReply('w', 0, true), stats.ServerInfo{OS: OSWindows, VAC: VACInsecure, MaxPlayers: 32, Name: "Example CS 1.6"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, ch, err := ParseA2SInfo(tc.in)
@@ -121,7 +121,7 @@ func TestQueryServerInfoChallenge(t *testing.T) {
 	}()
 	addr := netip.MustParseAddrPort(pc.LocalAddr().String())
 	info, err := QueryServerInfo(context.Background(), addr, time.Second)
-	if err != nil || info != (stats.ServerInfo{Version: "7604765", OS: OSWindows, VAC: VACSecure, MaxPlayers: 24}) {
+	if err != nil || info != (stats.ServerInfo{Version: "7604765", OS: OSWindows, VAC: VACSecure, MaxPlayers: 24, Name: "Example Server"}) {
 		t.Fatalf("got %+v %v", info, err)
 	}
 	if first := <-reqs; !bytes.Equal(first, a2sRequest) {
@@ -220,7 +220,7 @@ func TestProcessorA2SMaxPlayers(t *testing.T) {
 	ctx := context.Background()
 	id := p.srv.info.ID
 	for range 2 {
-		if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "1", MaxPlayers: 24}); err != nil {
+		if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "1", MaxPlayers: 24, Name: "Example Server"}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -240,6 +240,67 @@ func TestProcessorA2SMaxPlayers(t *testing.T) {
 	}
 	if len(st.status) != n || p.maxPlayers() != status.MaxPlayers {
 		t.Errorf("A2S_INFO slots written over the status: %v, maxPlayers %d", st.status[n:], p.maxPlayers())
+	}
+}
+
+// Name and slots of a status overwrite what is stored, also a value set by
+// hand in the web admin (re-read every minute, Update); unchanged values
+// are not written again.
+func TestProcessorStatusOverwritesNameAndSlots(t *testing.T) {
+	p, st := newTestProcessor(t)
+	ctx := context.Background()
+	id := p.srv.info.ID
+	status, _ := ParseStatus(cssStatus)
+	apply := func() {
+		t.Helper()
+		if err := p.Status(ctx, status, time.Now().UTC()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	host := stats.ServerName(status.Hostname)
+	apply()
+	if len(st.names) != 1 || st.names[0] != host || p.srv.info.MaxPlayers != status.MaxPlayers {
+		t.Fatalf("names %v, slots %d", st.names, p.srv.info.MaxPlayers)
+	}
+	n := len(st.status)
+	apply()
+	if len(st.names) != 1 || len(st.status) != n {
+		t.Fatalf("unchanged values written again: names %v, status %v", st.names, st.status[n:])
+	}
+	// Changed by hand in the web admin.
+	srv := p.srv.info
+	srv.Name, srv.MaxPlayers = "My server", 64
+	p.Update(srv)
+	apply()
+	if want := fmt.Sprintf("%d:%d:0", id, status.MaxPlayers); len(st.names) != 2 || st.names[1] != host || st.status[len(st.status)-1] != want {
+		t.Errorf("hand-set values kept: names %v, status %v", st.names, st.status)
+	}
+}
+
+// Without RCON, A2S_INFO sets the name too; with a status, its hostname wins.
+func TestProcessorA2SName(t *testing.T) {
+	p, st := newTestProcessor(t)
+	ctx := context.Background()
+	srv := p.srv.info
+	srv.Name = "Typed by hand"
+	p.Update(srv)
+	for range 2 {
+		if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "1", MaxPlayers: 24, Name: " Example\x07 Server "}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(st.names) != 1 || st.names[0] != "Example Server" || st.infos[0].Name != "" {
+		t.Fatalf("names %v, infos %+v", st.names, st.infos)
+	}
+	status, _ := ParseStatus(cssStatus)
+	if err := p.Status(ctx, status, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "1", MaxPlayers: 24, Name: "Example Server"}); err != nil {
+		t.Fatal(err)
+	}
+	if host := stats.ServerName(status.Hostname); len(st.names) != 2 || st.names[1] != host || p.srv.info.Name != host {
+		t.Errorf("A2S_INFO name written over the status: %v", st.names)
 	}
 }
 
@@ -275,7 +336,7 @@ func TestMonitorServerInfo(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		select {
 		case info := <-got:
-			if info != (stats.ServerInfo{Version: "9540945", OS: OSLinux, VAC: VACSecure, MaxPlayers: 24}) {
+			if info != (stats.ServerInfo{Version: "9540945", OS: OSLinux, VAC: VACSecure, MaxPlayers: 24, Name: "Example Server"}) {
 				t.Fatalf("info %+v", info)
 			}
 		case <-time.After(5 * time.Second):

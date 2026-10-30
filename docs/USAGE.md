@@ -419,8 +419,8 @@ default):
 
 - **status** every 10 seconds (`features.rcon_status.interval`): players and
   bots in the live view, `act_players` and `act_bots` (also on an empty server and right
-  after a collector restart, without any log line), the map, maximum players,
-  the name if none is set, pings. One connection per server stays open.
+  after a collector restart, without any log line), the map, maximum players
+  and the name (both overwrite a value set by hand in the web admin), pings. One connection per server stays open.
 - **log address** every minute (`features.log_address.interval`): `logaddress_list`; if the collector is missing,
   `logaddress_add <ip:port>` and `log on`. The address is
   `listen.public_address`, or the collector's address of the RCON connection

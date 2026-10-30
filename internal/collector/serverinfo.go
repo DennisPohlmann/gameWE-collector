@@ -50,7 +50,7 @@ var a2sRequest = append([]byte{0xFF, 0xFF, 0xFF, 0xFF, 'T'}, "Source Engine Quer
 
 // QueryServerInfo asks the game server at addr for A2S_INFO (Valve's
 // server query protocol, the server browser's query on the game port; no
-// RCON password needed) and returns version, OS and VAC state. An
+// RCON password needed) and returns version, OS, VAC state, slots and name. An
 // S2C_CHALLENGE answer is answered once with the challenge.
 func QueryServerInfo(ctx context.Context, addr netip.AddrPort, timeout time.Duration) (stats.ServerInfo, error) {
 	if timeout <= 0 || timeout > a2sTimeout {
@@ -113,10 +113,10 @@ func ParseA2SInfo(b []byte) (info stats.ServerInfo, challenge []byte, err error)
 		return info, append([]byte{}, ch...), nil
 	case 'I':
 		r.byte() // protocol
-		r.str()  // name
-		r.str()  // map
-		r.str()  // folder
-		r.str()  // game
+		name := r.str()
+		r.str() // map
+		r.str() // folder
+		r.str() // game
 		id := r.bytes(2)
 		slots := r.bytes(4) // players, max players, bots, server type
 		env := r.byte()
@@ -129,11 +129,11 @@ func ParseA2SInfo(b []byte) (info stats.ServerInfo, challenge []byte, err error)
 		if r.err != nil {
 			return info, nil, r.err
 		}
-		info = stats.ServerInfo{Version: CleanVersion(version), OS: a2sOS(env), VAC: a2sVAC(vac), MaxPlayers: int(slots[1])}
+		info = stats.ServerInfo{Version: CleanVersion(version), OS: a2sOS(env), VAC: a2sVAC(vac), MaxPlayers: int(slots[1]), Name: stats.ServerName(name)}
 		return info, nil, nil
 	case 'm':
-		r.str()             // address
-		r.str()             // name
+		r.str() // address
+		name := r.str()
 		r.str()             // map
 		r.str()             // folder
 		r.str()             // game
@@ -151,7 +151,7 @@ func ParseA2SInfo(b []byte) (info stats.ServerInfo, challenge []byte, err error)
 		if r.err != nil {
 			return info, nil, r.err
 		}
-		return stats.ServerInfo{OS: a2sOS(env), VAC: a2sVAC(vac), MaxPlayers: int(slots[1])}, nil, nil
+		return stats.ServerInfo{OS: a2sOS(env), VAC: a2sVAC(vac), MaxPlayers: int(slots[1]), Name: stats.ServerName(name)}, nil, nil
 	}
 	if r.err != nil {
 		return info, nil, r.err

@@ -27,6 +27,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"gamewe-collector/internal/database"
@@ -102,10 +103,12 @@ type Server struct {
 // empty field is unknown.
 type ServerInfo struct {
 	Version, OS, VAC string
-	// MaxPlayers is the slot count of an A2S_INFO answer, 0 if unknown. It
-	// is not one of the info columns: the collector stores it in
-	// hlstats_Servers.max_players (see Processor.ServerInfo).
+	// MaxPlayers is the slot count and Name the server name of an A2S_INFO
+	// answer, 0 and "" if unknown. They are not info columns: the collector
+	// stores them in hlstats_Servers.max_players and name (see
+	// Processor.ServerInfo).
 	MaxPlayers int
+	Name       string
 }
 
 // Or fills the empty fields of i from o.
@@ -154,6 +157,19 @@ func clip(s string, n int) string {
 		return s
 	}
 	return string([]rune(s)[:n])
+}
+
+// ServerName is a hostname as hlstats_Servers.name stores it: valid UTF-8
+// without control characters, trimmed, at most 255 characters. The
+// collector compares it with the stored name to write only a change.
+func ServerName(s string) string {
+	s = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, strings.ToValidUTF8(s, "�"))
+	return clip(strings.TrimSpace(s), 255)
 }
 
 func boolInt(b bool) int {

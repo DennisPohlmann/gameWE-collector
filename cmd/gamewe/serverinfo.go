@@ -58,8 +58,10 @@ func serverInfoCmd(args []string) error {
 			d.Error = err.Error()
 			failed++
 		} else {
+			// The name is the collector's to write (status before A2S_INFO);
+			// this command stores only version, OS, VAC and the slots.
 			slots := got.MaxPlayers
-			got.MaxPlayers = 0
+			got.MaxPlayers, got.Name = 0, ""
 			info := got.Or(s.Info)
 			d.Version, d.OS, d.VAC, d.MaxPlayers = info.Version, info.OS, info.VAC, s.MaxPlayers
 			if slots > 0 {

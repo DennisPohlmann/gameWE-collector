@@ -137,13 +137,14 @@ type serverState struct {
 
 	// RCON status
 	statusMap  string // map set by a status, not by a log line yet
-	statusHost string // hostname and max players of the last status
+	statusHost string // hostname (as stats.ServerName) and max players of the last status
 	statusMax  int
 	// Server info (features.server_info): the last answers of A2S_INFO and
-	// of status, and what hlstats_Servers holds; a2sMax: the slots of the
-	// last A2S_INFO answer.
+	// of status, and what hlstats_Servers holds; a2sMax, a2sName: the slots
+	// and the name of the last A2S_INFO answer.
 	a2sInfo, rconInfo, storedInfo stats.ServerInfo
 	a2sMax                        int
+	a2sName                       string
 	gone                          map[string]time.Time // players whose disconnect was logged, by key
 	// Players whose connect is stored (connect line, or status for those
 	// already on the server), by key, until their disconnect line. Kept over
@@ -832,50 +833,69 @@ func (p *Processor) markConnected(key string) {
 
 const connectedSize = 4096
 
-// statusServer writes hostname, max players and pings of a status answer
-// when they changed.
+// statusServer writes hostname and max players of a status answer when
+// they differ from hlstats_Servers (srv.info, re-read every minute, see
+// Update), so a name or slot count set by hand in the web admin is
+// overwritten by the next status, and the pings.
 func (p *Processor) statusServer(ctx context.Context, st Status, pings map[string]int) error {
 	srv := &p.srv
-	host, maxPlayers := "", 0
-	if st.Hostname != srv.statusHost {
-		host, srv.statusHost = st.Hostname, st.Hostname
-	}
-	if st.MaxPlayers != srv.statusMax {
-		maxPlayers, srv.statusMax = st.MaxPlayers, st.MaxPlayers
-	}
+	srv.statusHost, srv.statusMax = stats.ServerName(st.Hostname), st.MaxPlayers
 	srv.rconInfo = st.Info
 	if err := p.writeInfo(ctx); err != nil {
 		return err
 	}
-	if host == "" && maxPlayers == 0 && len(pings) == 0 {
-		return nil
-	}
-	return p.store.ServerStatus(ctx, srv.info.ID, host, maxPlayers, pings)
+	return p.writeServer(ctx, srv.statusHost, srv.statusMax, pings)
 }
 
 // ServerInfo applies an A2S_INFO answer (features.server_info).
 func (p *Processor) ServerInfo(ctx context.Context, info stats.ServerInfo) error {
-	p.srv.a2sMax, info.MaxPlayers = info.MaxPlayers, 0
+	p.srv.a2sMax, p.srv.a2sName = info.MaxPlayers, stats.ServerName(info.Name)
+	info.MaxPlayers, info.Name = 0, ""
 	p.srv.a2sInfo = info
 	if err := p.writeInfo(ctx); err != nil {
 		return err
 	}
-	return p.writeA2SMax(ctx)
+	return p.writeA2S(ctx)
 }
 
-// writeA2SMax stores the slots of A2S_INFO in hlstats_Servers.max_players
-// when they differ from the stored value, so servers without RCON get
+// writeA2S stores the slots and the name of A2S_INFO in hlstats_Servers
+// when they differ from the stored values, so servers without RCON get
 // them too. An RCON status wins: it reports the real slots, A2S_INFO may
 // report sv_visiblemaxplayers.
-func (p *Processor) writeA2SMax(ctx context.Context) error {
+func (p *Processor) writeA2S(ctx context.Context) error {
 	srv := &p.srv
-	if srv.statusMax > 0 || srv.a2sMax <= 0 || srv.a2sMax == srv.info.MaxPlayers {
+	name, slots := srv.a2sName, srv.a2sMax
+	if srv.statusHost != "" {
+		name = ""
+	}
+	if srv.statusMax > 0 {
+		slots = 0
+	}
+	return p.writeServer(ctx, name, slots, nil)
+}
+
+// writeServer stores name and slots where they are given (not empty, > 0)
+// and differ from hlstats_Servers, and the pings.
+func (p *Processor) writeServer(ctx context.Context, name string, slots int, pings map[string]int) error {
+	srv := &p.srv
+	if name == srv.info.Name {
+		name = ""
+	}
+	if slots == srv.info.MaxPlayers {
+		slots = 0
+	}
+	if name == "" && slots <= 0 && len(pings) == 0 {
 		return nil
 	}
-	if err := p.store.ServerStatus(ctx, srv.info.ID, "", srv.a2sMax, nil); err != nil {
+	if err := p.store.ServerStatus(ctx, srv.info.ID, name, max(slots, 0), pings); err != nil {
 		return err
 	}
-	srv.info.MaxPlayers = srv.a2sMax
+	if name != "" {
+		srv.info.Name = name
+	}
+	if slots > 0 {
+		srv.info.MaxPlayers = slots
+	}
 	return nil
 }
 
