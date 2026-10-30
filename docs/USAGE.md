@@ -735,7 +735,8 @@ gamewe halloffame                                   # all entries, newest period
   `off`, or the schedule for all rankings is off) the collector forgets its
   running period. Turning the schedule on again starts with the period then
   running; the time it was off is never reset afterwards. The web admin
-  (Rankings → "Scheduled reset for all rankings") has a switch for this and
+  (Reset ranking → "Scheduled reset for all rankings"; before web 1.4.0
+  under Rankings) has a switch for this and
   keeps the schedule while it is off (`gamewe_reset_paused`).
 - **Where it is stored:** `hlstats_Options` (`gamewe_reset_schedule`,
   `gamewe_reset_mode` for all rankings, `gamewe_reset_schedule_<game>`,
