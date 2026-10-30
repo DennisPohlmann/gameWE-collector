@@ -281,10 +281,13 @@ Then:
   (`gamewe server set <id> -logsecret ""`, or `-` in the web admin) makes the
   collector accept all packets of the server again.
 - **GoldSrc servers** (cstrike, czero, valve, dod, ... by the game's engine,
-  GAMES.md) are never checked; logged once as a note. (Assumption: HLDS has
-  no `sv_logsecret`.)
+  GAMES.md) are never checked. Nothing is said about it, unless a secret is
+  stored for one anyway: then a note says it is ignored. (Assumption: HLDS
+  has no `sv_logsecret`.)
 - **Source 2 servers** (cs2) are never checked either: their HTTP logs carry
-  no secret. Logged once as a note. Protect the HTTP input with
+  no secret. Nothing is said about it, unless a secret is stored for one
+  anyway: then a note says it is ignored (remove it with
+  `gamewe server set <id> -logsecret ""`). Protect the HTTP input with
   `listen.http.token` and the firewall instead (only TCP connections from the
   server's own IP and game port in `hlstats_Servers` are accepted; TCP cannot
   forge its sender address the way UDP can).

@@ -109,14 +109,18 @@ func (h *Hub) admit(w *worker, line, secret string, has bool, now time.Time) err
 
 // SecretNote is what the log and gamewe check say about a server's log
 // secret ("" if nothing); info is true for a note, false for a warning.
+// GoldSrc and Source 2 (CS2) servers send no log secret, so they only get
+// a note if one is stored for them anyway: it is ignored.
 func SecretNote(mode SecretMode, s stats.Server) (msg string, info bool) {
 	switch {
 	case mode == SecretOff:
 		return "", false
-	case s.Engine == games.GoldSrc:
-		return fmt.Sprintf("log_secret: server %d %s is GoldSrc (no sv_logsecret), its log packets are not checked", s.ID, s.Address), true
-	case s.Engine == games.Source2:
-		return fmt.Sprintf("log_secret: server %d %s is Source 2 (CS2), its HTTP logs carry no log secret and are not checked (protect the HTTP input with listen.http.token)", s.ID, s.Address), true
+	case s.Engine == games.GoldSrc && s.LogSecret != "":
+		return fmt.Sprintf("log_secret: server %d %s is GoldSrc (no sv_logsecret), its stored log secret is ignored (remove it with gamewe server set -logsecret \"\" or in the web admin)", s.ID, s.Address), true
+	case s.Engine == games.Source2 && s.LogSecret != "":
+		return fmt.Sprintf("log_secret: server %d %s is Source 2 (CS2), its HTTP logs carry no log secret, so the stored one is ignored (remove it with gamewe server set -logsecret \"\" or in the web admin; listen.http.token protects the HTTP input)", s.ID, s.Address), true
+	case s.Engine == games.GoldSrc || s.Engine == games.Source2:
+		return "", false
 	case s.LogSecret == "":
 		return fmt.Sprintf("log_secret: server %d %s has no log secret, all its log packets are accepted (set one with gamewe server set -logsecret or in the web admin, and the same sv_logsecret in server.cfg)", s.ID, s.Address), true
 	}

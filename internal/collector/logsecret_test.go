@@ -134,8 +134,18 @@ func TestSecretNotChecked(t *testing.T) {
 	if got := strings.Join(queued(w), ","); got != "c" {
 		t.Errorf("GoldSrc: queued %s", got)
 	}
-	if msg, info := SecretNote(SecretOn, srv); !info || !strings.Contains(msg, "GoldSrc") {
+	if msg, info := SecretNote(SecretOn, srv); !info || !strings.Contains(msg, "GoldSrc") || !strings.Contains(msg, "ignored") {
 		t.Errorf("GoldSrc note %q %v", msg, info)
+	}
+	// GoldSrc and CS2 send no log secret: without a stored one there is
+	// nothing to say, a stored one is ignored.
+	for _, eng := range []games.Engine{games.GoldSrc, games.Source2} {
+		if msg, _ := SecretNote(SecretOn, stats.Server{ID: 4, Engine: eng}); msg != "" {
+			t.Errorf("engine %v without secret: note %q", eng, msg)
+		}
+	}
+	if msg, info := SecretNote(SecretOn, stats.Server{ID: 5, Address: "192.0.2.5:27015", Engine: games.Source2, LogSecret: "111"}); !info || !strings.Contains(msg, "Source 2 (CS2)") || !strings.Contains(msg, "ignored") {
+		t.Errorf("CS2 with secret: note %q %v", msg, info)
 	}
 	if msg, _ := SecretNote(SecretOn, stats.Server{ID: 3, LogSecret: "111"}); msg != "" {
 		t.Errorf("with secret: note %q", msg)
