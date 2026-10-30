@@ -18,14 +18,13 @@ registers itself as log address, and the commands of in-game replies.
 | `csgo` | Counter-Strike: Global Offensive | Source |
 | `tf` | Team Fortress 2 | Source |
 | `dods` | Day of Defeat: Source | Source |
-| `hl2mp`, `hl2ctf` | Half-Life 2: Deathmatch | Source |
+| `hl2mp` | Half-Life 2: Deathmatch | Source |
 | `l4d`, `l4d2` | Left 4 Dead 1/2 (see [Left 4 Dead](#left-4-dead)) | Source |
 | `zps`, `fof`, `nmrih` | Zombie Panic! Source, Fistful of Frags, No More Room in Hell | Source |
 | `cstrike` | Counter-Strike 1.6 | GoldSrc |
 | `czero` | Counter-Strike: Condition Zero | GoldSrc |
 | `dod` | Day of Defeat | GoldSrc |
 | `valve` | Half-Life 1 Multiplayer | GoldSrc |
-| `ts`, `dmc`, `ricochet`, `gearbox` | other GoldSrc mods (no default data) | GoldSrc |
 
 A ranking cloned from a game keeps the template's realgame (`css1` ... `css6`
 have `realgame = css`; `gamewe game add ... -template css` and the web admin
@@ -41,12 +40,16 @@ guesses every game from its code.
 These games are no longer supported, because their servers and players are
 gone: Team Fortress Classic (`tfc`, GoldSrc), Natural Selection (`ns`,
 GoldSrc), Insurgency (`insurgency`, Source; its successor Insurgency:
-Sandstorm is not a Source game), Fortress Forever (`ff`, Source) and
-CSPromod (`csp`, Source). A new database gets no ranking and no definitions
+Sandstorm is not a Source game), Fortress Forever (`ff`, Source),
+CSPromod (`csp`, Source), HL2 Capture the Flag (`hl2ctf`, Source), The
+Specialists (`ts`, GoldSrc), Deathmatch Classic (`dmc`, GoldSrc), Ricochet
+(`ricochet`, GoldSrc) and Opposing Force (`gearbox`, GoldSrc; the last five
+never had default data). A new database gets no ranking and no definitions
 for them, `gamewe game add` and the web admin no longer offer them as
 realgame, and the AMX Mod X plugin no longer ships `gamewe_tfc` and
-`gamewe_ns` (the SourceMod plugin still recognizes the three Source games,
-so their servers keep logging as before).
+`gamewe_ns` and the SourceMod plugin no longer detects Insurgency,
+Fortress Forever and CSPromod (a server that still runs an older plugin
+keeps logging as before).
 
 Nothing of an existing database is changed or deleted: a ranking with one
 of these realgames keeps its definitions, players and history, and its

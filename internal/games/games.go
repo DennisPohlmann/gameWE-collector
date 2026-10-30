@@ -40,10 +40,10 @@ var engines = []struct {
 }{
 	{"cstrike", GoldSrc, false}, {"czero", GoldSrc, false}, {"cs2", Source2, false}, {"csgo", Source, false}, {"css", Source, false},
 	{"dods", Source, false}, {"dod", GoldSrc, false}, {"tfc", GoldSrc, true}, {"tf", Source, false},
-	{"hl2mp", Source, false}, {"hl2ctf", Source, false}, {"l4d2", Source, false}, {"l4d", Source, false},
+	{"hl2mp", Source, false}, {"hl2ctf", Source, true}, {"l4d2", Source, false}, {"l4d", Source, false},
 	{"insurgency", Source, true}, {"zps", Source, false}, {"ff", Source, true}, {"csp", Source, true},
 	{"fof", Source, false}, {"nmrih", Source, false}, {"valve", GoldSrc, false}, {"ns", GoldSrc, true},
-	{"ts", GoldSrc, false}, {"dmc", GoldSrc, false}, {"ricochet", GoldSrc, false}, {"gearbox", GoldSrc, false},
+	{"ts", GoldSrc, true}, {"dmc", GoldSrc, true}, {"ricochet", GoldSrc, true}, {"gearbox", GoldSrc, true},
 }
 
 // Default is the realgame of a game whose realgame is empty and not

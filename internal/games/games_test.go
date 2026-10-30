@@ -47,7 +47,8 @@ func TestResolve(t *testing.T) {
 // A retired game keeps its engine (tfc is GoldSrc, not tf; ns not css), so
 // its servers keep running, but it is no longer offered or a default ranking.
 func TestRetired(t *testing.T) {
-	want := map[string]Engine{"tfc": GoldSrc, "ns": GoldSrc, "insurgency": Source, "ff": Source, "csp": Source}
+	want := map[string]Engine{"tfc": GoldSrc, "ns": GoldSrc, "insurgency": Source, "ff": Source, "csp": Source,
+		"hl2ctf": Source, "ts": GoldSrc, "dmc": GoldSrc, "ricochet": GoldSrc, "gearbox": GoldSrc}
 	if got := Retired(); len(got) != len(want) {
 		t.Errorf("Retired() = %v", got)
 	}
