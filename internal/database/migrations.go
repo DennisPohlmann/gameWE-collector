@@ -48,6 +48,10 @@ type Migration struct {
 	// CareerKills fills hlstats_Players.career_kills (and the inactive
 	// players') from kills, which the career rank read until then.
 	CareerKills bool
+	// Grants runs the grants script (internal/schema grants.sql) again for a
+	// right on an existing table that the web users did not have; a version
+	// that changes a table gets it anyway.
+	Grants bool
 }
 
 // RetiredOption is an hlstats_Options key to delete: always when IfValue is
@@ -228,6 +232,12 @@ var Migrations = []Migration{
 			"API token, command), for the web admin's job list; older jobs keep them empty",
 		Sync: true,
 	},
+	{
+		Version: 23, Name: "ribbon-classes-admin",
+		Desc: "gamewe_web_admin may insert, update and delete hlstats_Definition_Ribbons_Classes (the bronze, silver and gold " +
+			"of the ribbons), which the web copies with the other definitions of a template into a new ranking",
+		Grants: true,
+	},
 }
 
 // Latest is the newest schema version this collector knows.
@@ -251,6 +261,9 @@ func (m Migration) Checksum() string {
 	}
 	if m.CareerKills {
 		b = fmt.Appendf(b, "|career-kills")
+	}
+	if m.Grants {
+		b = fmt.Appendf(b, "|grants")
 	}
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])

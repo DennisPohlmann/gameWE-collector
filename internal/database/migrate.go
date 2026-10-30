@@ -408,7 +408,7 @@ func plan(ctx context.Context, q querier, dialect string, pfx Prefix) (*Plan, er
 		return p.named(pfx), nil
 	}
 
-	synced := false
+	synced, grants := false, false
 	for _, m := range p.Pending {
 		if m.Version == 1 {
 			p.Steps = append(p.Steps, Step{Version: 1, Name: m.Name, What: "record the existing " + p.Kind + " database as baseline (nothing is changed)",
@@ -451,6 +451,7 @@ func plan(ctx context.Context, q querier, dialect string, pfx Prefix) (*Plan, er
 				What: "fill career_kills (the kills of the career rank) from kills",
 				kind: stepExec, stmts: careerKillsSQL()})
 		}
+		grants = grants || m.Grants
 		p.Steps = append(p.Steps, Step{Version: m.Version, Name: m.Name, What: "record version " + fmt.Sprint(m.Version), kind: stepRecord, rec: &m, note: "applied"})
 	}
 	if !synced && len(p.Missing) > 0 {
@@ -464,7 +465,7 @@ func plan(ctx context.Context, q querier, dialect string, pfx Prefix) (*Plan, er
 	}
 	for _, s := range p.Steps {
 		// The copy of the versions (setup) changes no table of the web.
-		if (s.kind == stepExec || s.kind == stepScript) && s.Name != "setup" {
+		if grants || (s.kind == stepExec || s.kind == stepScript) && s.Name != "setup" {
 			p.Steps = append(p.Steps, grantsStep(pfx))
 			break
 		}

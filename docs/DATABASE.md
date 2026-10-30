@@ -57,7 +57,7 @@ host.
 |------|--------|-----|
 | `gamewe` | SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX on the database, WITH GRANT OPTION | the collector, and `gamewe db migrate` |
 | `gamewe_web` | SELECT on all tables except `hlstats_Users` and `hlstats_Events_Chat`; on `hlstats_Servers` not on `rcon_password`, `log_secret`, `log_secret_changed`, on `hlstats_Events_Connects` not on `ipAddress` | the public web pages |
-| `gamewe_web_admin` | SELECT on all tables (including `rcon_password`, to manage servers); INSERT, UPDATE, DELETE on `hlstats_Options`, `_Games`, `_Servers`, `_Clans`, `_Weapons`, `_Actions`, `_Teams`, `_Roles`, `_Awards`, `_Definition_Ranks_Ribbons`, `_Users`; on `hlstats_Players` only UPDATE of `skill`, `hideranking`, `clan`; INSERT on `hlstats_gamewe_jobs` | the web admin pages |
+| `gamewe_web_admin` | SELECT on all tables (including `rcon_password`, to manage servers); INSERT, UPDATE, DELETE on `hlstats_Options`, `_Games`, `_Servers`, `_Clans`, `_Weapons`, `_Actions`, `_Teams`, `_Roles`, `_Awards`, `_Definition_Ranks_Ribbons`, `_Definition_Ribbons_Classes` (copied with the definitions of a template), `_Users`; on `hlstats_Players` only UPDATE of `skill`, `hideranking`, `clan`; INSERT on `hlstats_gamewe_jobs` | the web admin pages |
 
 The collector itself only reads and writes rows (`DELETE` is needed for
 `hlstats_Livestats`, `hlstats_PlayersInactive`, the daily move of inactive
@@ -207,6 +207,7 @@ What it does:
 | 20 | `career-kills` | column `career_kills` on `hlstats_Players` and `hlstats_PlayersInactive`: the kills of the career rank, which count kills of bots by `gamewe_bot_kills_<game>` while `kills` follows `gamewe_bot_stats_<game>`; filled from `kills`, reset with the other counters |
 | 21 | `all-bans` | tables `hlstats_Bans` (the bans of every known Steam account from the Steam Web API and the SourceBans list) and `hlstats_Bans_Players` (the players of a banned account), filled by the job bans-sync (`features.bans_sync`, DB-SEMANTICS.md); readable by `gamewe_web`; nothing else changes |
 | 22 | `job-origin` | columns `origin` (varchar(32)) and `origin_detail` (varchar(1024), JSON) on `hlstats_gamewe_jobs`: the feature that queued a job (`scheduled_resets`, `daily_awards`, `inactive_players`, `admin`, `api`, `cli`) and why (period and schedule of a scheduled reset, queued at the collector's start, API token, command), shown in `gamewe jobs` and the web admin's Jobs page ([DB-SEMANTICS.md](DB-SEMANTICS.md)); older jobs keep them empty; no data changes |
+| 23 | `ribbon-classes-admin` | `gamewe_web_admin` may insert, update and delete `hlstats_Definition_Ribbons_Classes` (bronze, silver and gold of the ribbons), which the web copies with the other definitions of a template into a new ranking ("New ranking from a template" failed at that last step before); only the grants are run again, no table or data changes |
 
 The SQL files of older packages (`/opt/gamewe/collector/doc/schema/hlstatsx.sql`,
 `init/01_schema.sql`, `02_seed.sql`, `03_grants.sql` and the PostgreSQL

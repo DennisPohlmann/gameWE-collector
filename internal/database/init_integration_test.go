@@ -78,6 +78,8 @@ func TestInitWebAdminInsertsWithoutID(t *testing.T) {
 			{"hlstats_Roles", "roleId", `INSERT INTO hlstats_Roles (game, code, name) VALUES ('zzt', 'zzt', 'Test')`, `game = 'zzt'`},
 			{"hlstats_Awards", "awardId", `INSERT INTO hlstats_Awards (game, code, name, verb) VALUES ('zzt', 'zzt', 'Test', 'tests')`, `game = 'zzt'`},
 			{"hlstats_Definition_Ranks_Ribbons", "id", `INSERT INTO hlstats_Definition_Ranks_Ribbons (game_code, code, name) VALUES ('zzt', 'zzt', 'Test')`, `game_code = 'zzt'`},
+			// "New ranking from a template" copies the ribbon classes too.
+			{"hlstats_Definition_Ribbons_Classes", "id", `INSERT INTO hlstats_Definition_Ribbons_Classes (game_code, name, class) VALUES ('zzt', 'Test', 1)`, `game_code = 'zzt'`},
 		}
 		for _, r := range rows {
 			var before int64
