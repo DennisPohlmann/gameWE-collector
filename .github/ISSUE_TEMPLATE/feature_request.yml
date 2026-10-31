@@ -1,0 +1,29 @@
+name: Feature request
+description: Suggest an idea or an improvement for gameWE - collector.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the situation, for example "As a server admin I want to ... because ...".
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How could it work? Commands, settings, pages or log lines you have in mind.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Other solutions or workarounds you considered, or how HLstatsX or gameME handled it.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Screenshots, links, the games or versions it concerns.
