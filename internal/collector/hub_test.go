@@ -290,6 +290,35 @@ func TestHubUpdatesRconPassword(t *testing.T) {
 	}
 }
 
+// A changed public address is used without restarting the worker; the log
+// lines are still taken from address:port only.
+func TestHubUpdatesPublicAddress(t *testing.T) {
+	st, rec := newMemStore(), &recorder{}
+	addr := "198.51.100.1:27015"
+	hub := newTestHub(st, rec, []string{addr}, nil)
+	defer hub.Close(context.Background())
+	st.mu.Lock()
+	s := st.servers[addr]
+	s.Public = netip.MustParseAddrPort("198.51.100.2:27015")
+	st.servers[addr] = s
+	st.mu.Unlock()
+	if added, removed := hub.SetServers([]stats.Server{s}); added != 0 || removed != 0 {
+		t.Errorf("public address change restarted the worker: +%d -%d", added, removed)
+	}
+	hub.mu.RLock()
+	w := hub.byID[s.ID]
+	got := w.srv.QueryAddr()
+	_, logFrom := hub.exact[netip.MustParseAddrPort(addr)]
+	_, logPublic := hub.exact[s.Public]
+	hub.mu.RUnlock()
+	if got != s.Public {
+		t.Errorf("query address %v", got)
+	}
+	if !logFrom || logPublic {
+		t.Errorf("log senders: address:port %v, public address %v", logFrom, logPublic)
+	}
+}
+
 // End to end over real UDP sockets: three senders with fixed source ports
 // send concurrently to one collector.
 func TestServeUDPThreeServers(t *testing.T) {

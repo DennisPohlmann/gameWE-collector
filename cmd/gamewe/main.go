@@ -1067,7 +1067,7 @@ func rconClient(s stats.Server) (rcon.Conn, error) {
 	if s.RconPassword == "" {
 		return nil, fmt.Errorf("server %d %s has no rcon_password in hlstats_Servers", s.ID, s.Address)
 	}
-	return rcon.New(s.Engine == games.GoldSrc, s.AddrPort.String(), s.RconPassword, 5*time.Second), nil
+	return rcon.New(s.Engine == games.GoldSrc, s.QueryAddr().String(), s.RconPassword, 5*time.Second), nil
 }
 
 func rconCmd(args []string) error {

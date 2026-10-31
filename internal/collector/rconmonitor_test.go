@@ -180,6 +180,33 @@ func TestMonitorPolls(t *testing.T) {
 	}
 }
 
+// RCON goes to the public address when hlstats_Servers has an IP there.
+func TestMonitorPollsPublicAddress(t *testing.T) {
+	firstStatus, firstLogAddress = 10*time.Millisecond, 10*time.Millisecond
+	t.Cleanup(func() { firstStatus, firstLogAddress = 2*time.Second, 5*time.Second })
+	gs := fakeGameServer(t)
+	srv := stats.Server{ID: 7, AddrPort: netip.MustParseAddrPort("127.0.0.1:1"), Public: netip.MustParseAddrPort(gs.Addr), RconPassword: "pw"}
+	cfg := MonitorConfig{Status: true, StatusInterval: 20 * time.Millisecond}
+	got := make(chan Status, 100)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		monitor(ctx, func() stats.Server { return srv }, cfg, func(st Status, _ time.Time) { got <- st }, nil,
+			func() time.Duration { return 2 * time.Second }, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		close(done)
+	}()
+	select {
+	case st := <-got:
+		if st.MaxPlayers != 48 {
+			t.Fatalf("status %+v", st)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("RCON status did not go to the public address")
+	}
+	cancel()
+	<-done
+}
+
 func TestMonitorLogInterval(t *testing.T) {
 	firstStatus, firstLogAddress = 10*time.Millisecond, 10*time.Millisecond
 	t.Cleanup(func() { firstStatus, firstLogAddress = 2*time.Second, 5*time.Second })

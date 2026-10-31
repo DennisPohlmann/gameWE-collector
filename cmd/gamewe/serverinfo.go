@@ -53,7 +53,7 @@ func serverInfoCmd(args []string) error {
 	var changed []int // indexes into doc
 	for _, s := range servers {
 		d := serverInfoDoc{ID: s.ID, Address: s.Address, Name: s.Name}
-		got, err := collector.QueryServerInfo(ctx, s.AddrPort, 3*time.Second)
+		got, err := collector.QueryServerInfo(ctx, s.QueryAddr(), 3*time.Second)
 		if err != nil {
 			d.Error = err.Error()
 			failed++

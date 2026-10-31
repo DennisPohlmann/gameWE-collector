@@ -1018,6 +1018,32 @@ func TestIntegrationServerInfo(t *testing.T) {
 	}
 }
 
+// publicaddress with an IP is the query address of the server list; a host
+// name is not resolved and leaves it at address:port.
+func TestIntegrationServerPublicAddress(t *testing.T) {
+	db := testDB(t)
+	insertServer(t, db, "203.0.113.136:26015", "css")
+	store := stats.NewStore(db, settings.NewLive(settings.Defaults()))
+	ctx := context.Background()
+	for _, c := range []struct{ public, want string }{
+		{"203.0.113.142", "203.0.113.142:26015"},
+		{"203.0.113.142:27015", "203.0.113.142:27015"},
+		{"cs2.example.org:27015", "203.0.113.136:26015"},
+		{"", "203.0.113.136:26015"},
+	} {
+		if _, err := db.Exec(db.Q(`UPDATE hlstats_Servers SET publicaddress = ?`), c.public); err != nil {
+			t.Fatal(err)
+		}
+		servers, err := store.Servers(ctx)
+		if err != nil || len(servers) != 1 {
+			t.Fatalf("servers %+v %v", servers, err)
+		}
+		if got := servers[0].QueryAddr().String(); got != c.want || servers[0].AddrPort.String() != "203.0.113.136:26015" {
+			t.Errorf("publicaddress %q: query %s, address %s", c.public, got, servers[0].AddrPort)
+		}
+	}
+}
+
 // A ranking cloned from css (another hlstats_Games code with copies of the
 // css rows, as the web admin creates css1, css2, ...) is a game of its own:
 // actions, weapons, teams, players and awards use its rows only.

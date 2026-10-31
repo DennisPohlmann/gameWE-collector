@@ -415,7 +415,11 @@ idempotent, so `gamewe db migrate` again goes on from there.
 
 With the game server's `rcon_password` in `hlstats_Servers` the collector talks
 to every server over RCON (switches in `features:` of the config file, all on by
-default):
+default). RCON and `A2S_INFO` go to the server's `publicaddress` when it is an
+IP address (`gamewe server set ID -public-address IP[:PORT]`), else to
+`address` and `port`; log lines are only taken from `address` and `port`. That
+helps a server that sends its logs from another IP than the one it answers on.
+A host name there is ignored (not resolved).
 
 - **status** every 10 seconds (`features.rcon_status.interval`): players and
   bots in the live view, `act_players` and `act_bots` (also on an empty server and right
@@ -433,7 +437,8 @@ default):
 
 Without RCON, every 5 minutes (`features.server_info.interval`) the collector
 also sends an `A2S_INFO` query (the server browser's query) to each server's
-game port and stores the server version, operating system and VAC state
+game port (`publicaddress` when it is an IP address, see INTERFACE.md, "Query
+address") and stores the server version, operating system and VAC state
 (`hlstats_Servers.server_version`, `server_os`, `server_vac`, shown on the
 web's server lists); with RCON the `version` line of `status` fills in what
 `A2S_INFO` does not tell. An answer also counts as a sign of life for

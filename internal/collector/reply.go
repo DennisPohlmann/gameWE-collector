@@ -44,7 +44,7 @@ func NewRconReplier(ctx context.Context, set *settings.Live, log *slog.Logger) *
 }
 
 func (r *RconReplier) Send(srv stats.Server, cmd string) {
-	addr := srv.AddrPort.String()
+	addr := srv.QueryAddr().String()
 	r.mu.Lock()
 	q := r.queues[addr]
 	if q == nil {

@@ -346,3 +346,51 @@ func TestMonitorServerInfo(t *testing.T) {
 	cancel()
 	<-done
 }
+
+// A2S_INFO goes to the public address when hlstats_Servers has an IP there:
+// the server answers only there, its logs come from address:port.
+func TestMonitorServerInfoPublicAddress(t *testing.T) {
+	firstServerInfo = 10 * time.Millisecond
+	t.Cleanup(func() { firstServerInfo = 3 * time.Second })
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pc.Close()
+	go func() {
+		buf := make([]byte, 2048)
+		for {
+			_, from, err := pc.ReadFrom(buf)
+			if err != nil {
+				return
+			}
+			pc.WriteTo(a2sSourceReply(240, 'l', 1, "9540945"), from)
+		}
+	}()
+	// address:port where nothing answers (the log sender's address).
+	dead, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dead.Close()
+	srv := stats.Server{ID: 3, AddrPort: netip.MustParseAddrPort(dead.LocalAddr().String()), Public: netip.MustParseAddrPort(pc.LocalAddr().String())}
+	got := make(chan stats.ServerInfo, 10)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		monitor(ctx, func() stats.Server { return srv }, MonitorConfig{ServerInfo: true, InfoInterval: 20 * time.Millisecond},
+			func(Status, time.Time) { t.Error("status without status job") }, func(i stats.ServerInfo) { got <- i },
+			func() time.Duration { return time.Second }, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		close(done)
+	}()
+	select {
+	case info := <-got:
+		if info.Version != "9540945" {
+			t.Fatalf("info %+v", info)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("A2S_INFO did not go to the public address")
+	}
+	cancel()
+	<-done
+}

@@ -85,7 +85,8 @@ weapon. TF2 writes no `weaponstats2`.
 Valve's `A2S_INFO` query (`FF FF FF FF 54 "Source Engine Query" 00`, plus the
 4 challenge bytes when the server answers with `S2C_CHALLENGE` `FF FF FF FF
 41 <challenge>`) over UDP to the game port of every server in
-`hlstats_Servers`, every `features.server_info.interval`. It reads the
+`hlstats_Servers` (to its query address, see below), every
+`features.server_info.interval`. It reads the
 server name, the version string, the max players byte, the environment byte
 (`l` Linux, `w` Windows, `m`/`o` Mac) and the VAC byte of the Source answer
 (`FF FF FF FF 49 ...`), and name, max players, environment and VAC of the old
@@ -134,7 +135,16 @@ players per request. A player with a VAC ban on record is kicked over RCON:
 block".
 
 Replies are console commands that the collector sends over **Source RCON** (TCP,
-to the server's `address` and `port` with `rcon_password` from `hlstats_Servers`).
+to the server's query address with `rcon_password` from `hlstats_Servers`).
+
+**Query address.** `A2S_INFO` and every RCON command (status, logaddress,
+stats, replies, kicks, `gamewe rcon`) go to `hlstats_Servers.publicaddress`
+when it is an IP address, with port (`203.0.113.142:27015`,
+`[2001:db8::1]:27015`) or without (then `port` is used); otherwise to
+`address` and `port`. This is for a server that sends its logs from another
+IP than the one it answers on (several IPs, NAT). A host name in
+`publicaddress` is not resolved and is ignored, as are `0.0.0.0` and `::`.
+Log lines (UDP and HTTP) are still accepted only from `address` and `port`.
 The plugin offers them. The collector uses the `gamewe_` prefix, which the gameWE
 plugin accepts besides `gameme_`; for a server with the original gameME plugin set
 `gamewe_command_prefix` to `gameme`.

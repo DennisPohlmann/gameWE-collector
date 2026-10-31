@@ -217,7 +217,7 @@ func (h *Hub) SetServers(list []stats.Server) (added, removed int) {
 		if ok && srv.AddrPort == w.srv.AddrPort && srv.GameID == w.srv.GameID && srv.Game == w.srv.Game && srv.Engine == w.srv.Engine {
 			h.applySecret(w, srv, now, grace)
 			w.srv.LogSecret = srv.LogSecret
-			if srv.Name != w.srv.Name || srv.RconPassword != w.srv.RconPassword || srv.MaxPlayers != w.srv.MaxPlayers {
+			if srv.Name != w.srv.Name || srv.RconPassword != w.srv.RconPassword || srv.MaxPlayers != w.srv.MaxPlayers || srv.Public != w.srv.Public {
 				u := srv
 				select {
 				case w.queue <- packet{update: &u}:

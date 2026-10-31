@@ -305,7 +305,7 @@ func (p *Processor) Label() string {
 // Update applies changed hlstats_Servers values (name, RCON password) that
 // do not need a new processor.
 func (p *Processor) Update(server stats.Server) {
-	p.srv.info.Name, p.srv.info.RconPassword, p.srv.info.MaxPlayers = server.Name, server.RconPassword, server.MaxPlayers
+	p.srv.info.Name, p.srv.info.RconPassword, p.srv.info.MaxPlayers, p.srv.info.Public = server.Name, server.RconPassword, server.MaxPlayers, server.Public
 }
 
 func (p *Processor) winTrigger(trigger string) bool {

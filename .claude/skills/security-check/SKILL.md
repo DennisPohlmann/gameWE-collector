@@ -45,7 +45,8 @@ The numbers follow the original 20-point pre-launch list.
    never forwarded text from a log line.
 6. **User isolation:** one game server must not be able to write into the
    stats, settings or replies of another (per-server state in `hub.go`,
-   replies go to `srv.AddrPort` of the source).
+   replies go to `srv.QueryAddr()` of the source server: its
+   `publicaddress` when that is an IP, else `srv.AddrPort`).
 7. **Rate limits:** UDP input is unauthenticated. New per-source or
    per-player state must be bounded (cap maps, drop on full queues), log
    output for rejected packets stays throttled (`udp.go`).

@@ -335,7 +335,7 @@ func monitor(ctx context.Context, srv func() stats.Server, cfg MonitorConfig, de
 		if s.RconPassword == "" {
 			return nil
 		}
-		k := connKey{s.AddrPort.String(), s.RconPassword, timeout(), s.Engine}
+		k := connKey{s.QueryAddr().String(), s.RconPassword, timeout(), s.Engine}
 		if c == nil || k != key {
 			if c != nil {
 				c.Close()
@@ -373,7 +373,7 @@ func monitor(ctx context.Context, srv func() stats.Server, cfg MonitorConfig, de
 			if !s.AddrPort.IsValid() {
 				continue
 			}
-			got, err := QueryServerInfo(ctx, s.AddrPort, timeout())
+			got, err := QueryServerInfo(ctx, s.QueryAddr(), timeout())
 			if ctx.Err() != nil {
 				return
 			}

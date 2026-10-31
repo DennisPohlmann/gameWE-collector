@@ -91,7 +91,7 @@ func adminCmd(kind string, args []string) error {
 	fs.Var(&name, "name", "server or game name")
 	fs.Var(&rcon, "rcon-password", "RCON password (visible in the process list: prefer -rcon-password-file)")
 	fs.Var(&rconFile, "rcon-password-file", "file with the RCON password ('-' = stdin)")
-	fs.Var(&public, "public-address", "address shown in the web")
+	fs.Var(&public, "public-address", "address shown in the web; an IP[:PORT] is also where A2S_INFO and RCON go")
 	fs.Var(&logSecret, "logsecret", "log secret (sv_logsecret in server.cfg): a number 1..2147483647, or \"\" (none: the server's log packets are not checked)")
 	addOutputFlag(fs)
 	pos, err := parseInterspersed(fs, args)

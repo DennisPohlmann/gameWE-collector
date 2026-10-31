@@ -81,6 +81,7 @@ type Server struct {
 	ID           int64
 	Address      string         // address:port as stored
 	AddrPort     netip.AddrPort // parsed; zero if Err is set
+	Public       netip.AddrPort // publicaddress if it is an IP address (PublicAddr), else zero; see QueryAddr
 	Name         string
 	Game         string // hlstats_Games.code
 	GameID       int
@@ -95,6 +96,41 @@ type Server struct {
 	LogSecret string
 	Info      ServerInfo // server_version, server_os, server_vac as stored
 	Err       error      // why the row cannot be used
+}
+
+// QueryAddr is where A2S_INFO and RCON go: the public address when it is an
+// IP address, else the address the logs come from. A server behind NAT or
+// with several IPs can send its logs from another IP than the one it
+// answers on.
+func (s Server) QueryAddr() netip.AddrPort {
+	if s.Public.IsValid() {
+		return s.Public
+	}
+	return s.AddrPort
+}
+
+// PublicAddr reads hlstats_Servers.publicaddress: an IP address with port
+// ("203.0.113.142:27015", "[2001:db8::1]:27015") or without (then the port of
+// game). A host name is not resolved (no DNS lookups in the collector, and
+// the name may point elsewhere than the game server): like an empty,
+// unspecified or broken value it gives the zero AddrPort.
+func PublicAddr(public string, game netip.AddrPort) netip.AddrPort {
+	public = strings.TrimSpace(public)
+	if public == "" || !game.IsValid() {
+		return netip.AddrPort{}
+	}
+	var ap netip.AddrPort
+	if a, err := netip.ParseAddr(strings.Trim(public, "[]")); err == nil && a.Zone() == "" {
+		ap = netip.AddrPortFrom(a.Unmap(), game.Port())
+	} else if p, err := netip.ParseAddrPort(public); err == nil && p.Port() != 0 && p.Addr().Zone() == "" {
+		ap = netip.AddrPortFrom(p.Addr().Unmap(), p.Port())
+	} else {
+		return netip.AddrPort{}
+	}
+	if ap.Addr().IsUnspecified() {
+		return netip.AddrPort{}
+	}
+	return ap
 }
 
 // ServerInfo is what the game server says about itself (A2S_INFO, RCON
@@ -300,13 +336,19 @@ func (s *Store) Servers(ctx context.Context) ([]Server, error) {
 	} else if ok {
 		info = "s.server_version, s.server_os, s.server_vac"
 	}
+	public := "''"
+	if ok, err := s.hasColumn(ctx, "hlstats_Servers", "publicaddress"); err != nil {
+		return nil, err
+	} else if ok {
+		public = "COALESCE(s.publicaddress, '')"
+	}
 	realgame := "''"
 	if ok, err := s.hasColumn(ctx, "hlstats_Games", "realgame"); err != nil {
 		return nil, err
 	} else if ok {
 		realgame = "COALESCE(g.realgame, '')"
 	}
-	rows, err := s.query(ctx, `SELECT s.serverId, s.address, s.port, s.name, s.game, s.act_map, s.max_players, COALESCE(g.id, 0), `+rcon+`, `+secret+`, `+realgame+`, `+info+`
+	rows, err := s.query(ctx, `SELECT s.serverId, s.address, s.port, s.name, s.game, s.act_map, s.max_players, COALESCE(g.id, 0), `+rcon+`, `+secret+`, `+public+`, `+realgame+`, `+info+`
 		FROM hlstats_Servers s LEFT JOIN hlstats_Games g ON g.code = s.game ORDER BY s.serverId`)
 	if err != nil {
 		return nil, err
@@ -315,10 +357,10 @@ func (s *Store) Servers(ctx context.Context) ([]Server, error) {
 	var out []Server
 	for rows.Next() {
 		var srv Server
-		var host, realgame string
+		var host, public, realgame string
 		var port int
 		if err := rows.Scan(&srv.ID, &host, &port, &srv.Name, &srv.Game, &srv.Map, &srv.MaxPlayers, &srv.GameID, &srv.RconPassword,
-			&srv.LogSecret, &realgame, &srv.Info.Version, &srv.Info.OS, &srv.Info.VAC); err != nil {
+			&srv.LogSecret, &public, &realgame, &srv.Info.Version, &srv.Info.OS, &srv.Info.VAC); err != nil {
 			return nil, err
 		}
 		srv.Base, srv.Engine, srv.Warning = games.Resolve(realgame, srv.Game)
@@ -333,6 +375,7 @@ func (s *Store) Servers(ctx context.Context) ([]Server, error) {
 			srv.Err = fmt.Errorf("game %q is not in hlstats_Games", srv.Game)
 		default:
 			srv.AddrPort = netip.AddrPortFrom(ip.Unmap(), uint16(port))
+			srv.Public = PublicAddr(public, srv.AddrPort)
 		}
 		out = append(out, srv)
 	}

@@ -21,7 +21,7 @@ type ServerStats struct {
 
 // RconStats asks the game server for "stats" over RCON.
 func RconStats(srv stats.Server, timeout time.Duration) (ServerStats, error) {
-	c := connKey{srv.AddrPort.String(), srv.RconPassword, timeout, srv.Engine}.dial()
+	c := connKey{srv.QueryAddr().String(), srv.RconPassword, timeout, srv.Engine}.dial()
 	defer c.Close()
 	out, err := c.Exec("stats")
 	if err != nil {
