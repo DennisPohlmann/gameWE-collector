@@ -272,8 +272,11 @@ Without the plugin (or its lines in the log) the column stays 0.
 
 ## Server load (`hlstats_server_load`)
 
-Every 10 minutes per server (`gamewe_server_load`), while the server sent log
-lines in that interval:
+Every 10 minutes per server (`gamewe_server_load`), while the server showed a
+sign of life in that interval: a log line, an RCON status or an answer to the
+`A2S_INFO` query (`features.server_info`). So an empty server that logs nothing
+(hibernation) still gets its rows, also without `rcon_password`. The web shows
+a server online (map, banner) while its last row is at most 30 minutes old:
 
 | Column | Meaning |
 |--------|---------|
@@ -283,7 +286,7 @@ lines in that interval:
 | `min_players`, `max_players` | lowest and highest number of players during the 10 minutes (not the server's slot settings) |
 | `map` | `hlstats_Maps.id` of the current map (0 if unknown) |
 | `cpu` | CPU load of the game server in percent, `fps` its frames per second: from RCON `stats`, 0 if RCON is not available |
-| `uptime` | **minutes** since the game server process started (RCON `stats`); without RCON the minutes since the first log line after a silence of 10 minutes (an estimate). At most 65535 |
+| `uptime` | **minutes** since the game server process started (RCON `stats`); without RCON the minutes since the first sign of life (log line, RCON status, `A2S_INFO` answer) after a silence of 10 minutes (an estimate). At most 65535 |
 
 The values are capped to the column types (players 255, the rest 65535).
 

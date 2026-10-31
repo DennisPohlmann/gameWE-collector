@@ -191,20 +191,20 @@ func TestProcessorServerInfo(t *testing.T) {
 	p, st := newTestProcessor(t)
 	ctx := context.Background()
 	p.srv.storedInfo = stats.ServerInfo{Version: "1", OS: OSLinux, VAC: VACSecure}
-	if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "1", OS: OSLinux, VAC: VACSecure}); err != nil {
+	if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "1", OS: OSLinux, VAC: VACSecure}, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
 	if len(st.infos) != 0 {
 		t.Fatalf("unchanged info written: %v", st.infos)
 	}
-	if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "2", OS: OSLinux, VAC: VACInsecure}); err != nil {
+	if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "2", OS: OSLinux, VAC: VACInsecure}, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
 	status, _ := ParseStatus(cssStatus) // version 7604765 secure: A2S wins
 	if err := p.Status(ctx, status, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.ServerInfo(ctx, stats.ServerInfo{}); err != nil { // no answer content: status fills in
+	if err := p.ServerInfo(ctx, stats.ServerInfo{}, time.Now().UTC()); err != nil { // no answer content: status fills in
 		t.Fatal(err)
 	}
 	want := []stats.ServerInfo{{Version: "2", OS: OSLinux, VAC: VACInsecure}, {Version: "7604765", OS: OSLinux, VAC: VACSecure}}
@@ -220,7 +220,7 @@ func TestProcessorA2SMaxPlayers(t *testing.T) {
 	ctx := context.Background()
 	id := p.srv.info.ID
 	for range 2 {
-		if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "1", MaxPlayers: 24, Name: "Example Server"}); err != nil {
+		if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "1", MaxPlayers: 24, Name: "Example Server"}, time.Now().UTC()); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -235,7 +235,7 @@ func TestProcessorA2SMaxPlayers(t *testing.T) {
 		t.Fatal(err)
 	}
 	n := len(st.status)
-	if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "1", MaxPlayers: 10}); err != nil {
+	if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "1", MaxPlayers: 10}, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
 	if len(st.status) != n || p.maxPlayers() != status.MaxPlayers {
@@ -285,7 +285,7 @@ func TestProcessorA2SName(t *testing.T) {
 	srv.Name = "Typed by hand"
 	p.Update(srv)
 	for range 2 {
-		if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "1", MaxPlayers: 24, Name: " Example\x07 Server "}); err != nil {
+		if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "1", MaxPlayers: 24, Name: " Example\x07 Server "}, time.Now().UTC()); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -296,7 +296,7 @@ func TestProcessorA2SName(t *testing.T) {
 	if err := p.Status(ctx, status, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "1", MaxPlayers: 24, Name: "Example Server"}); err != nil {
+	if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "1", MaxPlayers: 24, Name: "Example Server"}, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
 	if host := stats.ServerName(status.Hostname); len(st.names) != 2 || st.names[1] != host || p.srv.info.Name != host {

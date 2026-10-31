@@ -261,7 +261,7 @@ func (h *Hub) SetServers(list []stats.Server) (added, removed int) {
 				}
 				send(packet{status: &st, at: at})
 			}
-			info := func(si stats.ServerInfo) { send(packet{info: &si}) }
+			info := func(si stats.ServerInfo) { send(packet{info: &si, at: time.Now().UTC()}) }
 			mlog := h.log.With("server", srv.Address, "server_id", srv.ID)
 			go monitor(ctx, func() stats.Server { return h.server(id, srv) }, h.Monitor, deliver, info,
 				func() time.Duration { return time.Duration(h.set.Get().RconTimeout) * time.Second }, mlog)
@@ -378,7 +378,7 @@ func (h *Hub) run(w *worker, addr string) {
 		}
 		if pk.info != nil {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			if err := w.proc.ServerInfo(ctx, *pk.info); err != nil {
+			if err := w.proc.ServerInfo(ctx, *pk.info, pk.at); err != nil {
 				h.log.Error("storing the server info failed", "server", addr, "err", err)
 			}
 			cancel()

@@ -436,7 +436,9 @@ also sends an `A2S_INFO` query (the server browser's query) to each server's
 game port and stores the server version, operating system and VAC state
 (`hlstats_Servers.server_version`, `server_os`, `server_vac`, shown on the
 web's server lists); with RCON the `version` line of `status` fills in what
-`A2S_INFO` does not tell.
+`A2S_INFO` does not tell. An answer also counts as a sign of life for
+`hlstats_server_load`, so an empty server without RCON stays online on the
+web's map and banner.
 
 Everything can be checked by hand (`-config` as for `run`):
 

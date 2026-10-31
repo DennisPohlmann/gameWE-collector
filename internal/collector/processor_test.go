@@ -421,6 +421,46 @@ func TestServerLoad(t *testing.T) {
 	}
 }
 
+// An empty server without RCON logs nothing (hibernation), but answers
+// A2S_INFO: the answers keep the hlstats_server_load rows coming, so the web
+// shows it online; without answers the rows stop.
+func TestServerLoadA2S(t *testing.T) {
+	p, st := newTestProcessor(t)
+	s := settings.Defaults()
+	s.IdleTimeout = 0
+	p.set.Set(s)
+	ctx := context.Background()
+	t0 := time.Now()
+	info := func(at time.Time) {
+		t.Helper()
+		if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "1"}, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tick := func(at time.Time) {
+		t.Helper()
+		if err := p.Tick(ctx, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	info(t0)
+	info(t0.Add(5 * time.Minute))
+	tick(t0.Add(11 * time.Minute))
+	info(t0.Add(15 * time.Minute))
+	info(t0.Add(20 * time.Minute))
+	tick(t0.Add(22 * time.Minute))
+	// No answer for more than an interval: no row (server down).
+	tick(t0.Add(40 * time.Minute))
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if len(st.loads) != 2 {
+		t.Fatalf("%d rows: %+v", len(st.loads), st.loads)
+	}
+	if l := st.loads[1]; l.Players != 0 || l.Uptime != 22 {
+		t.Errorf("load row %+v", l)
+	}
+}
+
 func TestSchedule(t *testing.T) {
 	berlin, err := time.LoadLocation("Europe/Berlin")
 	if err != nil {

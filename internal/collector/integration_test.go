@@ -1002,7 +1002,7 @@ func TestIntegrationServerInfo(t *testing.T) {
 		t.Fatalf("servers %+v %v", servers, err)
 	}
 	p := NewProcessor(store, set, servers[0], &recorder{}, strictLog(t))
-	if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "9540945", OS: OSLinux}); err != nil {
+	if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "9540945", OS: OSLinux}, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
 	st, err := ParseStatus("hostname: x\nversion : 9540945/24 9540945 insecure\nmap     : de_dust2\n")

@@ -133,6 +133,7 @@ type serverState struct {
 	activeCount, activeBots int       // hlstats_Servers.act_players and act_bots as last written
 	lastLine                time.Time // last log line
 	lastStatus              time.Time // last RCON status
+	lastInfo                time.Time // last A2S_INFO answer
 	statusCount, statusBots int       // players and bots, and the bots alone, listed by the last status
 
 	// RCON status
@@ -328,7 +329,7 @@ func (p *Processor) Handle(ctx context.Context, line string, now time.Time) erro
 	if err := p.init(ctx); err != nil {
 		return err
 	}
-	if p.srv.lastLine.IsZero() || now.Sub(p.srv.lastLine) > LoadInterval {
+	if last := p.srv.lastSign(); last.IsZero() || now.Sub(last) > LoadInterval {
 		p.srv.upSince = now // the server was silent: probably restarted
 	}
 	p.srv.lastLine = now
@@ -847,8 +848,18 @@ func (p *Processor) statusServer(ctx context.Context, st Status, pings map[strin
 	return p.writeServer(ctx, srv.statusHost, srv.statusMax, pings)
 }
 
-// ServerInfo applies an A2S_INFO answer (features.server_info).
-func (p *Processor) ServerInfo(ctx context.Context, info stats.ServerInfo) error {
+// ServerInfo applies an A2S_INFO answer (features.server_info), received at
+// time at. The answer is a sign of life like a log line or an RCON status:
+// an empty server that logs nothing (hibernation) and has no RCON still gets
+// its hlstats_server_load rows, so the web shows it online.
+func (p *Processor) ServerInfo(ctx context.Context, info stats.ServerInfo, at time.Time) error {
+	if err := p.init(ctx); err != nil {
+		return err
+	}
+	if last := p.srv.lastSign(); p.srv.upSince.IsZero() || last.IsZero() || at.Sub(last) > LoadInterval {
+		p.srv.upSince = at // no sign of life for a while: probably restarted
+	}
+	p.srv.lastInfo = at
 	p.srv.a2sMax, p.srv.a2sName = info.MaxPlayers, stats.ServerName(info.Name)
 	info.MaxPlayers, info.Name = 0, ""
 	p.srv.a2sInfo = info
@@ -1255,10 +1266,24 @@ func (p *Processor) setActive(ctx context.Context, now time.Time) error {
 	return nil
 }
 
+// lastSign is the time of the server's last sign of life: a log line, an
+// RCON status or an A2S_INFO answer.
+func (s *serverState) lastSign() time.Time {
+	t := s.lastLine
+	if s.lastStatus.After(t) {
+		t = s.lastStatus
+	}
+	if s.lastInfo.After(t) {
+		t = s.lastInfo
+	}
+	return t
+}
+
 // serverLoad writes a row of hlstats_server_load every LoadInterval while
-// the server sends log lines (gamewe_server_load). CPU, FPS and the uptime
-// come from RCON "stats"; without RCON the uptime is the time since the
-// first line after a silence.
+// the server shows a sign of life (lastSign: log lines, RCON status or an
+// A2S_INFO answer in that interval; gamewe_server_load). CPU, FPS and the
+// uptime come from RCON "stats"; without RCON the uptime is the time since
+// the first sign of life after a silence.
 func (p *Processor) serverLoad(ctx context.Context, now time.Time) error {
 	srv := &p.srv
 	if !srv.ready || now.Sub(srv.loadSince) < LoadInterval {
@@ -1267,10 +1292,10 @@ func (p *Processor) serverLoad(ctx context.Context, now time.Time) error {
 	n, _ := p.online(now)
 	l := stats.Load{ServerID: srv.info.ID, Time: now.Unix(), Players: n, MinPlayers: min(srv.minPlay, n), MaxPlayers: max(srv.maxPlay, n),
 		MapID: srv.mapID, Uptime: int(now.Sub(srv.upSince).Minutes())}
-	active := now.Sub(srv.lastLine) <= LoadInterval || now.Sub(srv.lastStatus) <= LoadInterval
+	active := now.Sub(srv.lastSign()) <= LoadInterval
 	srv.loadSince, srv.minPlay, srv.maxPlay = now, n, n
 	if !p.set.Get().ServerLoad || !active {
-		return nil // no lines: the server is down or not logging
+		return nil // no sign of life: the server is down
 	}
 	if srv.info.RconPassword != "" && p.ServerStats != nil {
 		if st, err := p.ServerStats(srv.info, time.Duration(p.set.Get().RconTimeout)*time.Second); err == nil {
