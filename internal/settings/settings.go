@@ -218,6 +218,7 @@ var WebKeys = []string{
 	"gamewe_ts_show_clients", "gamewe_ts_password_reveal", "gamewe_update_check",
 	"gamewe_default_lang", "gamewe_steam_profiles", "gamewe_steam_api_key",
 	"gamewe_privacy_name", "gamewe_privacy_address", "gamewe_privacy_email",
+	"gamewe_admin_auto_logout", "gamewe_admin_logout_minutes",
 }
 
 var webKeys = func() map[string]bool {
