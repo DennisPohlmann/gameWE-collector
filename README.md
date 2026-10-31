@@ -227,7 +227,11 @@ logaddress_add <docker host>:41337      // the collector's address and UDP port
 rcon_password "change-me-rcon"          // the same as in the web admin / server add
 ```
 
-and restart the map or the server. With the RCON password stored, the
+GoldSrc servers (Counter-Strike 1.6, Day of Defeat 1.3 and other HLDS games)
+take IP and port separated by a space instead of a colon:
+`logaddress_add 203.0.113.5 41337`. They also only accept an IP, no host name.
+
+Then restart the map or the server. With the RCON password stored, the
 collector also checks every minute that it is registered as log address
 and adds itself (`logaddress_add`, `log on`) when it is missing; the lines
 in `server.cfg` keep it there after a restart. The first log lines show up

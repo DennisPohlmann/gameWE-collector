@@ -34,7 +34,8 @@ A key set twice in the same section is an error too.
 Where the game servers send their logs. There are two inputs; at least one must
 be on, and both can run at the same time.
 
-- `listen.udp`: GoldSrc and Source servers (`logaddress_add <ip>:<port>`). On
+- `listen.udp`: Source servers (`logaddress_add <ip>:<port>`) and GoldSrc servers
+  (`logaddress_add <ip> <port>`, space instead of colon). On
   by default.
 - `listen.http`: Counter-Strike 2 (Source 2), which logs only over HTTP
   (`logaddress_add_http "http://<ip>:<port>/<token>/<game port>"`). Off by default.
