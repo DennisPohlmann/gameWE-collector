@@ -6,10 +6,10 @@
 # monthly (the volume /var/lib/gamewe, owned by nonroot, uid 65532).
 # Every base image is pinned by digest; Dependabot proposes new digests.
 
-FROM busybox:1.38@sha256:fd7dc98638c8e305f4dc34e979f1c0fdfdcaeb0fbf8fcff77ae834b6da3d7e6e AS dirs
+FROM busybox:1.38@sha256:a46257e06c82ad85242d0d38077d0a52d9896389ca60a1a59d3463db586e5fa4 AS dirs
 RUN mkdir -p /out/var/lib/gamewe/collector
 
-FROM golang:1.27@sha256:f20d83a83e18dbd2a4714b8ffd4b30b287b6243962dd75608e86abcc63ba4efc AS build
+FROM golang:1.27@sha256:2920bb124f1a2e12a1d39f0cab756ae0068441ee1da7655dec7f5e374944095b AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -21,7 +21,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
 
 # distroless: CA certificates (for database TLS) and a non-root user, no shell.
 # No package manager, so its patches come only with a new digest.
-FROM gcr.io/distroless/static-debian13:nonroot@sha256:18f4cc26c9ffa7f20a359298be7deadac5c607c8e03a02b8119f1a5fc2f82c99
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:25ac8f0c3b2334a9eb05452266bd4697864a8c8ef0ef71e5e6480d7f92868329
 ARG VERSION=dev
 LABEL org.opencontainers.image.title="gameWE - collector" \
       org.opencontainers.image.description="Collects Source game-server logs into an HLstatsX database" \
