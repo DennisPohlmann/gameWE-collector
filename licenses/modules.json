@@ -37,7 +37,7 @@
   },
   {
     "path": "github.com/jackc/pgx/v5",
-    "version": "v5.11.0",
+    "version": "v5.12.0",
     "scope": "binary",
     "license": "MIT",
     "files": [
@@ -74,7 +74,7 @@
   },
   {
     "path": "github.com/oschwald/maxminddb-golang/v2",
-    "version": "v2.8.0",
+    "version": "v2.9.0",
     "scope": "test",
     "license": "ISC",
     "files": [
@@ -83,7 +83,7 @@
   },
   {
     "path": "go.yaml.in/yaml/v3",
-    "version": "v3.0.5",
+    "version": "v3.0.6",
     "scope": "binary",
     "license": "MIT AND Apache-2.0",
     "files": [
