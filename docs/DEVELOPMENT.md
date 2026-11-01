@@ -18,11 +18,14 @@ make docker                   # container image gamewe-collector:<version>
 
 The version comes from a `v*` git tag on HEAD, otherwise from `VERSION`. The
 binary is static (`CGO_ENABLED=0`). GitHub Actions (`.github/workflows/build.yml`)
-builds and tests every push to `main`: the unit tests, govulncheck,
-actionlint, the integration tests against MariaDB 11.4 + PostgreSQL 17 and
-MariaDB 12.3 + PostgreSQL 18 service containers, the amd64 package (kept as a
-workflow artifact) and the container image, which it pushes to
-`ghcr.io/dennispohlmann/gamewe-collector` with the tag `edge`.
+builds and tests every push (any branch) and every pull request the way a
+release is built: the unit tests, govulncheck, actionlint, the integration
+tests against MariaDB 11.4 + PostgreSQL 17 and MariaDB 12.3 + PostgreSQL 18
+service containers, the Helm chart (lint and `helm package`), the amd64
+package (kept as a workflow artifact for 7 days) and the container image
+(Trivy scan). Only a push to `main` (and the weekly run) pushes the image to
+`ghcr.io/dennispohlmann/gamewe-collector` with the tag `edge`; nothing else is
+published without a release run.
 
 ## Integration tests
 
@@ -165,10 +168,14 @@ Example, a new column `hlstats_Servers.log_secret`:
 ## Releases
 
 Releases are made by [semantic-release](https://semantic-release.gitbook.io/)
-(`.releaserc.json`) in the same workflow; nobody tags by hand. To make a
-release, push commits written as [Conventional Commits](https://www.conventionalcommits.org/)
-to `main`. semantic-release reads the commits since the last tag and decides
-the next version:
+(`.releaserc.json`) in the same workflow; nobody tags by hand. Pushing to
+`main` does not release: a release is started by hand on `main`, in GitHub
+under Actions → build → Run workflow with `release` ticked, or with
+`gh workflow run build.yml --ref main -f release=true`. Run the `release-security-gate` skill
+first (see `CLAUDE.md`). The run builds and tests everything again; only
+when that passed does semantic-release read the
+[Conventional Commits](https://www.conventionalcommits.org/) since the last
+tag and decide the next version:
 
 | Commit | Release |
 |---|---|
@@ -180,10 +187,12 @@ the next version:
 For a release it writes `VERSION`, the `version` and `appVersion` of the
 Helm chart (`charts/gamewe-collector/Chart.yaml`) and `CHANGELOG.md`,
 commits them as `chore(release): vX.Y.Z [skip ci]`, tags `vX.Y.Z` and
-creates the GitHub release. The workflow then builds that tag, uploads the
+creates the GitHub release as a draft. The workflow then builds that tag, uploads the
 archive and its `.sha256` to the release and pushes the image tags
 `<version>`, `<major>.<minor>` and `latest`; the job `chart` publishes the
 Helm chart as `oci://ghcr.io/<owner>/charts/gamewe-collector` and as a
 `.tgz` in the release (every build lints it, `go test ./charts` checks that
-its version is the collector's). Never edit `VERSION`, `Chart.yaml`'s
+its version is the collector's); the job `publish` then makes the release
+public. The release stays a draft until all files are in it, so it never shows up
+incomplete; if a job fails, re-run the failed jobs of that run. Never edit `VERSION`, `Chart.yaml`'s
 versions or `CHANGELOG.md` by hand.

@@ -1,6 +1,6 @@
 ---
 name: release-security-gate
-description: Full security pass over the gameWE collector before release-relevant commits are pushed to main (semantic-release then bumps, tags and releases). Use whenever a release is being prepared; ends with a go/no-go report and never tags or pushes on its own.
+description: Full security pass over the gameWE collector before a release is started (build workflow by hand with release=true; semantic-release then bumps, tags and releases). Use whenever a release is being prepared; ends with a go/no-go report and never tags, pushes or starts a release on its own.
 ---
 
 # Release security gate (gameWE collector)
@@ -8,15 +8,17 @@ description: Full security pass over the gameWE collector before release-relevan
 Run all steps over the whole repository, not only the last diff. Report a
 table with the 20 points (ok / finding / n.a.) and a go/no-go.
 
-Releases are made by semantic-release in CI: every push to `main` that
-contains a `feat`, `fix` or breaking-change commit (Conventional Commits)
-bumps the version, writes `CHANGELOG.md`, tags `vX.Y.Z` and publishes the
-GitHub release (and, where there is one, the container image). So this gate
-runs **before pushing release-relevant commits to `main`**, without asking
-first. Never tag by hand, never edit the version files or `CHANGELOG.md` by
-hand, and do not push to `main` yourself: report the gate result and the
-version semantic-release will make (`feat` → minor, `fix` → patch,
-`!`/`BREAKING CHANGE` → major), then ask Dennis for the go.
+Releases are made by semantic-release in CI, only when the build workflow is
+started by hand on `main` with `release` ticked (`gh workflow run build.yml
+--ref main -f release=true`). With a `feat`, `fix` or breaking-change commit
+(Conventional Commits) since the last tag it bumps the version, writes
+`CHANGELOG.md`, tags `vX.Y.Z` and publishes the GitHub release (and, where
+there is one, the container image). Pushing to `main` does not release any
+more. So this gate runs **before every release run**, without asking first.
+Never tag by hand, never edit the version files or `CHANGELOG.md` by hand,
+never start the release run and do not push to `main` yourself: report the
+gate result and the version semantic-release will make (`feat` → minor, `fix`
+→ patch, `!`/`BREAKING CHANGE` → major), then ask Dennis for the go.
 
 ## Steps
 
@@ -62,4 +64,4 @@ version semantic-release will make (`feat` → minor, `fix` → patch,
    release, the release commit messages and the `CHANGELOG.md` entry that
    semantic-release will write. Any `BLOCKED` item is a no-go.
 11. **Report:** go/no-go, the `security-privacy-audit` summary, findings with file:line and fix, the version semantic-release will make, then ask Dennis
-    for the go to push to `main`.
+    for the go to start the release run.

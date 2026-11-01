@@ -36,9 +36,10 @@ semantic-release in CI from the commit messages. Never edit `CHANGELOG.md`,
 - Breaking change: `feat!:` / `fix!:` or a `BREAKING CHANGE: <what to do>`
   footer (major release).
 - One logical change per commit, so each changelog line is meaningful.
-- Say in the answer which type you chose and whether it will trigger a
-  release; a `feat` or `fix` on `main` needs the `release-security-gate`
-  skill and Dennis' go before the push.
+- Say in the answer which type you chose and whether it will make a
+  release in the next release run (pushing to `main` does not release; a
+  release is started by hand, see `CLAUDE.md`). That release run needs the
+  `release-security-gate` skill and Dennis' go first.
 
 ## 3. Dependencies and toolchain: check, suggest, do not update on your own
 
