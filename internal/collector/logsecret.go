@@ -118,7 +118,7 @@ func SecretNote(mode SecretMode, s stats.Server) (msg string, info bool) {
 	case s.Engine == games.GoldSrc && s.LogSecret != "":
 		return fmt.Sprintf("log_secret: server %d %s is GoldSrc (no sv_logsecret), its stored log secret is ignored (remove it with gamewe server set -logsecret \"\" or in the web admin)", s.ID, s.Address), true
 	case s.Engine == games.Source2 && s.LogSecret != "":
-		return fmt.Sprintf("log_secret: server %d %s is Source 2 (CS2), its HTTP logs carry no log secret, so the stored one is ignored (remove it with gamewe server set -logsecret \"\" or in the web admin; listen.http.token protects the HTTP input)", s.ID, s.Address), true
+		return fmt.Sprintf("log_secret: server %d %s is Source 2 (CS2): its stored log secret must end the logaddress_add_http URL (/<game port>/<secret>)", s.ID, s.Address), true
 	case s.Engine == games.GoldSrc || s.Engine == games.Source2:
 		return "", false
 	case s.LogSecret == "":

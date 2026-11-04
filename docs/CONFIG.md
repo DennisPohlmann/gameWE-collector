@@ -74,10 +74,12 @@ with exit code 2 when it is given.
 | `max_connections_per_ip` | `8` | open connections from one IP at most (1 to `max_connections`) |
 | `trusted_proxies` | – | IPs or networks (CIDR) of reverse proxies in front of the collector. Only for a request from one of them the sender is taken from `X-Forwarded-For` (the right-most address that is not itself a trusted proxy). |
 
-The game port in the URL only selects a row at the sender's IP: where several
-parties share one IP, each can post lines for the other's CS2 servers, with
-the token too, as there is one token per collector. Do not share the IP with
-parties you do not trust, or use a collector per party.
+The game port in the URL only selects a row at the sender's IP, and there is
+one token per collector. So that parties sharing one IP cannot post lines for
+each other's CS2 servers, store a log secret for the row: the URL must then end
+with it (`/<token>/<game port>/<log secret>`). The collector registers that URL
+itself (`features.log_address.http`); after setting a secret, remove the old URL
+from the game server (`logaddress_delall_http`).
 
 A post is checked before its body is read. The sender's IP and the game port
 from the URL must be a server in `hlstats_Servers` whose game is a Source 2

@@ -168,6 +168,7 @@ var (
 	errHTTPSender     = errors.New("HTTP sender unknown: X-Forwarded-For of a trusted proxy is not an IP address")
 	errHTTPBody       = errors.New("HTTP body larger than listen.http.max_body")
 	errHTTPRead       = errors.New("HTTP body could not be read")
+	errHTTPRowSecret  = errors.New("HTTP path does not end with the log secret stored for this server")
 )
 
 func (hh *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -178,7 +179,7 @@ func (hh *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	port, err := hh.port(r.URL.Path)
+	port, rowSecret, err := hh.port(r.URL.Path)
 	if err == nil && !ip.IsValid() {
 		err = errHTTPSender
 	}
@@ -190,6 +191,11 @@ func (hh *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	src := netip.AddrPortFrom(ip, port)
 	// Check the sender before reading the body: strangers cost no memory.
 	srv, err := hh.hub.CheckHTTP(src)
+	if err == nil && !hh.hub.httpSecretOK(src, rowSecret) {
+		hh.rl.note(src.String(), errHTTPRowSecret, status(http.StatusNotFound))
+		http.NotFound(w, r)
+		return
+	}
 	if err != nil {
 		hh.rl.note(src.String(), err, func() []any { return append(status(http.StatusForbidden)(), hh.hub.httpHint(src, err)...) })
 		http.Error(w, "forbidden", http.StatusForbidden)
@@ -257,11 +263,34 @@ func (h *Hub) httpHint(src netip.AddrPort, err error) []any {
 	return nil
 }
 
+// httpSecretOK checks the path's last segment against the log secret stored
+// for the row: the token is one per collector and the port only selects a row,
+// so this is what keeps parties that share an IP apart. No stored secret: not
+// checked.
+func (h *Hub) httpSecretOK(src netip.AddrPort, secret string) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	w := h.resolve(src)
+	return w != nil && (w.srv.LogSecret == "" || subtle.ConstantTimeCompare([]byte(secret), []byte(w.srv.LogSecret)) == 1)
+}
+
 // port reads the game port from the path: /<port>, or /<token>/<port>
-// when a token is set (compared in constant time). The error says what
-// is wrong with the path.
-func (hh *httpHandler) port(path string) (uint16, error) {
+// when a token is set (compared in constant time), each with the row's log
+// secret as a last segment when one is stored. The error says what is wrong
+// with the path.
+func (hh *httpHandler) port(path string) (port uint16, rowSecret string, err error) {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
+	// A segment after a port is the secret; a token (at least 16 characters)
+	// is never a valid port.
+	if n := len(parts); n >= 2 && validPort(parts[n-2]) && (hh.cfg.Token != "" || n == 2) {
+		rowSecret = parts[n-1]
+		parts = parts[:n-1]
+	}
+	p, err := hh.portOf(parts)
+	return p, rowSecret, err
+}
+
+func (hh *httpHandler) portOf(parts []string) (uint16, error) {
 	if hh.cfg.Token != "" {
 		switch {
 		case len(parts) == 1 && validPort(parts[0]):

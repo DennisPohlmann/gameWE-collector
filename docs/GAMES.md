@@ -120,7 +120,7 @@ css adds 3 and 8, one cloned from dod 2 and 35.
 UDP packets are accepted only from servers in `hlstats_Servers` (exactly the
 source ip:port). An HTTP post is accepted only from a Source 2 server in
 `hlstats_Servers`: the sender's IP plus the game port from the URL (the TCP
-source port of a post is random), plus the path token when one is set. UDP lines
+source port of a post is random), plus the path token when one is set and the row's log secret as the last path segment when one is stored. UDP lines
 for a Source 2 server are refused unless `listen.udp.source2` is on (e.g. for a
 forwarder from the server's own ip:port); they then need the row's log secret,
 if one is stored. A UDP line longer than 8 KiB is refused, as on HTTP.
