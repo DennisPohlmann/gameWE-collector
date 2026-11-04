@@ -123,7 +123,7 @@ the audit summary of `security-privacy-audit`.
 - DB users: the collector user writes, `gamewe_web` gets SELECT only and
   no `hlstats_Users`, `hlstats_Events_Chat`,
   `hlstats_Servers.rcon_password`, `log_secret`, `log_secret_changed`,
-  `hlstats_Events_Connects.ipAddress`
+  `hlstats_Events_Connects.ipAddress`, `hlstats_gamewe_secrets`
   (`internal/schema/mysql/grants.sql` and the generated Postgres file). A
   new table needs a grant decision there (a test checks this).
 - The schema is compiled in (`internal/schema`, go:embed); the collector
@@ -144,9 +144,11 @@ the audit summary of `security-privacy-audit`.
   `source = 'sourcebans'` rows of `hlstats_Bans` (bans the completely read
   list no longer shows as running, and bans whose `sb_ends` has passed)
   and stale rows of `hlstats_Bans_Players`; a partly read list changes
-  nothing. Migrations
+  nothing. The `delete-player` job (`internal/stats/deleteplayer.go`, queued by
+  the web admin) erases one player's rows. Migrations
   only add (tables, columns, indexes, missing seed rows), are idempotent,
-  never delete rows or drop tables/columns; released migrations are never
+  never delete rows or drop tables/columns (one exception: version 25 moves the
+  secret settings to `hlstats_gamewe_secrets`); released migrations are never
   changed. How to add one: `docs/DEVELOPMENT.md`, "Adding a migration".
 - Jobs that change many rows (ranking reset, move of inactive players,
   daily awards) hold the job lock (`database.JobLock`, GET_LOCK /

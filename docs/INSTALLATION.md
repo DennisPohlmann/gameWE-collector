@@ -612,6 +612,25 @@ docker compose up -d                          # migrates at start; auto_migrate:
 
 `config.yaml` is never in the archive, so it is kept.
 
+**Update to 1.7 (schema versions 24 and 25): together with the website 1.8.**
+Stop both, update the collector first (it migrates at start), then the website.
+
+- Version 25 moves the Steam Web API key, the metrics token and the TeamSpeak
+  passwords from `hlstats_Options` to `hlstats_gamewe_secrets`, which
+  `gamewe_web` cannot read. A website older than 1.8 no longer finds them until
+  it is updated. The website reads them with `DB_ADMIN_USER`: check that its `web.env` has it. The
+  backup above is the way back: this step removes the rows from `hlstats_Options`.
+- Version 24 adds the column `log_only` to `hlstats_Events_PlayerActions`. On a
+  large table with MyISAM this rewrites and locks the table; `gamewe db migrate -n`
+  shows the plan, plan the time before the update.
+- **Counter-Strike 2:** UDP lines for CS2 rows are now refused unless
+  `listen.udp.source2` is on. A row with a stored log secret needs it as the
+  last URL segment; the collector registers that URL, remove the old one on the
+  game server with `logaddress_delall_http`.
+- **PostgreSQL only, by hand once:** `REVOKE SELECT (hostname, hostgroup) ON
+  hlstats_Events_Connects FROM gamewe_web;` (MariaDB: done by the migration's
+  grants).
+
 **Log secret (schema version 4):** a server with
 `hlstats_Servers.log_secret` set must send exactly that `sv_logsecret`; a
 server without one is not checked. You set the secret yourself
