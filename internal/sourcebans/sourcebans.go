@@ -123,7 +123,8 @@ func (c *Client) client() *http.Client {
 		}
 		return nil
 	}}
-	tr := &http.Transport{DialContext: d.DialContext, TLSHandshakeTimeout: Timeout, ResponseHeaderTimeout: Timeout, MaxIdleConns: 2}
+	// A client per request: no connection may stay open behind it.
+	tr := &http.Transport{DialContext: d.DialContext, TLSHandshakeTimeout: Timeout, ResponseHeaderTimeout: Timeout, DisableKeepAlives: true}
 	return &http.Client{Transport: tr, Timeout: Timeout, CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	}}
@@ -154,6 +155,9 @@ func (c *Client) Lookup(ctx context.Context, base, uniqueID string) ([]Ban, erro
 	}
 	if len(out) == 0 && strings.Contains(html, "STEAM_") && len(Parse(html)) == 0 && HasSteamIDs(html) {
 		return nil, ErrUnknownTemplate
+	}
+	if len(out) == 0 && len(Parse(html)) == 0 && !isListPage(html) {
+		return nil, ErrNotBanList
 	}
 	return out, nil
 }
@@ -472,6 +476,17 @@ func Parse(html string) []Ban {
 	default:
 		return parseClassic(html)
 	}
+}
+
+// ErrNotBanList: the page has no bans and is not a page of SourceBans (an
+// error or maintenance page), so it says nothing about the bans.
+var ErrNotBanList = errors.New("the answer is not a SourceBans ban list page")
+
+// isListPage reports whether a page without bans is a page of the ban list:
+// every template links its own list and has the search form.
+func isListPage(html string) bool {
+	l := strings.ToLower(html)
+	return strings.Contains(l, "p=banlist") || strings.Contains(l, "advsearch") || strings.Contains(l, "advanced search")
 }
 
 // HasSteamIDs reports whether the page shows Steam IDs at all.

@@ -80,7 +80,7 @@ func TestList(t *testing.T) {
 }
 
 func TestListEmptyAndUnknown(t *testing.T) {
-	body := `<p>No bans</p>`
+	body := `<a href="index.php?p=banlist">Bans</a><p>No bans</p>`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(body)) }))
 	defer srv.Close()
 	c := &Client{AllowPrivate: true}
@@ -91,6 +91,13 @@ func TestListEmptyAndUnknown(t *testing.T) {
 	if _, err := c.List(context.Background(), Base(srv.URL), 0); !errors.Is(err, ErrUnknownTemplate) {
 		t.Errorf("unknown template: %v", err)
 	}
+	body = `<html><body>Database error, try again later</body></html>`
+	if bans, err := c.List(context.Background(), Base(srv.URL), 0); !errors.Is(err, ErrNotBanList) || bans != nil {
+		t.Errorf("error page with status 200: %+v %v", bans, err)
+	}
+	if bans, err := c.Lookup(context.Background(), Base(srv.URL), "0:1"); !errors.Is(err, ErrNotBanList) || bans != nil {
+		t.Errorf("error page with status 200, lookup: %+v %v", bans, err)
+	}
 }
 
 func TestParseDetailAdmin(t *testing.T) {
@@ -98,5 +105,11 @@ func TestParseDetailAdmin(t *testing.T) {
 		`<li> <span><i class="fas fa-user-shield"></i> Admin</span> <span>Ann &amp; Bob</span> </li><li> <span><i class="fas fa-question"></i> Reason</span>`, 1)
 	if b := Parse(page); len(b) != 2 || b[0].Admin != "Ann & Bob" || b[1].Admin != "" {
 		t.Errorf("admin: %+v", b)
+	}
+}
+
+func TestListBanLimit(t *testing.T) {
+	if MaxBans < 1000 {
+		t.Fatal("MaxBans too small for a real list")
 	}
 }

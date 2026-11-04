@@ -272,7 +272,7 @@ func TestLookup(t *testing.T) {
 		case "STEAM_0:0:2":
 			w.Write([]byte(`<div class="card">STEAM_0:0:2 banned</div>`))
 		default:
-			w.Write([]byte(`<p>No bans</p>`))
+			w.Write([]byte(`<a href="index.php?p=banlist">Bans</a><p>No bans</p>`))
 		}
 	}))
 	defer srv.Close()
