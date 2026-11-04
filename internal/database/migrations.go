@@ -238,6 +238,12 @@ var Migrations = []Migration{
 			"of the ribbons), which the web copies with the other definitions of a template into a new ranking",
 		Grants: true,
 	},
+	{
+		Version: 24, Name: "log-only-actions",
+		Desc: "column log_only on hlstats_Events_PlayerActions: headshots and kill streaks of kills with bots in a ranking with " +
+			"gamewe_bot_points_<game> = 0 and gamewe_bot_kills_<game> = 1, shown in the event lists but left out of the awards",
+		Sync: true,
+	},
 }
 
 // Latest is the newest schema version this collector knows.

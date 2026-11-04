@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/netip"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -261,6 +262,69 @@ func TestBotsDoNotChangeSkill(t *testing.T) {
 	defer st.mu.Unlock()
 	if k.skill == 1000 || len(st.actions) != 1 {
 		t.Errorf("bot points: skill %d, actions %v", k.skill, st.actions)
+	}
+}
+
+// Without points for bots but with their kills counting, headshots and kill
+// streaks of kills with bots go to the event log only, in both directions;
+// with gamewe_bot_kills_<game> = 0 they stay away as before.
+func TestBotKillsLogOnlyActions(t *testing.T) {
+	lines := []string{
+		`"K<2><STEAM_1:0:1><CT>" killed "Bot Bob<9><BOT><TERRORIST>" with "ak47" (headshot)`,
+		`"K<2><STEAM_1:0:1><CT>" killed "Bot Bob<9><BOT><TERRORIST>" with "ak47"`,
+		`"K<2><STEAM_1:0:1><CT>" killed "V<3><STEAM_1:0:2><TERRORIST>" with "ak47"`,
+		`"Bot Bob<9><BOT><TERRORIST>" killed "K<2><STEAM_1:0:1><CT>" with "glock" (headshot)`,
+	}
+	for _, c := range []struct {
+		name  string
+		kills map[string]bool
+		want  []string
+	}{
+		{"kills on", nil, []string{"0:1 headshot", "0:1 kill_streak_3", "BOT:Bot Bob headshot"}},
+		{"kills off", map[string]bool{"css": false}, nil},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			p, st := newTestProcessor(t)
+			s := settings.Defaults()
+			s.BotsPoints, s.BotsKills = map[string]bool{"css": false}, c.kills
+			p.set.Set(s)
+			for _, l := range lines {
+				if err := p.Handle(context.Background(), l, time.Now()); err != nil {
+					t.Fatal(err)
+				}
+			}
+			st.mu.Lock()
+			defer st.mu.Unlock()
+			if !slices.Equal(st.logActions, c.want) {
+				t.Errorf("log-only actions %v, want %v", st.logActions, c.want)
+			}
+			if len(st.actions) != 0 {
+				t.Errorf("scored actions %v, want none", st.actions)
+			}
+		})
+	}
+}
+
+// A streak with enough kills with points keeps its scored action alone.
+func TestScoredStreakKeepsItsAction(t *testing.T) {
+	p, st := newTestProcessor(t)
+	s := settings.Defaults()
+	s.BotsPoints = map[string]bool{"css": false}
+	p.set.Set(s)
+	for _, l := range []string{
+		`"K<2><STEAM_1:0:1><CT>" killed "V<3><STEAM_1:0:2><TERRORIST>" with "ak47"`,
+		`"K<2><STEAM_1:0:1><CT>" killed "Bot Bob<9><BOT><TERRORIST>" with "ak47"`,
+		`"K<2><STEAM_1:0:1><CT>" killed "W<4><STEAM_1:0:3><TERRORIST>" with "ak47"`,
+		`"V<3><STEAM_1:0:2><TERRORIST>" killed "K<2><STEAM_1:0:1><CT>" with "glock"`,
+	} {
+		if err := p.Handle(context.Background(), l, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if want := []string{"0:1 kill_streak_2"}; !slices.Equal(st.actions, want) || len(st.logActions) != 0 {
+		t.Errorf("actions %v, log-only %v; want %v and none", st.actions, st.logActions, want)
 	}
 }
 

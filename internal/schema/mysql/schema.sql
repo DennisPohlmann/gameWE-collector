@@ -269,6 +269,7 @@ CREATE TABLE `hlstats_Events_PlayerActions` (
   `playerId` mediumint(8) unsigned NOT NULL DEFAULT 0,
   `actionId` smallint(5) unsigned NOT NULL DEFAULT 0,
   `bonus` smallint(6) NOT NULL DEFAULT 0,
+  `log_only` tinyint(1) unsigned NOT NULL DEFAULT 0,
   KEY `timestamp_id` (`timestamp_id`),
   KEY `player_time` (`playerId`,`timestamp_id`),
   KEY `map_action` (`map`,`actionId`,`playerId`),

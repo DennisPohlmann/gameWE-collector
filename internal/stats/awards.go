@@ -127,7 +127,7 @@ func (s *Store) dailyAwards(ctx context.Context, day time.Time, game string, sto
 		case a.Type == "O":
 			q = `SELECT e.playerId, COUNT(*) AS n FROM hlstats_Events_PlayerActions e
 				JOIN hlstats_Actions x ON x.id = e.actionId JOIN hlstats_Players p ON p.playerId = e.playerId
-				WHERE x.game = ? AND x.code = ? AND e.timestamp_id >= ? AND e.timestamp_id < ? AND p.hideranking = 0
+				WHERE x.game = ? AND x.code = ? AND e.timestamp_id >= ? AND e.timestamp_id < ? AND e.log_only = 0 AND p.hideranking = 0
 				GROUP BY e.playerId ORDER BY n DESC, e.playerId LIMIT 1`
 			args = []any{a.Game, a.Code, from, to}
 		case a.Code == "latency":

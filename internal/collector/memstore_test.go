@@ -42,7 +42,7 @@ type memStore struct {
 	active       []int // SetActivePlayers values
 	activeBots   []int // and their bots
 	status       []string
-	names        []string // names written by ServerStatus
+	names        []string           // names written by ServerStatus
 	infos        []stats.ServerInfo // ServerInfo writes
 	maps         []string           // MapStarted calls
 	connects     []string           // "player:ip" of each Connect
@@ -58,6 +58,7 @@ type memStore struct {
 	actionIDs    map[string]int    // game:lower code -> id
 	resets       map[int64][]int64 // player id -> reset times
 	actionPoints map[string]int    // points of RecordPlayerAction by code
+	logActions   []string          // "uniqueId code" of RecordLogOnlyAction
 	nextID       int64
 }
 
@@ -287,6 +288,13 @@ func (m *memStore) RecordPlayerAction(_ context.Context, _ stats.Ev, p stats.Liv
 	defer m.mu.Unlock()
 	m.actions = append(m.actions, p.UniqueID+" "+code)
 	return m.actionPoints[code], nil
+}
+
+func (m *memStore) RecordLogOnlyAction(_ context.Context, _ stats.Ev, p stats.Live, code string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.logActions = append(m.logActions, p.UniqueID+" "+code)
+	return nil
 }
 
 func (m *memStore) RecordPlayerPlayerAction(_ context.Context, _ stats.Ev, p, v stats.Live, code string, _ bool) (int, int, error) {

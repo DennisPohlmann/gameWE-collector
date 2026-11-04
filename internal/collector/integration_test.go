@@ -633,6 +633,53 @@ func TestIntegrationPluginLines(t *testing.T) {
 	}
 }
 
+// Log-only actions of kills with bots are in the event table and nowhere else:
+// no points, no counts, no award.
+func TestIntegrationBotLogOnlyActions(t *testing.T) {
+	db := testDB(t)
+	if _, err := db.Exec(db.Q(`INSERT INTO hlstats_Actions (game, code, reward_player, for_PlayerActions) VALUES ('css', 'kill_streak_2', 5, '1')`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(db.Q(`INSERT INTO hlstats_Awards (awardType, game, code, name, verb) VALUES ('O', 'css', 'headshot', 'Headshots', 'headshots')`)); err != nil {
+		t.Fatal(err)
+	}
+	s := settings.Defaults()
+	s.BotsPoints = map[string]bool{"css": false}
+	set := settings.NewLive(s)
+	store := stats.NewStore(db, set)
+	ctx := context.Background()
+	now := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	ev := stats.Ev{Time: now, Srv: stats.Server{ID: 1, Game: "css", GameID: 1}}
+	id, _, err := store.Player(ctx, ev, "0:1", "K")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := stats.Live{ID: id, UniqueID: "0:1", Name: "K"}
+	for _, code := range []string{"headshot", "kill_streak_2", "not_defined"} {
+		if err := store.RecordLogOnlyAction(ctx, ev, p, code); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Events_PlayerActions WHERE playerId = ? AND bonus = 0 AND log_only = 1`, id); n != 2 {
+		t.Errorf("event rows %d, want 2", n)
+	}
+	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Players_Actions WHERE player_id = ?`, id); n != 0 {
+		t.Errorf("hlstats_Players_Actions rows %d, want 0", n)
+	}
+	if n := count(t, db, `SELECT COALESCE(SUM(count), 0) FROM hlstats_Actions WHERE game = 'css'`); n != 0 {
+		t.Errorf("hlstats_Actions.count %d, want 0", n)
+	}
+	if n := count(t, db, `SELECT skill FROM hlstats_Players WHERE playerId = ?`, id); n != s.StartSkill {
+		t.Errorf("skill %d, want %d", n, s.StartSkill)
+	}
+	if _, err := store.DailyAwards(ctx, time.Date(2026, 10, 21, 0, 0, 0, 0, time.UTC), "css"); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Awards_History`); n != 0 {
+		t.Errorf("award winners %d, want none", n)
+	}
+}
+
 func TestIntegrationDailyAwards(t *testing.T) {
 	db := testDB(t)
 	day := time.Date(2026, 10, 21, 0, 0, 0, 0, time.UTC)

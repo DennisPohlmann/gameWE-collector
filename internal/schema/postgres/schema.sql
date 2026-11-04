@@ -273,7 +273,8 @@ CREATE TABLE hlstats_Events_PlayerActions (
   map integer NOT NULL DEFAULT 0,
   playerId integer NOT NULL DEFAULT 0,
   actionId integer NOT NULL DEFAULT 0,
-  bonus smallint NOT NULL DEFAULT 0
+  bonus smallint NOT NULL DEFAULT 0,
+  log_only smallint NOT NULL DEFAULT 0
 );
 CREATE INDEX hlstats_Events_PlayerActions_timestamp_id ON hlstats_Events_PlayerActions (timestamp_id);
 CREATE INDEX hlstats_Events_PlayerActions_player_time ON hlstats_Events_PlayerActions (playerId, timestamp_id);

@@ -61,7 +61,13 @@ variant are listed in [PostgreSQL](#postgresql) at the end.
   `hideranking` 0 ↔ 1 of the ranking's existing bots (2, banned, stays). With
   `gamewe_bot_points_<game>` = 0 kills with a bot (either side) and
   player-vs-player actions with a bot change nobody's skill (stored with 0
-  points, no headshot action, no kill streak). Kills with bots count in the
+  points, no headshot action, no kill streak). With
+  `gamewe_bot_kills_<game>` = 1 the headshot and the kill streak of such kills
+  still go into `hlstats_Events_PlayerActions` for the event lists, with
+  `bonus` 0 and `log_only` = 1: no points, no `hlstats_Players_Actions`, no
+  `hlstats_Actions.count`, no awards and ribbons. A life with both kinds of
+  kills keeps its scored `kill_streak_<n>` (kills with points) as its only row;
+  a log-only row counts all its kills. Kills with bots count in the
   players' stats only with `gamewe_bot_stats_<game>` = 1; with 0 (the default)
   a kill with a bot is stored (frag, weapon, map, server, team, the bot's own
   counts) but a kill of a bot is not added to the killer's `kills`,
@@ -152,7 +158,7 @@ database without the column the collector writes the events without it
 | `hlstats_Events_Frags` | kill (not teamkill) | `killerId`, `victimId`, `weapon`, `headshot`, `map` (`hlstats_Maps.id`, a number, not the name); `pos_x`, `pos_y`, `pos_z` (killer) and `pos_victim_x`, `pos_victim_y`, `pos_victim_z` (victim): map units (Hammer units), rounded, NULL when no position is logged. Sources: the kill line (CS:GO `[x y z]`; TF2 and the AMX plugin on cstrike `(attacker_position ...)`) or the SourceMod plugin's `located on "kill"` line right after the kill (CS:S, DoD:S, HL2DM, Insurgency; `gamewe_log_locations` of the plugin). Teamkills (`hlstats_Events_Teamkills`) and suicides have no position columns; their positions are only in `hlstats_Events_Locations`. Heatmap of a map: `SELECT FLOOR(pos_victim_x / 64.0) AS gx, FLOOR(pos_victim_y / 64.0) AS gy, COUNT(*) AS n FROM hlstats_Events_Frags WHERE map = ? AND pos_victim_x IS NOT NULL GROUP BY 1, 2` (killer positions: `pos_x`, `pos_y`); uses the index on `map`. |
 | `hlstats_Events_Teamkills` | teamkill (same, non-neutral team) | `killerId`, `victimId`, `weapon` |
 | `hlstats_Events_Suicides` | suicide (also a kill with killer = victim) | `weapon` |
-| `hlstats_Events_PlayerActions` | player action defined in `hlstats_Actions` (also the generated `headshot` and `kill_streak_<n>`) | `actionId`, `bonus` |
+| `hlstats_Events_PlayerActions` | player action defined in `hlstats_Actions` (also the generated `headshot` and `kill_streak_<n>`) | `actionId`, `bonus`, `log_only` (1: only for the event lists, see "Bots") |
 | `hlstats_Events_PlayerPlayerActions` | `triggered "…" against "…"` with an action defined for player-vs-player | `playerId`, `victimId`, `actionId`, `bonus` |
 | `hlstats_Events_TeamBonuses` | round won, if the trigger has a non-zero `reward_team` | one row per winning player: `actionId`, `bonus` |
 | `hlstats_Events_ChangeRole` | `changed role to` (plugin) | `role` = `hlstats_Roles.roleId` |
@@ -317,7 +323,7 @@ ends). For each award of the game:
 | `W` | a weapon code (`ak47`, `knife`, ...) | kills with that weapon (`hlstats_Events_Frags` joined to `hlstats_Weapons` by id, same game) |
 | `W` | `latency` | the **lowest** average ping of the day in `hlstats_Events_Latency` (samples of 0 left out), among players with at least 30 samples of the day (about 30 minutes online); `winner_count` = the average in ms, rounded (at least 1). Needs RCON status (`features.rcon_status`). |
 | `O` or `W` | `most_kills`, `most_deaths`, `most_suicides`, `most_headshots`, `most_damage`, `most_improved`, `longest_playtime`, `longest_killstreak`, and HLstatsX:CE's `teamkills` (type `W` there) | the `hlstats_Players_History` row of that date (history days are days of the same time zone as the awards): `kills`, `deaths`, `suicides`, `headshots`, `damage`, `skill_change`, `connection_time` (seconds), `kill_streak`; `teamkills` `team_kills` |
-| `O` | any other code | actions with that code (`hlstats_Events_PlayerActions` joined to `hlstats_Actions`, same game) |
+| `O` | any other code | actions with that code (`hlstats_Events_PlayerActions` joined to `hlstats_Actions`, same game; `log_only` rows do not count) |
 
 Only ranked players (`hideranking = 0`) win; ties go to the lowest
 `playerId`; a value of 0 wins nothing (no row). Results:

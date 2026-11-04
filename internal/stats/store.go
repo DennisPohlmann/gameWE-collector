@@ -1067,6 +1067,19 @@ func (s *Store) RecordWorldDeath(ctx context.Context, ev Ev, p Live, weaponCode 
 	return s.history(ctx, ev, p, hist{deaths: 1})
 }
 
+// RecordLogOnlyAction stores a player action for the event lists only: no
+// points and no counts (hlstats_Players_Actions, hlstats_Actions.count), and
+// log_only keeps the row out of the awards. Codes the game does not define
+// are ignored.
+func (s *Store) RecordLogOnlyAction(ctx context.Context, ev Ev, p Live, code string) error {
+	a, ok, err := s.action(ctx, ev.Srv.Game, code)
+	if err != nil || !ok || !a.ForPlayer {
+		return err
+	}
+	return s.run(ctx, s.ev(ctx, step{`INSERT INTO hlstats_Events_PlayerActions (timestamp_id, game_id, server_id, map, playerId, actionId, bonus, log_only) VALUES (?, ?, ?, ?, ?, ?, 0, 1)`,
+		[]any{ev.ts(), ev.Srv.GameID, ev.Srv.ID, ev.MapID, p.ID, a.ID}}))
+}
+
 // RecordPlayerAction scores a player action (e.g. Planted_The_Bomb) with
 // reward_player from hlstats_Actions and returns the skill change. Actions
 // that are not defined for the game are not stored.

@@ -48,6 +48,7 @@ type Store interface {
 	RecordSuicide(ctx context.Context, ev stats.Ev, p stats.Live, weapon string) (int, error)
 	RecordWorldDeath(ctx context.Context, ev stats.Ev, p stats.Live, weapon string) error
 	RecordPlayerAction(ctx context.Context, ev stats.Ev, p stats.Live, code string) (int, error)
+	RecordLogOnlyAction(ctx context.Context, ev stats.Ev, p stats.Live, code string) error
 	RecordPlayerPlayerAction(ctx context.Context, ev stats.Ev, p, victim stats.Live, code string, noSkill bool) (int, int, error)
 	RecordRoundWin(ctx context.Context, ev stats.Ev, team, trigger string, winners, losers []stats.Live, survivors map[int64]bool) (int, error)
 	AddWeaponStats(ctx context.Context, ev stats.Ev, p stats.Live, weapon string, w stats.WeaponStats) error
@@ -213,6 +214,7 @@ type playerState struct {
 	suicides, shots, hits    int
 	skillDelta               int
 	killStreak, deathStreak  int // kills in this life, deaths in a row
+	logStreak                int // kills in this life for the event log only (see logOnly in kill)
 	bestKill, bestDeath      int // best streaks of the visit
 	weaponKills              map[string]int
 	startRank                int        // rank when the visit started, 0 if unknown
@@ -1358,11 +1360,15 @@ func (p *Processor) idle(ctx context.Context, now time.Time) error {
 // streak ends, if the game defines it.
 func (p *Processor) endStreak(ctx context.Context, ev stats.Ev, st *playerState) error {
 	n := min(st.killStreak, MaxKillStreak)
-	st.killStreak = 0
-	if n < 2 {
-		return nil
+	all := min(st.killStreak+st.logStreak, MaxKillStreak)
+	st.killStreak, st.logStreak = 0, 0
+	if n >= 2 {
+		return p.playerAction(ctx, ev, st, fmt.Sprintf("kill_streak_%d", n))
 	}
-	return p.playerAction(ctx, ev, st, fmt.Sprintf("kill_streak_%d", n))
+	if all >= 2 {
+		return p.store.RecordLogOnlyAction(ctx, ev, st.live, fmt.Sprintf("kill_streak_%d", all))
+	}
+	return nil
 }
 
 // endStreaks ends the kill streaks of all players (round end, map change).
@@ -1469,6 +1475,9 @@ func (p *Processor) kill(ctx context.Context, ev stats.Ev, e logparse.Kill) erro
 	noKillCount := !botStats && stats.IsBot(v.live.UniqueID)
 	noDeathCount := !botStats && stats.IsBot(k.live.UniqueID)
 	noCareerKill := !teamkill && stats.IsBot(v.live.UniqueID) && !set.BotKills(game)
+	// Bots give no points but their kills count: headshot and kill streak
+	// still show in the event log, and nowhere else (log_only).
+	logOnly := noSkill && !set.BotPoints(game) && set.BotKills(game)
 	if !teamkill {
 		// The victim's life, and with it the kill streak, ends.
 		if err := p.endStreak(ctx, ev, v); err != nil {
@@ -1476,6 +1485,8 @@ func (p *Processor) kill(ctx context.Context, ev stats.Ev, e logparse.Kill) erro
 		}
 		if !noSkill {
 			k.killStreak = k.killStreak + 1
+		} else if logOnly {
+			k.logStreak++
 		}
 		if !noKillCount {
 			k.deathStreak = 0
@@ -1541,6 +1552,9 @@ func (p *Processor) kill(ctx context.Context, ev stats.Ev, e logparse.Kill) erro
 			k.headshotLines--
 		} else {
 			k.headshotKills++ // the plugin's line may follow
+		}
+		if logOnly {
+			return p.store.RecordLogOnlyAction(ctx, ev, k.live, "headshot")
 		}
 		if noSkill {
 			return nil
