@@ -27,6 +27,7 @@ type l4dTag struct {
 
 var (
 	reL4DTag    = regexp.MustCompile(`"([^"]*?)<(-?\d+)><([^<>]*)><([^<>]*)>((?:<[^<>"]*>)+)"`)
+	reL4DIdentity = regexp.MustCompile(`<(-?\d+)><(STEAM_[^<>]*|\[U:[^<>]*|\d+:\d+|BOT)><([^<>]*)>`)
 	reL4DRole   = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{0,31}$`)
 	reL4DPos    = regexp.MustCompile(`<setpos_exact (-?\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?)[;>]`)
 	reL4DIncap  = regexp.MustCompile(`^` + pref + ` was incapped by ` + pref + ` with "([^"]*)"(.*)$`)
@@ -47,10 +48,19 @@ func l4dLine(line string) (string, []l4dTag) {
 	var tags []l4dTag
 	line = reL4DTag.ReplaceAllStringFunc(line, func(s string) string {
 		m := reL4DTag.FindStringSubmatch(s)
-		name, steam, team, extra := m[1], m[3], m[4], m[5]
+		name, uid, steam, team, extra := m[1], m[2], m[3], m[4], m[5]
+		// The extra fields never hold another identity, but a player name can
+		// hold a fake one before the real fields: the last identity counts.
+		if all := reL4DIdentity.FindAllStringSubmatchIndex(extra, -1); all != nil {
+			last := all[len(all)-1]
+			name += "<" + uid + "><" + steam + "><" + team + ">" + extra[:last[0]]
+			uid, steam, team, extra = extra[last[2]:last[3]], extra[last[4]:last[5]], extra[last[6]:last[7]], extra[last[1]:]
+		}
 		t := l4dTag{}
-		if i := strings.Index(extra[1:], ">"); i >= 0 && reL4DRole.MatchString(extra[1:i+1]) {
-			t.role = extra[1 : i+1] // a known form only: each new role is a hlstats_Roles row (tinyint id)
+		if extra != "" {
+			if i := strings.Index(extra[1:], ">"); i >= 0 && reL4DRole.MatchString(extra[1:i+1]) {
+				t.role = extra[1 : i+1] // a known form only: each new role is a hlstats_Roles row (tinyint id)
+			}
 		}
 		if p := reL4DPos.FindStringSubmatch(extra); p != nil {
 			t.pos = l4dPos(p[1:4])
@@ -64,7 +74,7 @@ func l4dLine(line string) (string, []l4dTag) {
 			}
 		}
 		tags = append(tags, t)
-		return `"` + name + "<" + m[2] + "><" + steam + "><" + team + `>"`
+		return `"` + name + "<" + uid + "><" + steam + "><" + team + `>"`
 	})
 	return line, tags
 }
