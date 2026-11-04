@@ -481,15 +481,16 @@ func Parse(html string) []Ban {
 	}
 }
 
-// ErrNotBanList: the page has no bans and is not a page of SourceBans (an
-// error or maintenance page), so it says nothing about the bans.
+// ErrNotBanList: the page has no bans and is not the ban list (an error or
+// maintenance page, or another page of SourceBans), so it says nothing about
+// the bans.
 var ErrNotBanList = errors.New("the answer is not a SourceBans ban list page")
 
-// isListPage reports whether a page without bans is a page of the ban list:
-// every template links its own list and has the search form.
+// isListPage reports whether a page without bans is the ban list: it has the
+// advanced search. The menu links p=banlist on every page of SourceBans, and its
+// start page links advSearch too, so neither says anything.
 func isListPage(html string) bool {
-	l := strings.ToLower(html)
-	return strings.Contains(l, "p=banlist") || strings.Contains(l, "advsearch") || strings.Contains(l, "advanced search")
+	return strings.Contains(strings.ToLower(html), "advanced search")
 }
 
 // HasSteamIDs reports whether the page shows Steam IDs at all.

@@ -271,10 +271,12 @@ func TestLookup(t *testing.T) {
 			http.Redirect(w, r, "/elsewhere", http.StatusFound)
 		case "STEAM_0:0:2":
 			w.Write([]byte(`<div class="card">STEAM_0:0:2 banned</div>`))
+		case "STEAM_0:0:4": // another page of SourceBans: the menu and links to searches, no list
+			w.Write([]byte(`<a href="index.php?p=banlist">Bans</a><a href="index.php?p=banlist&advSearch=x">x</a> Total Bans: 1`))
 		case "STEAM_0:0:3": // as the real list: no ban, the search in a link
-			w.Write([]byte(`<a href="index.php?p=banlist&hideinactive=true&amp;advSearch=STEAM_0:0:3&amp;advType=steamid">Hide inactive</a> Total Bans: 0`))
+			w.Write([]byte(`<a href="index.php?p=banlist&hideinactive=true&amp;advSearch=STEAM_0:0:3&amp;advType=steamid">Hide inactive</a> Total Bans: 0 Advanced search`))
 		default:
-			w.Write([]byte(`<a href="index.php?p=banlist">Bans</a><p>No bans</p>`))
+			w.Write([]byte(`<a href="index.php?p=banlist">Bans</a><h3>Advanced search</h3><p>No bans</p>`))
 		}
 	}))
 	defer srv.Close()
@@ -299,6 +301,9 @@ func TestLookup(t *testing.T) {
 	}
 	if bans, err := c.Lookup(ctx, base, "0:3"); err != nil || len(bans) != 0 {
 		t.Errorf("no ban, search in a link: %+v %v", bans, err)
+	}
+	if _, err := c.Lookup(ctx, base, "0:4"); !errors.Is(err, ErrNotBanList) {
+		t.Errorf("another page: %v", err)
 	}
 	if _, err := c.Lookup(ctx, base, "BOT"); err == nil {
 		t.Error("bot looked up")

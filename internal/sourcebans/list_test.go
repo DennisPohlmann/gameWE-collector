@@ -80,7 +80,7 @@ func TestList(t *testing.T) {
 }
 
 func TestListEmptyAndUnknown(t *testing.T) {
-	body := `<a href="index.php?p=banlist">Bans</a><p>No bans</p>`
+	body := `<a href="index.php?p=banlist">Bans</a><h3>Advanced search</h3><p>No bans</p>`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(body)) }))
 	defer srv.Close()
 	c := &Client{AllowPrivate: true}
