@@ -36,7 +36,7 @@ gamewe reset -list and gamewe inactive -list are the same with -type.
 -o json|yaml|csv|tsv|name writes the list as a document.`
 
 var (
-	jobTypes    = []string{stats.JobReset, stats.JobScheduledReset, stats.JobInactive, stats.JobAwards}
+	jobTypes    = []string{stats.JobReset, stats.JobScheduledReset, stats.JobInactive, stats.JobAwards, stats.JobDeletePlayer}
 	jobStatuses = []string{stats.JobPending, stats.JobRunning, stats.JobDone, stats.JobFailed}
 )
 

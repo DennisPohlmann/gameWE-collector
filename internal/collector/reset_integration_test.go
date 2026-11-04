@@ -397,3 +397,46 @@ func TestIntegrationHeartbeatDuringJob(t *testing.T) {
 		t.Errorf("version written %d times, want 1", n)
 	}
 }
+
+// The erasure of a player: all rows of the player and the kills shared with
+// them go, the opponent and the other ranking stay, a wrong ranking is refused.
+func TestIntegrationDeletePlayerJob(t *testing.T) {
+	db := testDB(t)
+	hub, store, _ := resetFixture(t, db)
+	defer hub.Close(context.Background())
+	flush(t, hub)
+	ctx := context.Background()
+	var id int
+	if err := db.QueryRowContext(ctx, db.Q(`SELECT p.playerId FROM hlstats_Players p
+		JOIN hlstats_PlayerNames n ON n.playerId = p.playerId WHERE p.game = 'css' AND n.name = 'A'`)).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	jobs := &Jobs{Store: store, Hub: hub, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	if _, err := jobs.deletePlayer(ctx, "tf", fmt.Sprint(id)); err == nil {
+		t.Error("deleted a player through another ranking")
+	}
+	if _, err := jobs.deletePlayer(ctx, "css", "x"); err == nil {
+		t.Error("accepted a bad player id")
+	}
+	if _, err := jobs.deletePlayer(ctx, "css", fmt.Sprint(id)); err != nil {
+		t.Fatal(err)
+	}
+	for _, sql := range []string{
+		`SELECT COUNT(*) FROM hlstats_Players WHERE playerId = ?`,
+		`SELECT COUNT(*) FROM hlstats_PlayerUniqueIds WHERE playerId = ?`,
+		`SELECT COUNT(*) FROM hlstats_PlayerNames WHERE playerId = ?`,
+		`SELECT COUNT(*) FROM hlstats_Events_PlayerActions WHERE playerId = ?`,
+		`SELECT COUNT(*) FROM hlstats_Events_Frags WHERE killerId = ?`,
+		`SELECT COUNT(*) FROM hlstats_Events_Frags WHERE victimId = ?`,
+	} {
+		if n := q(t, db, sql, id); n != 0 {
+			t.Errorf("%s: %d rows left", sql, n)
+		}
+	}
+	if n := q(t, db, `SELECT COUNT(*) FROM hlstats_Players WHERE game = 'css'`); n != 1 {
+		t.Errorf("css players left: %d, want the opponent", n)
+	}
+	if n := q(t, db, `SELECT COUNT(*) FROM hlstats_Players WHERE game = 'tf'`); n != 2 {
+		t.Errorf("tf players left: %d", n)
+	}
+}

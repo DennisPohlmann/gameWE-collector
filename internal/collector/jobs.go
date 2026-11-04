@@ -564,6 +564,21 @@ func (j *Jobs) do(ctx context.Context, job stats.Job) {
 		j.finish(ctx, job, stats.JobDone, text)
 		return
 	}
+	if job.Type == stats.JobDeletePlayer {
+		res, err := j.deletePlayer(ctx, job.Game, job.Mode)
+		if err != nil {
+			j.Log.Error("jobs: deleting a player failed", "job", job.ID, "game", job.Game, "player", job.Mode, "err", err)
+			msg := err.Error()
+			if len(res) > 0 {
+				msg += "; done before: " + stats.FormatCounts(res)
+			}
+			j.finish(ctx, job, stats.JobFailed, msg)
+			return
+		}
+		j.Log.Info("jobs: player deleted", "job", job.ID, "game", job.Game, "player", job.Mode, "by", job.RequestedBy)
+		j.finish(ctx, job, stats.JobDone, stats.FormatCounts(res))
+		return
+	}
 	if job.Type != stats.JobReset {
 		j.finish(ctx, job, stats.JobFailed, fmt.Sprintf("unknown job type %q", job.Type))
 		return
@@ -635,8 +650,23 @@ func (j *Jobs) reset(ctx context.Context, game, mode string) ([]stats.TableCount
 	return j.paused(ctx, game, mode, func() ([]stats.TableCount, error) { return j.Store.Reset(ctx, game, mode) })
 }
 
-// paused runs do under the job lock while the servers of game are paused,
-// and clears their live view afterwards.
+// deletePlayer erases one player with the servers of the ranking paused, so
+// that nothing is written for the player meanwhile.
+func (j *Jobs) deletePlayer(ctx context.Context, game, id string) ([]stats.TableCount, error) {
+	playerID, err := strconv.ParseInt(id, 10, 64)
+	if err != nil || playerID <= 0 {
+		return nil, fmt.Errorf("player id %q: must be a number", id)
+	}
+	switch ok, err := j.Store.PlayerInGame(ctx, playerID, game); {
+	case err != nil:
+		return nil, err
+	case !ok:
+		return nil, fmt.Errorf("no player %d in ranking %s", playerID, game)
+	}
+	return j.pausedGame(ctx, game, func() ([]stats.TableCount, error) { return j.Store.DeletePlayer(ctx, playerID) })
+}
+
+// paused checks the reset mode and the game, then runs do as pausedGame.
 func (j *Jobs) paused(ctx context.Context, game, mode string, do func() ([]stats.TableCount, error)) ([]stats.TableCount, error) {
 	mode, err := stats.ResetMode(mode)
 	if err != nil {
@@ -645,6 +675,12 @@ func (j *Jobs) paused(ctx context.Context, game, mode string, do func() ([]stats
 	if _, err := j.Store.ResetCounts(ctx, game, mode); err != nil { // checks the game before pausing
 		return nil, err
 	}
+	return j.pausedGame(ctx, game, do)
+}
+
+// pausedGame runs do under the job lock while the servers of game are paused,
+// and clears their live view afterwards.
+func (j *Jobs) pausedGame(ctx context.Context, game string, do func() ([]stats.TableCount, error)) ([]stats.TableCount, error) {
 	release, err := j.lock(ctx)
 	if err != nil {
 		return nil, err

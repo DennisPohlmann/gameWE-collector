@@ -25,12 +25,14 @@ const (
 // Job types: a ranking reset (game and mode), the move of inactive players
 // (features.inactive_players; no game, no mode), the scheduled reset of a
 // ranking (game; hall of fame first, mode from its schedule), the daily
-// awards (features.daily_awards; no game, the day YYYY-MM-DD as mode).
+// awards (features.daily_awards; no game, the day YYYY-MM-DD as mode), the
+// erasure of one player (the player's ranking as game, the player id as mode).
 const (
 	JobReset          = "reset"
 	JobInactive       = "inactive"
 	JobScheduledReset = "scheduled-reset"
 	JobAwards         = "awards"
+	JobDeletePlayer   = "delete-player"
 )
 
 // JobBySchedule is requested_by of the jobs the collector queues itself

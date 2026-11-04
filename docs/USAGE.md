@@ -471,6 +471,7 @@ asks first, `--dry-run` shows what it would do, `--force` does not ask):
 | move inactive players (`features.inactive_players`) | daily at `time` | `gamewe inactive` |
 | bans of all known players into `hlstats_Bans` (`features.bans_sync`; needs Steam and the SourceBans list besides the database) | every minute, each account every `steam_recheck`, the list every `sourcebans.interval` | `gamewe bans` (one complete pass) |
 | ranking reset queued by the web admin | every 10 s | `gamewe reset GAME -mode ... --force` ([below](#resetting-a-ranking)) |
+| delete a player's data, queued by the web admin (level 100, for erasure requests): pauses the ranking's servers; a kill shared with another player goes too, that player's totals stay; whoever plays again is recorded anew | every 10 s | - |
 | scheduled ranking reset with the hall of fame, when a period of a ranking's schedule has ended | checked every minute | `gamewe halloffame run GAME` ([below](#scheduled-resets-and-the-hall-of-fame)) |
 | delete finished jobs older than 30 days | hourly | part of `gamewe db purge -older-than DAYS` |
 | server info `A2S_INFO` (`features.server_info`) | every 5 min | `gamewe serverinfo [-server ...]` |
