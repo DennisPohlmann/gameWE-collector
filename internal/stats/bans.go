@@ -119,11 +119,11 @@ func (s *Store) CheckedBan(ctx context.Context, id int64, now time.Time) error {
 	return s.run(ctx, step{`UPDATE hlstats_Players_Bans SET checked_at = ? WHERE id = ?`, []any{now.Unix(), id}})
 }
 
-// EndBan marks the ban as ended (expired or lifted) and, when the record
-// took the player out of the ranking and no other running ban of the
-// player did, puts the player back (hideranking 2 to 0; a player an admin
-// hid meanwhile, hideranking 1, stays hidden). It returns whether the
-// player is back in the ranking.
+// EndBan marks the ban as ended (expired or lifted). When the record took the
+// player out of the ranking, another running ban of the player takes that
+// over; only with none left the player is put back (hideranking 2 to 0; a
+// player an admin hid meanwhile, hideranking 1, stays hidden). It returns
+// whether the player is back in the ranking.
 func (s *Store) EndBan(ctx context.Context, b PlayerBan, now time.Time) (bool, error) {
 	if err := s.run(ctx, step{`UPDATE hlstats_Players_Bans SET active = 0, ended_at = ? WHERE id = ? AND active = 1`,
 		[]any{now.Unix(), b.ID}}); err != nil {
@@ -132,13 +132,12 @@ func (s *Store) EndBan(ctx context.Context, b PlayerBan, now time.Time) (bool, e
 	if !b.Hid {
 		return false, nil
 	}
-	var others int
-	if err := s.queryRow(ctx, `SELECT COUNT(*) FROM hlstats_Players_Bans WHERE player_id = ? AND active = 1 AND hid = 1`,
-		b.PlayerID).Scan(&others); err != nil {
+	var other sql.NullInt64
+	if err := s.queryRow(ctx, `SELECT MIN(id) FROM hlstats_Players_Bans WHERE player_id = ? AND active = 1`, b.PlayerID).Scan(&other); err != nil {
 		return false, err
 	}
-	if others > 0 {
-		return false, nil
+	if other.Valid {
+		return false, s.run(ctx, step{`UPDATE hlstats_Players_Bans SET hid = 1 WHERE id = ?`, []any{other.Int64}})
 	}
 	h, err := s.hideranking(ctx, b.PlayerID)
 	if err != nil || h != 2 {
