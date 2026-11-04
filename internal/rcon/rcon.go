@@ -22,6 +22,7 @@ const (
 	typeAuth     = 3
 
 	maxPacket = 4096 + 10
+	maxOutput = 1 << 20 // as the GoldSrc client
 )
 
 var ErrAuth = errors.New("rcon authentication failed (wrong rcon_password?)")
@@ -93,6 +94,9 @@ func (c *Client) connect() error {
 		c.closeLocked()
 		return err
 	}
+	// One deadline for the whole login, and in exec for the whole answer: a
+	// server that keeps sending must not hold the client longer than Timeout.
+	c.conn.SetReadDeadline(time.Now().Add(c.Timeout))
 	// The server answers with an empty RESPONSE_VALUE followed by
 	// AUTH_RESPONSE; its id is -1 if the password was wrong.
 	for {
@@ -125,6 +129,7 @@ func (c *Client) exec(cmd string) (string, error) {
 	if err := c.write(end, typeResponse, ""); err != nil {
 		return "", err
 	}
+	c.conn.SetReadDeadline(time.Now().Add(c.Timeout))
 	var out []byte
 	for {
 		rid, typ, body, err := c.read()
@@ -135,6 +140,9 @@ func (c *Client) exec(cmd string) (string, error) {
 		case rid == end:
 			return string(out), nil
 		case rid == id && typ == typeResponse:
+			if len(out)+len(body) > maxOutput {
+				return "", fmt.Errorf("rcon: answer larger than %d bytes", maxOutput)
+			}
 			out = append(out, body...)
 		}
 	}
@@ -163,7 +171,6 @@ func (c *Client) write(id, typ int32, body string) error {
 }
 
 func (c *Client) read() (id, typ int32, body []byte, err error) {
-	c.conn.SetReadDeadline(time.Now().Add(c.Timeout))
 	var hdr [12]byte
 	if _, err = io.ReadFull(c.r, hdr[:]); err != nil {
 		return
