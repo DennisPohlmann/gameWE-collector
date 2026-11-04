@@ -153,7 +153,10 @@ func (c *Client) Lookup(ctx context.Context, base, uniqueID string) ([]Ban, erro
 			out = append(out, b)
 		}
 	}
-	if len(out) == 0 && strings.Contains(html, "STEAM_") && len(Parse(html)) == 0 && HasSteamIDs(html) {
+	// The page links its own search, with the Steam ID searched for, also when
+	// that player has no ban: that alone is no sign of an unknown template.
+	shown := strings.ReplaceAll(html, "advSearch=STEAM_0:"+acc, "")
+	if len(out) == 0 && len(Parse(html)) == 0 && HasSteamIDs(shown) {
 		return nil, ErrUnknownTemplate
 	}
 	if len(out) == 0 && len(Parse(html)) == 0 && !isListPage(html) {
