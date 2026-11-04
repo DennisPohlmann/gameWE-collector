@@ -74,6 +74,9 @@ func sourceConfig(d config.Database, from string, getenv func(string) string) (c
 		}
 	} else if p := getenv(fromPasswordEnv); p != "" {
 		src.Password = p
+	} else if src.Host != d.Host || src.Port != d.Port {
+		// The collector's password must not go to another server.
+		return src, fmt.Errorf("-from: another server needs its own password in the environment variable %s", fromPasswordEnv)
 	}
 	return src, nil
 }

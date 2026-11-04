@@ -105,7 +105,7 @@ sudo -u gamewe /opt/gamewe/collector/bin/gamewe db convert -from hlstatsx -n
 
 `-from` names the CE database: a name (on the server of the gameWE database,
 with the collector's user) or `mysql://user@host:port/name` for another
-server or user; its password goes into `GAMEWE_FROM_PASSWORD`, never on the
+server or user; its password goes into `GAMEWE_FROM_PASSWORD` (required for another server, also without a user), never on the
 command line. TLS and timeouts are those of `database.*`.
 
 `-source-prefix` is the `DB_PREFIX` of CE when it is not `hlstats` (CE's

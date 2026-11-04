@@ -19,9 +19,12 @@ func TestSourceConfig(t *testing.T) {
 	if err != nil || s.Name != "hlstatsx_ce" || s.Host != "db.example" || s.Port != 3307 || s.User != "gamewe" || s.Password != "colpw" {
 		t.Errorf("name: %+v, %v", s, err)
 	}
-	s, err = sourceConfig(d, "mysql://old.example/hlstatsx", getenv)
-	if err != nil || s.Host != "old.example" || s.Port != 3306 || s.Name != "hlstatsx" || s.User != "gamewe" || s.Password != "colpw" {
-		t.Errorf("url without user: %+v, %v", s, err)
+	if _, err = sourceConfig(d, "mysql://old.example/hlstatsx", getenv); err == nil || !strings.Contains(err.Error(), fromPasswordEnv) {
+		t.Errorf("url without user, another server: the collector's password must not go there: %v", err)
+	}
+	s, err = sourceConfig(d, "mysql://db.example:3307/hlstatsx", getenv)
+	if err != nil || s.Host != "db.example" || s.Port != 3307 || s.Name != "hlstatsx" || s.User != "gamewe" || s.Password != "colpw" {
+		t.Errorf("url without user, same server: %+v, %v", s, err)
 	}
 	if _, err := sourceConfig(d, "mysql://ce@old.example:3310/hlstatsx", getenv); err == nil || !strings.Contains(err.Error(), fromPasswordEnv) {
 		t.Errorf("user without password: %v", err)
