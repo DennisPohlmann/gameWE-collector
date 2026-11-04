@@ -49,8 +49,8 @@ jobs:
   test:
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
       - name: go vet
@@ -59,7 +59,7 @@ jobs:
         run: go test ./...
       # The web's gamewe_* option keys must be known to the collector
       # (settings.WebKeys), or gamewe check reports them as typos.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: DennisPohlmann/gameWE-web
           path: gamewe-web
@@ -119,8 +119,8 @@ jobs:
       GAMEWE_TEST_DB_NAME: gamewe
       GAMEWE_TEST_DB_WIPE: 'yes'
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
       - name: init databases
@@ -213,8 +213,8 @@ jobs:
   image-scan:
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
       - uses: ./.github/actions/setup-trivy
@@ -222,8 +222,8 @@ jobs:
         run: trivy config --severity HIGH,CRITICAL --exit-code 1 .
       - name: GeoIP database (DB-IP City Lite, CC BY 4.0)
         run: make geoip
-      - uses: docker/setup-buildx-action@v4
-      - uses: docker/build-push-action@v7
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           platforms: linux/amd64
@@ -248,10 +248,10 @@ jobs:
         run: |
           echo "::error::a release can only be made from main, not from $GITHUB_REF"
           exit 1
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0 # all tags and commits since the last release
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
       - name: semantic-release
@@ -282,16 +282,16 @@ jobs:
     env:
       RELEASE: ${{ needs.release.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.release.outputs.version != '' && format('v{0}', needs.release.outputs.version) || github.sha }}
           fetch-depth: 0 # tags, for the version
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
       - name: make package
         run: make package
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: gamewe-collector-linux-amd64
           path: |
@@ -319,7 +319,7 @@ jobs:
     env:
       RELEASE: ${{ needs.release.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: v${{ needs.release.outputs.version }}
       - uses: ./.github/actions/setup-helm
@@ -352,11 +352,11 @@ jobs:
       RELEASE: ${{ needs.release.outputs.version }}
       PUBLISH: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule' || needs.release.outputs.version != '' }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.release.outputs.version != '' && format('v{0}', needs.release.outputs.version) || github.sha }}
           fetch-depth: 0 # tags, for the version
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
       - name: GeoIP database (DB-IP City Lite, CC BY 4.0)
@@ -367,15 +367,15 @@ jobs:
           v=$(make -s version)
           if [ -z "$RELEASE" ]; then v="$v-edge+${GITHUB_SHA::7}"; fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
-      - uses: docker/setup-buildx-action@v4
-      - uses: docker/login-action@v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         if: env.PUBLISH == 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ghcr.io/dennispohlmann/gamewe-collector
           tags: |
@@ -384,7 +384,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}},value=v${{ env.RELEASE }},enable=${{ env.RELEASE != '' }}
             type=raw,value=latest,enable=${{ env.RELEASE != '' }}
           flavor: latest=false
-      - uses: docker/build-push-action@v7
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           platforms: linux/amd64

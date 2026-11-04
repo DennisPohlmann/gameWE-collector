@@ -28,7 +28,7 @@ jobs:
       issues: write
       packages: read # the images in ghcr.io are private
     steps:
-      - uses: actions/checkout@v7 # .trivyignore and the setup action
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # .trivyignore and the setup action # v7
       - uses: ./.github/actions/setup-trivy
       - name: scan latest and edge
         env:
@@ -41,11 +41,11 @@ jobs:
             trivy image --skip-db-update --scanners vuln --ignore-unfixed \
               --severity HIGH,CRITICAL --format json --output "fixable-$tag.json" "$IMAGE:$tag"
           done
-      - uses: github/codeql-action/upload-sarif@v4
+      - uses: github/codeql-action/upload-sarif@1fc58d04a4d4374f921bdac573c3811c240f9c26 # v4
         with:
           sarif_file: trivy-latest.sarif
           category: image-latest
-      - uses: github/codeql-action/upload-sarif@v4
+      - uses: github/codeql-action/upload-sarif@1fc58d04a4d4374f921bdac573c3811c240f9c26 # v4
         with:
           sarif_file: trivy-edge.sarif
           category: image-edge
