@@ -372,7 +372,16 @@ func (p *Processor) Handle(ctx context.Context, line string, now time.Time) erro
 		}
 		p.markConnected(e.Player.Key())
 		if p.VAC != nil && !e.Player.IsBot() {
-			p.VAC.Connected(p.srv.info, e.Player.UserID, UniqueID(e.Player))
+			// User id 0 records the ban but kicks nobody: the line's id is
+			// held by another player we track, so it is not this account's.
+			uid := e.Player.UserID
+			for key, other := range p.srv.players {
+				if other.userID == uid && key != e.Player.Key() {
+					uid = 0
+					break
+				}
+			}
+			p.VAC.Connected(p.srv.info, uid, UniqueID(e.Player))
 		}
 		st.locatedIP = netip.Addr{} // a new connect: store the location again
 		return p.locate(ctx, ev, st, ip)
@@ -1151,6 +1160,11 @@ func (p *Processor) disconnect(ctx context.Context, ev stats.Ev, ref logparse.Pl
 // disconnect but without an hlstats_Events_Disconnects row and without a
 // kill streak reward. The connection time is counted up to now.
 func (p *Processor) Tick(ctx context.Context, now time.Time) error {
+	for key, t := range p.srv.gone {
+		if now.Sub(t) >= goneWindow {
+			delete(p.srv.gone, key)
+		}
+	}
 	if err := p.flushKill(ctx); err != nil {
 		return err
 	}
@@ -1491,7 +1505,9 @@ func (p *Processor) kill(ctx context.Context, ev stats.Ev, e logparse.Kill) erro
 	}
 	if !noKillCount { // the session counts, as stored
 		k.kills++
-		k.weaponKills[e.Weapon]++
+		if _, known := k.weaponKills[e.Weapon]; known || len(k.weaponKills) < maxHitWeapons {
+			k.weaponKills[e.Weapon]++
+		}
 		k.bestKill = max(k.bestKill, k.killStreak)
 	}
 	if !noDeathCount {
