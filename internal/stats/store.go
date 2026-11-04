@@ -286,6 +286,9 @@ func (s *Store) run(ctx context.Context, steps ...step) error {
 	return nil
 }
 
+// cacheMax bounds the entries of Store.cached.
+const cacheMax = 4096
+
 func (s *Store) cached(key string, load func() (any, error)) (any, error) {
 	s.mu.Lock()
 	c, ok := s.cache[key]
@@ -298,6 +301,10 @@ func (s *Store) cached(key string, load func() (any, error)) (any, error) {
 		return nil, err
 	}
 	s.mu.Lock()
+	// Keys come from log lines: at the limit start over, as the geo cache does.
+	if len(s.cache) >= cacheMax {
+		clear(s.cache)
+	}
 	s.cache[key] = cached{v, time.Now()}
 	s.mu.Unlock()
 	return v, nil
@@ -517,6 +524,7 @@ type Action struct {
 
 // action looks up an action; ok is false if the game has none with that code.
 func (s *Store) action(ctx context.Context, game, code string) (Action, bool, error) {
+	code = clip(code, 128) // hlstats_Actions.code; longer text from a log line matches nothing
 	v, err := s.cached("hlstats_Actions|"+game+"|"+code, func() (any, error) {
 		var a Action
 		var fp, fpp, ft string
@@ -549,6 +557,8 @@ func (s *Store) nameUse() string {
 // game, creating the player if needed. Players that were moved to
 // hlstats_PlayersInactive are moved back.
 func (s *Store) Player(ctx context.Context, ev Ev, uniqueID, name string) (id int64, skill int, err error) {
+	// As stored by newPlayer: a longer id from a log line would never be found.
+	uniqueID = clip(uniqueID, 64)
 	game := ev.Srv.Game
 	err = s.queryRow(ctx, `SELECT playerId FROM hlstats_PlayerUniqueIds WHERE uniqueId = ? AND game = ?`,
 		uniqueID, game).Scan(&id)
@@ -598,6 +608,12 @@ func (s *Store) newPlayer(ctx context.Context, ev Ev, uniqueID, name string) (in
 		// Another server created the same player at the same moment.
 		if err := s.run(ctx, step{`DELETE FROM hlstats_Players WHERE playerId = ?`, []any{id}}); err != nil {
 			return 0, 0, err
+		}
+		// The other server's row must exist now; else the insert was refused
+		// for another reason, which a retry would only repeat.
+		var existing int64
+		if err := s.queryRow(ctx, `SELECT playerId FROM hlstats_PlayerUniqueIds WHERE uniqueId = ? AND game = ?`, uniqueID, ev.Srv.Game).Scan(&existing); err != nil {
+			return 0, 0, fmt.Errorf("unique id %q was refused: %w", uniqueID, err)
 		}
 		return s.Player(ctx, ev, uniqueID, name)
 	}

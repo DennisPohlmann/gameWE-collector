@@ -6,6 +6,7 @@ package collector
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -96,5 +97,75 @@ func TestIntegrationPlayerBans(t *testing.T) {
 	}
 	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Players_Bans WHERE player_id = 21`); n != 1 {
 		t.Errorf("%d rows for 21, want 1", n)
+	}
+}
+
+// The fixes of the security audit: a second running ban keeps the player out
+// of the ranking whichever ends first, and a unique id over the column's 64
+// characters is found again instead of looping on insert and delete.
+func TestIntegrationBansAndLongIDs(t *testing.T) {
+	db := testDB(t)
+	exec := func(q string, args ...any) {
+		t.Helper()
+		if _, err := db.Exec(db.Q(q), args...); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	exec(`INSERT INTO hlstats_Players (playerId, game, game_id, skill, hideranking) VALUES (31, 'css', 1, 1000, 0)`)
+	exec(`INSERT INTO hlstats_PlayerUniqueIds (playerId, uniqueId, game) VALUES (31, '1:31', 'css')`)
+	store := stats.NewStore(db, settings.NewLive(settings.Defaults()))
+	ctx := context.Background()
+	now := time.Date(2026, 10, 26, 18, 0, 0, 0, time.UTC)
+	for i, kind := range []string{stats.BanTypeSourceBans, stats.BanTypeVAC} {
+		if _, err := store.RecordBan(ctx, "css", "1:31", stats.Ban{Type: kind, Reason: "x", BannedAt: now.Add(time.Duration(i) * time.Minute)}, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var mine []stats.PlayerBan
+	for _, kind := range []string{stats.BanTypeSourceBans, stats.BanTypeVAC} {
+		running, err := store.RunningBans(ctx, kind)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, b := range running {
+			if b.PlayerID == 31 {
+				mine = append(mine, b)
+			}
+		}
+	}
+	if len(mine) != 2 {
+		t.Fatalf("running bans: %+v", mine)
+	}
+	hide := func() int {
+		return count(t, db, `SELECT hideranking FROM hlstats_Players WHERE playerId = ?`, 31)
+	}
+	for i := range mine {
+		if !mine[i].Hid {
+			continue
+		}
+		back, err := store.EndBan(ctx, mine[i], now)
+		if err != nil || back || hide() != 2 {
+			t.Fatalf("first end: back %v, %v, hideranking %d", back, err, hide())
+		}
+		other := mine[1-i]
+		other.Hid = true
+		back, err = store.EndBan(ctx, other, now)
+		if err != nil || !back || hide() != 0 {
+			t.Fatalf("last end: back %v, %v, hideranking %d", back, err, hide())
+		}
+	}
+
+	ev := stats.Ev{Srv: stats.Server{ID: 1, Game: "css"}, Time: now}
+	long := "1:" + strings.Repeat("7", 70)
+	id1, _, err := store.Player(ctx, ev, long, "n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id2, _, err := store.Player(ctx, ev, long, "n")
+	if err != nil || id1 != id2 {
+		t.Errorf("long id: %d then %d, %v", id1, id2, err)
+	}
+	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_PlayerUniqueIds WHERE game = 'css' AND uniqueId LIKE '1:777%'`); n != 1 {
+		t.Errorf("long id rows: %d", n)
 	}
 }
