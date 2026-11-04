@@ -272,7 +272,7 @@ func otherKey(k string) bool {
 			return gameCode(g)
 		}
 	}
-	for _, p := range []string{"gamewe_totp_", "gamewe_totpp_"} {
+	for _, p := range []string{"gamewe_totp_", "gamewe_totpp_", "gamewe_totps_"} {
 		if h, ok := strings.CutPrefix(k, p); ok {
 			return len(h) == 32 && strings.Trim(h, "0123456789abcdef") == ""
 		}
