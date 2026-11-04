@@ -151,6 +151,7 @@ type Listen struct {
 // ListenUDP is listen.udp.
 type ListenUDP struct {
 	Enabled       *bool  `yaml:"enabled"`
+	Source2       bool   `yaml:"source2"` // read UDP lines for Source 2 (CS2) rows
 	Address       string `yaml:"address"`
 	Port          int    `yaml:"port"`
 	PublicAddress string `yaml:"public_address"`

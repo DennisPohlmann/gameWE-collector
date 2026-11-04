@@ -17,6 +17,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -241,7 +242,7 @@ func writeTable(w io.Writer, f Format, t Table) error {
 		var b strings.Builder
 		for _, r := range rows {
 			if len(r) > 0 {
-				b.WriteString(oneLine(r[0]))
+				b.WriteString(Clean(oneLine(r[0])))
 				b.WriteByte('\n')
 			}
 		}
@@ -279,6 +280,23 @@ func writeTable(w io.Writer, f Format, t Table) error {
 	return cw.Error()
 }
 
+// Clean shows control characters as \xNN or \uNNNN, except tab and line
+// breaks: player names and server answers must not reach the operator's
+// terminal or a spreadsheet as escape sequences (C1 ones such as U+009B too).
+func Clean(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if r == '\t' || r == '\n' || r == '\r' || !unicode.IsControl(r) {
+			b.WriteRune(r)
+		} else if r < 0x100 {
+			fmt.Fprintf(&b, `\x%02x`, r)
+		} else {
+			fmt.Fprintf(&b, `\u%04x`, r)
+		}
+	}
+	return b.String()
+}
+
 // oneLine replaces tabs and line breaks (tsv, name) with spaces.
 func oneLine(s string) string {
 	return strings.Map(func(r rune) rune {
@@ -294,6 +312,7 @@ func oneLine(s string) string {
 // A value starting with = + - @ (or a tab / carriage return) that is not a
 // number gets a leading apostrophe.
 func cell(s string) string {
+	s = Clean(s)
 	if s == "" || !strings.ContainsRune("=+-@\t\r", rune(s[0])) {
 		return s
 	}

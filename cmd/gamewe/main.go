@@ -24,6 +24,7 @@ import (
 	"syscall"
 	"time"
 
+	"gamewe-collector/internal/output"
 	"gamewe-collector/internal/collector"
 	"gamewe-collector/internal/config"
 	"gamewe-collector/internal/database"
@@ -449,6 +450,7 @@ func runCmd(args []string) error {
 	hub.VAC = vacBlock
 	ls := cfg.Features.LogSecret
 	hub.Secret = collector.SecretConfig{Mode: secretMode(ls.Enabled)}
+	hub.Source2UDP = cfg.Listen.UDPConf != nil && cfg.Listen.UDPConf.Source2
 	if len(ls.Obsolete) > 0 {
 		log.Warn("features.log_secret: the automatic log secret (auto, interval) was removed and is ignored; set the secret per server with gamewe server set -logsecret or in the web admin, and the same sv_logsecret in server.cfg",
 			"ignored", strings.Join(ls.Obsolete, ", "))
@@ -997,7 +999,7 @@ func awardsCmd(args []string) error {
 		}
 		doc.Awards = append(doc.Awards, a)
 		if !structured() {
-			fmt.Printf("  %-5s %s %-20s %s\n", r.Game, r.Type, r.Code, winner)
+			fmt.Printf("  %-5s %s %-20s %s\n", r.Game, r.Type, r.Code, output.Clean(winner))
 		}
 	}
 	if structured() {
@@ -1109,7 +1111,7 @@ func rconCmd(args []string) error {
 			Output   string `json:"output"`
 		}{servers[0].ID, servers[0].Address, out})
 	}
-	fmt.Print(out)
+	fmt.Print(output.Clean(out))
 	if !strings.HasSuffix(out, "\n") {
 		fmt.Println()
 	}
@@ -1147,13 +1149,13 @@ func statusCmd(args []string) error {
 				if st, err = collector.ParseStatus(out); err == nil {
 					d.Hostname, d.Map, d.MaxPlayers = st.Hostname, st.Map, st.MaxPlayers
 					if text {
-						fmt.Printf("  hostname %q, map %s, %d players (%d max)\n", st.Hostname, st.Map, len(st.Players), st.MaxPlayers)
+						fmt.Printf("  hostname %q, map %s, %d players (%d max)\n", st.Hostname, output.Clean(st.Map), len(st.Players), st.MaxPlayers)
 					}
 					for _, p := range st.Players {
 						// as the text: no IP address
 						d.Players = append(d.Players, statusPlayer{p.UserID, p.Name, p.UniqueID, p.Ping})
 						if text {
-							fmt.Printf("    #%-3d %-24s %-14s ping %d\n", p.UserID, p.Name, p.UniqueID, p.Ping)
+							fmt.Printf("    #%-3d %-24s %-14s ping %d\n", p.UserID, output.Clean(p.Name), output.Clean(p.UniqueID), p.Ping)
 						}
 					}
 				}

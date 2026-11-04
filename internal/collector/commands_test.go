@@ -573,6 +573,7 @@ func TestSource2NoReplies(t *testing.T) {
 		`gameWE Plugin 0.2.0 (CounterStrikeSharp) "Pat<2><[U:1:42]><CT>" say "x"`,
 		fmt.Sprintf(p, "CT") + ` say "!rank"`,
 	} {
+		hub.Source2UDP = true // a forwarder
 		if err := hub.Dispatch(src, pkt(l), time.Now().UTC()); err != nil {
 			t.Fatal(err)
 		}
@@ -603,7 +604,8 @@ func TestSource2PluginReplies(t *testing.T) {
 				first,
 				fmt.Sprintf(p, "CT") + ` say "!rank"`,
 			} {
-				if err := hub.Dispatch(src, pkt(l), time.Now().UTC()); err != nil {
+				hub.Source2UDP = true // a forwarder
+		if err := hub.Dispatch(src, pkt(l), time.Now().UTC()); err != nil {
 					t.Fatal(err)
 				}
 			}

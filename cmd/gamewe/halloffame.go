@@ -15,6 +15,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"gamewe-collector/internal/output"
 	"gamewe-collector/internal/collector"
 	"gamewe-collector/internal/config"
 	"gamewe-collector/internal/database"
@@ -196,7 +197,7 @@ func hallList(ctx context.Context, store *stats.Store, game string, out io.Write
 		if h.Removed {
 			removed = " [removed]"
 		}
-		fmt.Fprintf(w, "%s\t%s - %s\t%d\t%s (#%d)%s\t%d\t%d\t%d\t%s\n", h.Game, h.PeriodStart, h.PeriodEnd, h.Place, h.Name, h.PlayerID, removed, h.Skill, h.Kills, h.Deaths, h.Rank)
+		fmt.Fprintf(w, "%s\t%s - %s\t%d\t%s (#%d)%s\t%d\t%d\t%d\t%s\n", h.Game, h.PeriodStart, h.PeriodEnd, h.Place, output.Clean(h.Name), h.PlayerID, removed, h.Skill, h.Kills, h.Deaths, h.Rank)
 	}
 	return w.Flush()
 }

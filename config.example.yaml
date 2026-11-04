@@ -24,6 +24,10 @@ listen:
     enabled: true
     address: 0.0.0.0      # IP to listen on (0.0.0.0 = all IPv4, :: = all)
     port: 41337           # UDP port
+    # CS2 logs over HTTP. UDP lines for CS2 servers are refused, as neither the
+    # token nor a log secret protects them; true for a forwarder, which must
+    # send the server's sv_logsecret if one is stored.
+    # source2: false
     # The address the game servers send their logs to (registered with
     # logaddress_add, see features.log_address). Default: the collector's
     # address of the RCON connection to the server, with port. Set it when

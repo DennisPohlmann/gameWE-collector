@@ -27,6 +27,13 @@ var (
 	// row yet). Rejected, never attributed to the server on the other port.
 	ErrUnknownPort = errors.New("log packet from a known server IP but a port that is not in hlstats_Servers")
 	ErrQueueFull   = errors.New("queue full, log line dropped")
+	// ErrLineTooLong: longer than any input takes; the queue counts lines, so
+	// long ones would multiply its memory.
+	ErrLineTooLong = errors.New("log line too long")
+	// ErrSource2UDP: a UDP line for a Source 2 (CS2) row, without
+	// listen.udp.source2. CS2 logs over HTTP, and the token and the TCP sender
+	// that protect that input do not apply to UDP.
+	ErrSource2UDP = errors.New("UDP log line for a Source 2 (CS2) server; it logs over HTTP (for a forwarder: listen.udp.source2)")
 )
 
 // QueueSize is the number of lines buffered per server while the database
@@ -58,6 +65,8 @@ type Hub struct {
 	// server's hlstats_Servers.log_secret if one is stored. Set it before
 	// the first SetServers.
 	Secret SecretConfig
+	// Source2UDP is listen.udp.source2: UDP lines for Source 2 rows are read.
+	Source2UDP bool
 	// Source2Hits is features.cs2_hitgroups (Processor.Source2Hits). Set it
 	// before the first SetServers.
 	Source2Hits bool
@@ -292,10 +301,10 @@ func (h *Hub) logEvery() time.Duration {
 
 // applySecret hands the log secret of srv's row to w's gate. GoldSrc
 // servers have no sv_logsecret, and the HTTP logs of Source 2 (CS2) carry
-// none: never checked.
+// none: not checked; UDP lines of Source 2 (listen.udp.source2) are.
 func (h *Hub) applySecret(w *worker, srv stats.Server, now time.Time, grace time.Duration) {
 	secret := srv.LogSecret
-	if h.Secret.Mode == SecretOff || srv.Engine == games.GoldSrc || srv.Engine == games.Source2 {
+	if h.Secret.Mode == SecretOff || srv.Engine == games.GoldSrc || (srv.Engine == games.Source2 && !h.Source2UDP) {
 		secret = ""
 	}
 	w.gate.fromDB(secret, now, grace)
@@ -471,9 +480,15 @@ func (h *Hub) PauseGame(ctx context.Context, game string) (resume func(), server
 	return resume, servers, nil
 }
 
+// maxLinePrefix is the packet header and log secret before a line.
+const maxLinePrefix = 128
+
 // Dispatch checks a packet's source and queues its line for the server's
 // worker. It returns why a packet was not accepted.
 func (h *Hub) Dispatch(src netip.AddrPort, payload []byte, now time.Time) error {
+	if len(payload) > MaxHTTPLine+maxLinePrefix {
+		return ErrLineTooLong
+	}
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	w := h.resolve(src)
@@ -482,6 +497,9 @@ func (h *Hub) Dispatch(src netip.AddrPort, payload []byte, now time.Time) error 
 			return ErrUnknownPort
 		}
 		return ErrUnknownSource
+	}
+	if w.srv.Engine == games.Source2 && !h.Source2UDP {
+		return ErrSource2UDP
 	}
 	if h.Secret.Mode == SecretOff {
 		line, err := logparse.ParsePacket(payload, "")

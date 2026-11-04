@@ -50,6 +50,7 @@ All keys are optional.
 | `enabled` | `true` | receive UDP logs; `false` closes the UDP port and stops `logaddress_add` |
 | `address` | `0.0.0.0` | IP to listen on (`0.0.0.0` = all IPv4, `::` = all) |
 | `port` | `41337` | UDP port |
+| `source2` | `false` | read UDP lines for Counter-Strike 2 rows (e.g. a forwarder from the server's own ip:port). They must then carry the row's log secret, if one is stored. Off: refused, as neither `listen.http.token` nor a log secret protects them |
 | `public_address` | – | `ip:port` the game servers send their logs to, registered with `logaddress_add` (`features.log_address`). Default: the collector's address of the RCON connection to the game server, with `port`. Set it when the servers reach the collector at another address (NAT, several IPs). |
 
 The older form, `address`, `port` and `public_address` directly under `listen`,
@@ -72,6 +73,11 @@ with exit code 2 when it is given.
 | `max_connections` | `64` | open connections at most (1 to 4096); more are closed at once |
 | `max_connections_per_ip` | `8` | open connections from one IP at most (1 to `max_connections`) |
 | `trusted_proxies` | – | IPs or networks (CIDR) of reverse proxies in front of the collector. Only for a request from one of them the sender is taken from `X-Forwarded-For` (the right-most address that is not itself a trusted proxy). |
+
+The game port in the URL only selects a row at the sender's IP: where several
+parties share one IP, each can post lines for the other's CS2 servers, with
+the token too, as there is one token per collector. Do not share the IP with
+parties you do not trust, or use a collector per party.
 
 A post is checked before its body is read. The sender's IP and the game port
 from the URL must be a server in `hlstats_Servers` whose game is a Source 2

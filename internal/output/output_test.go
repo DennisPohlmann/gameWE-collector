@@ -154,3 +154,12 @@ func TestTable(t *testing.T) {
 		t.Error("text is written by the commands")
 	}
 }
+
+func TestCleanControlCharacters(t *testing.T) {
+	if got := Clean("a\x1b]0;t\x07b\u009bc\td\n"); got != `a\x1b]0;t\x07b\x9bc`+"\td\n" {
+		t.Errorf("Clean: %q", got)
+	}
+	if got := cell("n\x1b[2Ja"); strings.ContainsRune(got, 0x1b) {
+		t.Errorf("cell keeps ESC: %q", got)
+	}
+}

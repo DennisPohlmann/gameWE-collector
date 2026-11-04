@@ -60,6 +60,8 @@ func (h *Hub) udpHint(src netip.AddrPort, err error) []any {
 			"hint", "add this server with its own port in the web admin, or fix the port of the existing one"}
 	case errors.Is(err, ErrUnknownSource):
 		return []any{"hint", "add the server " + src.String() + " in the web admin (Servers), if it is yours"}
+	case errors.Is(err, ErrSource2UDP):
+		return []any{"hint", "CS2 logs with logaddress_add_http (listen.http); for a UDP forwarder set listen.udp.source2"}
 	}
 	return nil
 }
