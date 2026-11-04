@@ -900,6 +900,11 @@ CREATE TABLE `hlstats_gamewe_hall_of_fame` (
   UNIQUE KEY `slot` (`game`,`period_start`,`place`),
   KEY `player` (`player_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE `hlstats_gamewe_secrets` (
+  `keyname` varchar(128) NOT NULL,
+  `value` varchar(255) NOT NULL DEFAULT '',
+  PRIMARY KEY (`keyname`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_gamewe_jobs` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
   `job_type` varchar(32) NOT NULL DEFAULT 'reset',

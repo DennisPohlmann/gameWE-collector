@@ -815,8 +815,17 @@ func (a *Admin) Options(ctx context.Context) ([]Option, error) {
 	return list, nil
 }
 
+// optionTable is where a setting is stored: secrets in a table the public web
+// user cannot read.
+func optionTable(key string) string {
+	if slices.Contains(settings.SecretKeys, key) {
+		return "hlstats_gamewe_secrets"
+	}
+	return "hlstats_Options"
+}
+
 func (a *Admin) options(ctx context.Context) (map[string]string, error) {
-	rows, err := a.q(ctx, `SELECT keyname, value FROM hlstats_Options`)
+	rows, err := a.q(ctx, `SELECT keyname, value FROM hlstats_Options UNION ALL SELECT keyname, value FROM hlstats_gamewe_secrets`)
 	if err != nil {
 		return nil, err
 	}
@@ -850,7 +859,7 @@ func (a *Admin) GetOption(ctx context.Context, key string) error {
 // collector setting that is not stored.
 func (a *Admin) Option(ctx context.Context, key string) (Option, error) {
 	o := Option{Key: key}
-	err := a.row(ctx, `SELECT value FROM hlstats_Options WHERE keyname = ?`, key).Scan(&o.Value)
+	err := a.row(ctx, `SELECT value FROM `+optionTable(key)+` WHERE keyname = ?`, key).Scan(&o.Value)
 	if errors.Is(err, sql.ErrNoRows) {
 		for _, k := range settings.Keys() {
 			if k.Name == key {
@@ -893,20 +902,21 @@ func (a *Admin) SetOption(ctx context.Context, key, value string) error {
 		}
 	}
 	var old string
-	err := a.row(ctx, `SELECT value FROM hlstats_Options WHERE keyname = ?`, key).Scan(&old)
+	table := optionTable(key)
+	err := a.row(ctx, `SELECT value FROM `+table+` WHERE keyname = ?`, key).Scan(&old)
 	switch {
 	case err == nil && old == value:
 		a.say("%s = %s (unchanged)", key, value)
 		return nil
 	case err == nil:
 		if !a.DryRun {
-			if _, err := a.exec(ctx, `UPDATE hlstats_Options SET value = ? WHERE keyname = ?`, value, key); err != nil {
+			if _, err := a.exec(ctx, `UPDATE `+table+` SET value = ? WHERE keyname = ?`, value, key); err != nil {
 				return err
 			}
 		}
 	case errors.Is(err, sql.ErrNoRows):
 		if !a.DryRun {
-			if _, err := a.exec(ctx, `INSERT INTO hlstats_Options (keyname, value) VALUES (?, ?)`, key, value); err != nil {
+			if _, err := a.exec(ctx, `INSERT INTO `+table+` (keyname, value) VALUES (?, ?)`, key, value); err != nil {
 				return err
 			}
 		}

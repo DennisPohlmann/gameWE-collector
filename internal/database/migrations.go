@@ -7,6 +7,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+
+	"gamewe-collector/internal/settings"
 )
 
 // Migration is one version of the database schema. The tables, columns and
@@ -48,6 +50,9 @@ type Migration struct {
 	// CareerKills fills hlstats_Players.career_kills (and the inactive
 	// players') from kills, which the career rank read until then.
 	CareerKills bool
+	// SecretOptions moves the rows of settings.SecretKeys from hlstats_Options
+	// to hlstats_gamewe_secrets.
+	SecretOptions bool
 	// Grants runs the grants script (internal/schema grants.sql) again for a
 	// right on an existing table that the web users did not have; a version
 	// that changes a table gets it anyway.
@@ -244,6 +249,12 @@ var Migrations = []Migration{
 			"gamewe_bot_points_<game> = 0 and gamewe_bot_kills_<game> = 1, shown in the event lists but left out of the awards",
 		Sync: true,
 	},
+	{
+		Version: 25, Name: "secret-options",
+		Desc: "table hlstats_gamewe_secrets, which gamewe_web cannot read: the Steam Web API key, the metrics token and the " +
+			"TeamSpeak passwords move there from hlstats_Options; the website reads them with DB_ADMIN_USER",
+		Sync: true, SecretOptions: true,
+	},
 }
 
 // Latest is the newest schema version this collector knows.
@@ -270,6 +281,9 @@ func (m Migration) Checksum() string {
 	}
 	if m.Grants {
 		b = fmt.Appendf(b, "|grants")
+	}
+	if m.SecretOptions {
+		b = fmt.Appendf(b, "|secret-options")
 	}
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
@@ -357,6 +371,21 @@ func botsPerRankingSQL(postgres bool) []string {
 		write("gamewe_rank_bots_", ranked),
 		write("gamewe_bot_points_", `CASE WHEN `+l4d+` THEN '1' ELSE `+ranked+` END`),
 		`DELETE FROM hlstats_Options WHERE keyname IN ('gamewe_rank_bots', 'gamewe_ignore_bots')`,
+	}
+}
+
+// secretOptionsSQL moves the secret settings out of the table the public web
+// user can read. A second run finds nothing to move.
+func secretOptionsSQL(postgres bool) []string {
+	ins, conflict := "INSERT IGNORE INTO ", ""
+	if postgres {
+		ins, conflict = "INSERT INTO ", " ON CONFLICT DO NOTHING"
+	}
+	keys := "'" + strings.Join(settings.SecretKeys, "', '") + "'"
+	return []string{
+		ins + `hlstats_gamewe_secrets (keyname, value)
+			SELECT keyname, COALESCE(value, '') FROM hlstats_Options WHERE keyname IN (` + keys + `)` + conflict,
+		`DELETE FROM hlstats_Options WHERE keyname IN (` + keys + `)`,
 	}
 }
 

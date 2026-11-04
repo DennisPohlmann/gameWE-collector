@@ -126,7 +126,7 @@ bans itself.
 `gamewe_block_vac_<game>` = 1 the collector asks
 `GET https://api.steampowered.com/ISteamUser/GetPlayerBans/v1/?key=<key>&steamids=<SteamID64,...>`
 (user agent `gameWE collector`, 8 s, at most 1 MiB, redirects not followed;
-key: `hlstats_Options` `gamewe_steam_api_key`, never logged; errors are
+key: `hlstats_gamewe_secrets` `gamewe_steam_api_key`, never logged; errors are
 logged without the address). It is asked for a connecting player whose
 answer is not cached (24 hours), and once a day for up to 100 recorded
 players per request. A player with a VAC ban on record is kicked over RCON:

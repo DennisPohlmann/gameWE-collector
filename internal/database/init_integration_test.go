@@ -105,6 +105,10 @@ func TestInitWebAdminInsertsWithoutID(t *testing.T) {
 			`INSERT INTO hlstats_Options (keyname, value) VALUES ('zzt_test', '1')`,
 			`UPDATE hlstats_Options SET value = '2' WHERE keyname = 'zzt_test'`,
 			`DELETE FROM hlstats_Options WHERE keyname = 'zzt_test'`,
+			`INSERT INTO hlstats_gamewe_secrets (keyname, value) VALUES ('zzt_test', '1')`,
+			`SELECT value FROM hlstats_gamewe_secrets WHERE keyname = 'zzt_test'`,
+			`UPDATE hlstats_gamewe_secrets SET value = '2' WHERE keyname = 'zzt_test'`,
+			`DELETE FROM hlstats_gamewe_secrets WHERE keyname = 'zzt_test'`,
 			`INSERT INTO hlstats_Users (username, password) VALUES ('zzt_test', 'x')`,
 			`DELETE FROM hlstats_Users WHERE username = 'zzt_test'`,
 		} {
@@ -139,7 +143,7 @@ func TestInitWebGrants(t *testing.T) {
 		if _, err := db.ExecContext(ctx, `SELECT rcon_password FROM hlstats_Servers`); err == nil {
 			t.Error("gamewe_web can read hlstats_Servers.rcon_password")
 		}
-		for _, q := range []string{`SELECT username FROM hlstats_Users`,
+		for _, q := range []string{`SELECT username FROM hlstats_Users`, `SELECT value FROM hlstats_gamewe_secrets`,
 			`SELECT log_secret FROM hlstats_Servers`, `SELECT log_secret_changed FROM hlstats_Servers`,
 			`SELECT ipAddress FROM hlstats_Events_Connects`, `SELECT hostname FROM hlstats_Events_Connects`, `SELECT hostgroup FROM hlstats_Events_Connects`, `SELECT * FROM hlstats_Events_Connects`, `SELECT message FROM hlstats_Events_Chat`} {
 			if _, err := db.ExecContext(ctx, q); err == nil {

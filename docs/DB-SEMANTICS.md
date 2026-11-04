@@ -177,7 +177,7 @@ happens and no request is made.
   account) of such a ranking is checked in the background: the player is
   registered as usual first. A running `vac` record of the player kicks at
   once; otherwise the Steam Web API is asked (`ISteamUser/GetPlayerBans`,
-  key `hlstats_Options` `gamewe_steam_api_key` from the web admin, 8 s; the
+  key `hlstats_gamewe_secrets` `gamewe_steam_api_key` from the web admin, 8 s; the
   answer, with and without a ban, is kept 24 hours in memory; at most 256
   checks wait, more are dropped). `VACBanned` or `NumberOfVACBans` > 0 is a
   VAC ban on record (game bans and community bans are not).

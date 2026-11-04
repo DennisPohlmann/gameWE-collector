@@ -425,22 +425,33 @@ func (s *Store) hasColumn(ctx context.Context, table, column string) (bool, erro
 	return n > 0, err
 }
 
-// Options returns the collector's keys (gamewe_*) from hlstats_Options.
+// Options returns the collector's keys (gamewe_*) from hlstats_Options and
+// the secret ones from hlstats_gamewe_secrets.
 func (s *Store) Options(ctx context.Context) (map[string]string, error) {
-	rows, err := s.query(ctx, `SELECT keyname, value FROM hlstats_Options WHERE keyname LIKE 'gamewe!_%' ESCAPE '!'`)
-	if err != nil {
+	out := map[string]string{}
+	if err := s.readOptions(ctx, out, `SELECT keyname, value FROM hlstats_Options WHERE keyname LIKE 'gamewe!_%' ESCAPE '!'`); err != nil {
 		return nil, err
 	}
+	if err := s.readOptions(ctx, out, `SELECT keyname, value FROM hlstats_gamewe_secrets`); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (s *Store) readOptions(ctx context.Context, out map[string]string, q string) error {
+	rows, err := s.query(ctx, q)
+	if err != nil {
+		return err
+	}
 	defer rows.Close()
-	out := map[string]string{}
 	for rows.Next() {
 		var k, v string
 		if err := rows.Scan(&k, &v); err != nil {
-			return nil, err
+			return err
 		}
 		out[k] = v
 	}
-	return out, rows.Err()
+	return rows.Err()
 }
 
 // ResetLive removes the server's rows from hlstats_Livestats (at start and

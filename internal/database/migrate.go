@@ -451,6 +451,11 @@ func plan(ctx context.Context, q querier, dialect string, pfx Prefix) (*Plan, er
 				What: "fill career_kills (the kills of the career rank) from kills",
 				kind: stepExec, stmts: careerKillsSQL()})
 		}
+		if m.SecretOptions {
+			p.Steps = append(p.Steps, Step{Version: m.Version, Name: m.Name, Table: "hlstats_gamewe_secrets",
+				What: "move the API keys and passwords out of hlstats_Options",
+				kind: stepExec, stmts: secretOptionsSQL(pg)})
+		}
 		grants = grants || m.Grants
 		p.Steps = append(p.Steps, Step{Version: m.Version, Name: m.Name, What: "record version " + fmt.Sprint(m.Version), kind: stepRecord, rec: &m, note: "applied"})
 	}

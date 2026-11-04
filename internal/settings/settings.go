@@ -204,6 +204,11 @@ func Keys() []Key {
 // The collector does not read them, `gamewe check` only must not report
 // them as typos. Keep it in step with the web; slot and per-user keys are
 // matched in otherKey.
+//
+// SecretKeys are stored in hlstats_gamewe_secrets, which the public web user
+// cannot read, instead of hlstats_Options.
+var SecretKeys = []string{"gamewe_steam_api_key", "gamewe_ts_query_password", "gamewe_ts_password", "gamewe_metrics_token"}
+
 var WebKeys = []string{
 	"gamewe_page_size", "gamewe_site_url", "gamewe_logo_url", "gamewe_header_logo",
 	"gamewe_favicon", "gamewe_apple_icon", "gamewe_title_format", "gamewe_title_ranking", "gamewe_geoip_credit",

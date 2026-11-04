@@ -9,8 +9,8 @@
 -- rights apply to the database the script runs in.
 --
 -- gamewe_web (public web pages): SELECT on every table, except
--- hlstats_Users (web admin logins) and hlstats_Events_Chat (chat, personal
--- data), and without hlstats_Servers.rcon_password,
+-- hlstats_Users (web admin logins), hlstats_Events_Chat (chat, personal
+-- data) and hlstats_gamewe_secrets (API keys, passwords), and without hlstats_Servers.rcon_password,
 -- log_secret and log_secret_changed and hlstats_Events_Connects.ipAddress
 -- (column rights). If a table is added to
 -- the schema, grant it here too (a test in internal/database checks this file).
@@ -92,6 +92,8 @@ GRANT INSERT, UPDATE, DELETE ON `hlstats_Definition_Ranks_Ribbons` TO 'gamewe_we
 GRANT INSERT, UPDATE, DELETE ON `hlstats_Definition_Ribbons_Classes` TO 'gamewe_web_admin'@'%';
 GRANT INSERT, UPDATE, DELETE ON `hlstats_Users` TO 'gamewe_web_admin'@'%';
 GRANT UPDATE (`skill`, `hideranking`, `clan`) ON `hlstats_Players` TO 'gamewe_web_admin'@'%';
+-- API keys and passwords of the settings; gamewe_web has no right on this table
+GRANT INSERT, UPDATE, DELETE ON `hlstats_gamewe_secrets` TO 'gamewe_web_admin'@'%';
 -- ranking resets: queued for the collector, which does and updates them
 GRANT INSERT ON `hlstats_gamewe_jobs` TO 'gamewe_web_admin'@'%';
 -- hall of fame: an admin removes (and restores) entries, the rows stay

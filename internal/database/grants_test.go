@@ -22,7 +22,7 @@ func TestWebUserGrants(t *testing.T) {
 	if len(tables) < 50 {
 		t.Fatalf("found only %d tables in the schema", len(tables))
 	}
-	hidden := map[string]bool{"hlstats_Users": true, "hlstats_Events_Rcon": true, "hlstats_Events_Chat": true}
+	hidden := map[string]bool{"hlstats_Users": true, "hlstats_Events_Rcon": true, "hlstats_Events_Chat": true, "hlstats_gamewe_secrets": true}
 	hiddenCol := map[string][]string{"hlstats_Servers": {"rcon_password", "log_secret", "log_secret_changed"}, "hlstats_Events_Connects": {"ipAddress"}}
 	data, err := os.ReadFile("../../internal/schema/mysql/grants.sql")
 	if err != nil {
