@@ -141,13 +141,13 @@ func TestInitWebGrants(t *testing.T) {
 		}
 		for _, q := range []string{`SELECT username FROM hlstats_Users`,
 			`SELECT log_secret FROM hlstats_Servers`, `SELECT log_secret_changed FROM hlstats_Servers`,
-			`SELECT ipAddress FROM hlstats_Events_Connects`, `SELECT * FROM hlstats_Events_Connects`, `SELECT message FROM hlstats_Events_Chat`} {
+			`SELECT ipAddress FROM hlstats_Events_Connects`, `SELECT hostname FROM hlstats_Events_Connects`, `SELECT hostgroup FROM hlstats_Events_Connects`, `SELECT * FROM hlstats_Events_Connects`, `SELECT message FROM hlstats_Events_Chat`} {
 			if _, err := db.ExecContext(ctx, q); err == nil {
 				t.Errorf("gamewe_web may: %s", q)
 			}
 		}
-		if _, err := db.ExecContext(ctx, `SELECT timestamp_id, game_id, map, playerId, hostname, hostgroup FROM hlstats_Events_Connects`); err != nil {
-			t.Errorf("gamewe_web cannot read the connects without ipAddress: %v", err)
+		if _, err := db.ExecContext(ctx, `SELECT timestamp_id, game_id, map, playerId FROM hlstats_Events_Connects`); err != nil {
+			t.Errorf("gamewe_web cannot read the connects without address and host name: %v", err)
 		}
 		if _, err := db.ExecContext(ctx, `INSERT INTO hlstats_Options (keyname, value) VALUES ('zzt_web', '1')`); err == nil {
 			db.ExecContext(ctx, `DELETE FROM hlstats_Options WHERE keyname = 'zzt_web'`)
