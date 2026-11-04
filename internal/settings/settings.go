@@ -219,6 +219,7 @@ var WebKeys = []string{
 	"gamewe_default_lang", "gamewe_steam_profiles", "gamewe_steam_api_key",
 	"gamewe_privacy_name", "gamewe_privacy_address", "gamewe_privacy_email",
 	"gamewe_admin_auto_logout", "gamewe_admin_logout_minutes", "gamewe_api_enabled",
+	"gamewe_fastdl", "gamewe_fastdl_url",
 }
 
 var webKeys = func() map[string]bool {
