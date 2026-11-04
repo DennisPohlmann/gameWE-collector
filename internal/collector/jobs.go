@@ -212,7 +212,9 @@ func (j *Jobs) Poll(ctx context.Context) error {
 		busy[r.Game] = r.ID
 	}
 	for _, job := range pending {
-		if job.Type == stats.JobInactive || job.Type == stats.JobAwards { // all games; a second one is a no-op
+		// All games, where a second one is a no-op, and erasures, which take the
+		// job lock one after the other: none of them is refused.
+		if job.Type == stats.JobInactive || job.Type == stats.JobAwards || job.Type == stats.JobDeletePlayer {
 			if ok, err := j.Store.ClaimJob(ctx, job.ID, stats.JobPending, j.now()); err != nil || !ok {
 				continue
 			}

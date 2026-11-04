@@ -440,3 +440,37 @@ func TestIntegrationDeletePlayerJob(t *testing.T) {
 		t.Errorf("tf players left: %d", n)
 	}
 }
+
+// Erasures queued together all run, also beside a reset of the same ranking.
+func TestIntegrationDeletePlayerJobsTogether(t *testing.T) {
+	db := testDB(t)
+	hub, store, _ := resetFixture(t, db)
+	defer hub.Close(context.Background())
+	flush(t, hub)
+	ctx := context.Background()
+	var jobs []int64
+	for _, name := range []string{"A", "B"} {
+		var id int
+		if err := db.QueryRowContext(ctx, db.Q(`SELECT p.playerId FROM hlstats_Players p
+			JOIN hlstats_PlayerNames n ON n.playerId = p.playerId WHERE p.game = 'css' AND n.name = ?`), name).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		job, err := store.AddJob(ctx, stats.JobDeletePlayer, "css", fmt.Sprint(id), "test", stats.JobOrigin{}, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		jobs = append(jobs, job)
+	}
+	reset, err := store.AddJob(ctx, stats.JobReset, "css", stats.ResetPlayerStats, "test", stats.JobOrigin{}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := (&Jobs{Store: store, Hub: hub, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}).Poll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range append(jobs, reset) {
+		if j, _ := store.Job(ctx, id); j.Status != stats.JobDone {
+			t.Errorf("job %d: %+v", id, j)
+		}
+	}
+}
