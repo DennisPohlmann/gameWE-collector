@@ -16,8 +16,8 @@
 # package (/opt/gamewe/collector/doc/schema/...):
 #
 #   MariaDB:     docker compose --profile mariadb up -d
-#                cd schema/init && MYSQL='docker compose exec -T mariadb mariadb' \
-#                  COLLECTOR_PASSWORD=... WEB_PASSWORD=... WEB_ADMIN_PASSWORD=... ./init-db.sh -uroot -p"$DB_ROOT_PASSWORD"
+#                cd schema/init && MYSQL_PWD="$DB_ROOT_PASSWORD" MYSQL='docker compose exec -T -e MYSQL_PWD mariadb mariadb' \
+#                  COLLECTOR_PASSWORD=... WEB_PASSWORD=... WEB_ADMIN_PASSWORD=... ./init-db.sh -uroot
 #                config: type: mariadb, port: 3306
 #
 #   PostgreSQL:  docker compose --profile postgres up -d

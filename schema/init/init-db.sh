@@ -45,11 +45,12 @@ if [[ "$existing" != "0" ]]; then
 fi
 
 # Replace the placeholders without passing the passwords on the command line.
-esc() { printf '%s' "$1" | sed 's/[&|]/\\&/g'; }
-sed -e "s|\`gamewe\`|\`$db\`|g" \
-	-e "s|CHANGE_ME_COLLECTOR|$(esc "$COLLECTOR_PASSWORD")|g" \
-	-e "s|CHANGE_ME_WEB_ADMIN|$(esc "$WEB_ADMIN_PASSWORD")|g" \
-	-e "s|CHANGE_ME_WEB|$(esc "$WEB_PASSWORD")|g" \
-	"$dir/00_create_database.sql" | $mysql "$@"
+# Done in bash: an external sed would show them in its argument list.
+sql=$(<"$dir/00_create_database.sql")
+sql=${sql//'`gamewe`'/"\`$db\`"}
+sql=${sql//CHANGE_ME_COLLECTOR/"$COLLECTOR_PASSWORD"}
+sql=${sql//CHANGE_ME_WEB_ADMIN/"$WEB_ADMIN_PASSWORD"}
+sql=${sql//CHANGE_ME_WEB/"$WEB_PASSWORD"}
+printf '%s\n' "$sql" | $mysql "$@"
 echo "database $db and users created"
 echo "next: set database.name: $db, user gamewe and its password in /etc/gamewe/collector/config.yaml, then run: gamewe db init (creates the tables; or the first start of the collector does it), register the game servers in the web admin and run: gamewe check"
