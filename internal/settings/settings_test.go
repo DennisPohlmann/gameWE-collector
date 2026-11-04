@@ -86,7 +86,9 @@ func TestWebKeysNotReported(t *testing.T) {
 // the web admin's hidden keys (gamewe_totp_<hash>, gamewe_totpb_<hash>_<n>, gamewe_apitoken_<hash> and
 // gamewe_privacy_text_<n> are checked in TestWebKeysNotReported).
 var webNames = map[string]bool{
-	"gamewe_2fa": true, "gamewe_admin": true, "gamewe_admin_theme": true, "gamewe_consent": true,
+	"gamewe_reset_": true, // a prefix in the web's list of level 100 rows
+	"gamewe_totps_": true, // gamewe_totps_<hash>, known to otherKey
+	"gamewe_2fa":    true, "gamewe_admin": true, "gamewe_admin_theme": true, "gamewe_consent": true,
 	"gamewe_lang": true, "gamewe_session": true, "gamewe_totp": true, "gamewe_apitoken": true, "gamewe_apitoken_": true, "gamewe_totpb_": true, "gamewe_privacy_": true,
 	"gamewe_info": true, "gamewe_up": true, "gamewe_servers": true, "gamewe_players_online": true,
 	"gamewe_players_ranked": true, "gamewe_database_up": true, "gamewe_database_latency_seconds": true,
