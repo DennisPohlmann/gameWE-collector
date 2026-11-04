@@ -113,3 +113,15 @@ func TestListBanLimit(t *testing.T) {
 		t.Fatal("MaxBans too small for a real list")
 	}
 }
+
+func TestRowSteamNameIsNotTheID(t *testing.T) {
+	if got := rowSteam(`<td>STEAM_0:1:999</td><td>Steam ID</td><td>STEAM_0:0:42</td>`); got != "0:42" {
+		t.Errorf("labelled: %q", got)
+	}
+	if got := rowSteam(`<td>STEAM_0:1:999</td><td>STEAM_0:0:42</td>`); got != "" {
+		t.Errorf("no label, two ids: %q", got)
+	}
+	if got := rowSteam(`<td>STEAM_0:0:42</td>`); got != "0:42" {
+		t.Errorf("one id: %q", got)
+	}
+}

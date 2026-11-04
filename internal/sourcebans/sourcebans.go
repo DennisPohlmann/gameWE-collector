@@ -525,7 +525,7 @@ func parseNew(html string) []Ban {
 	parts := strings.Split(html, `<tr class="ban-row`)
 	for _, chunk := range parts[1:] {
 		row, _, _ := strings.Cut(chunk, "</tbody>")
-		steam := steamOf(row)
+		steam := rowSteam(row)
 		if steam == "" {
 			continue
 		}
@@ -588,7 +588,7 @@ func parseClassic(html string) []Ban {
 	var out []Ban
 	parts := strings.Split(html, `<tr class="opener`)
 	for _, chunk := range parts[1:] {
-		steam := steamOf(chunk)
+		steam := rowSteam(chunk)
 		if steam == "" {
 			continue
 		}
@@ -617,6 +617,25 @@ func classState(cls []string, length string) State {
 		return Unbanned
 	}
 	return Active
+}
+
+// rowSteam is the Steam ID of a ban row. A player name can look like a Steam
+// ID, and the name comes first: with several IDs in a row only the one after
+// the "Steam ID" label counts, and without a label the row is left out.
+func rowSteam(row string) string {
+	all := reSteam2.FindAllStringSubmatch(row, -1)
+	distinct := map[string]bool{}
+	for _, m := range all {
+		distinct[m[1]+":"+m[2]] = true
+	}
+	if len(distinct) <= 1 {
+		return steamOf(row)
+	}
+	i := strings.LastIndex(strings.ToLower(row), "steam id")
+	if i < 0 {
+		return ""
+	}
+	return steamOf(row[i:])
 }
 
 func steamOf(s string) string {
