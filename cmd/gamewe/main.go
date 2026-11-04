@@ -446,7 +446,8 @@ func runCmd(args []string) error {
 	}
 	// Per ranking (gamewe_block_vac_<game>: web admin, gamewe game set -block-vac); idle while no
 	// ranking switches it on.
-	vacBlock := &collector.VACBlock{Store: store, Set: set, Lookup: (&steam.Client{}).PlayerBans, Reply: replier, Log: log}
+	vacBlock := &collector.VACBlock{Store: store, Set: set, Lookup: (&steam.Client{}).PlayerBans, Reply: replier, Log: log,
+		Status: func(s stats.Server) (collector.Status, error) { return collector.RconStatus(s, 5*time.Second) }}
 	hub.VAC = vacBlock
 	ls := cfg.Features.LogSecret
 	hub.Secret = collector.SecretConfig{Mode: secretMode(ls.Enabled)}
@@ -1349,7 +1350,7 @@ func httpLogAddress(c rcon.Conn, cfg config.Config, s stats.Server, add, text bo
 	if !h.Enabled {
 		return errors.New("Counter-Strike 2 logs over HTTP only: switch on listen.http in the config")
 	}
-	url, err := collector.HTTPLogURL(c, h.PublicURL, h.Port, h.Token, s.AddrPort.Port())
+	url, err := collector.HTTPLogURL(c, h.PublicURL, h.Port, h.Token, s.AddrPort.Port(), s.LogSecret)
 	if err != nil {
 		return err
 	}

@@ -249,6 +249,17 @@ type connKey struct {
 	engine         games.Engine
 }
 
+// RconStatus reads a server's status once over a new RCON connection.
+func RconStatus(s stats.Server, timeout time.Duration) (Status, error) {
+	c := connKey{s.QueryAddr().String(), s.RconPassword, timeout, s.Engine}.dial()
+	defer c.Close()
+	out, err := c.Exec("status")
+	if err != nil {
+		return Status{}, err
+	}
+	return ParseStatus(out)
+}
+
 func (k connKey) dial() rcon.Conn {
 	return rcon.New(k.engine == games.GoldSrc, k.addr, k.password, k.timeout)
 }
@@ -444,8 +455,9 @@ func ensureLogAddress(c rcon.Conn, srv stats.Server, cfg MonitorConfig, st *http
 // HTTPLogURL returns the URL to register on a CS2 server with
 // logaddress_add_http: public (listen.http.public_url, http://host:port)
 // or http:// and the collector's address of the RCON connection with the
-// HTTP port, then the token (if set) and the game server's port.
-func HTTPLogURL(c rcon.Conn, public string, httpPort int, token string, gamePort uint16) (string, error) {
+// HTTP port, then the token (if set), the game server's port and the log
+// secret stored for the server (if any).
+func HTTPLogURL(c rcon.Conn, public string, httpPort int, token string, gamePort uint16, rowSecret string) (string, error) {
 	base := strings.TrimRight(public, "/")
 	if base == "" {
 		ap, err := LogAddress(c, "", httpPort)
@@ -457,11 +469,19 @@ func HTTPLogURL(c rcon.Conn, public string, httpPort int, token string, gamePort
 	if token != "" {
 		base += "/" + token
 	}
-	return fmt.Sprintf("%s/%d", base, gamePort), nil
+	u := fmt.Sprintf("%s/%d", base, gamePort)
+	if rowSecret != "" {
+		u += "/" + rowSecret
+	}
+	return u, nil
 }
 
-// RedactURL hides the token of a log URL for logs and output.
+var reURLRowSecret = regexp.MustCompile(`(/\d{1,5})/[^/]+$`)
+
+// RedactURL hides the token and the row's log secret of a log URL for logs and
+// output.
 func RedactURL(u, token string) string {
+	u = reURLRowSecret.ReplaceAllString(u, "$1/<secret>")
 	if token == "" {
 		return u
 	}
@@ -508,7 +528,7 @@ func ensureHTTPLogAddress(c rcon.Conn, srv stats.Server, cfg MonitorConfig, st *
 	if _, err := c.Exec("echo"); err != nil { // connect, for the local address
 		return err
 	}
-	url, err := HTTPLogURL(c, cfg.HTTPPublicURL, cfg.HTTPPort, cfg.HTTPToken, srv.AddrPort.Port())
+	url, err := HTTPLogURL(c, cfg.HTTPPublicURL, cfg.HTTPPort, cfg.HTTPToken, srv.AddrPort.Port(), srv.LogSecret)
 	if err != nil {
 		return err
 	}

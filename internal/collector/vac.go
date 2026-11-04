@@ -75,6 +75,9 @@ type VACBlock struct {
 	Reply  Replier
 	Log    *slog.Logger
 	Now    func() time.Time // tests
+	// Status reads the server's RCON status before a kick: the line's user id
+	// comes from a log line, the status from the server itself. nil: not read.
+	Status func(stats.Server) (Status, error)
 
 	once    sync.Once
 	queue   chan vacItem
@@ -303,6 +306,16 @@ func (w *VACBlock) kick(it vacItem) {
 	if it.srv.RconPassword == "" {
 		w.Log.Warn("vac: server has no rcon_password, player not kicked", "game", it.srv.Game, "server", it.srv.Address)
 		return
+	}
+	if w.Status != nil {
+		if st, err := w.Status(it.srv); err == nil {
+			for _, p := range st.Players {
+				if p.UserID == it.userID && p.UniqueID != it.uniqueID {
+					w.Log.Warn("vac: the user id belongs to another player, no kick", "game", it.srv.Game, "server", it.srv.Address, "user_id", it.userID)
+					return
+				}
+			}
+		}
 	}
 	w.Reply.Send(it.srv, KickCommand(it.srv.Engine, it.userID, VACKickReason))
 }
