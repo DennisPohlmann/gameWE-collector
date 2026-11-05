@@ -64,11 +64,11 @@ func TestAdmin(t *testing.T) {
 	ctx := context.Background()
 	clean := func() {
 		for _, q := range []string{
-			`DELETE FROM hlstats_Servers WHERE address = '198.51.100.99'`,
+			`DELETE FROM hlstats_Servers WHERE address IN ('198.51.100.99', '198.51.100.98')`,
 			`DELETE FROM hlstats_Teams WHERE game IN ('zz_tpl', 'zz_new')`,
 			`DELETE FROM hlstats_Actions WHERE game IN ('zz_tpl', 'zz_new')`,
 			`DELETE FROM hlstats_Weapons WHERE game IN ('zz_tpl', 'zz_new')`,
-			`DELETE FROM hlstats_Games WHERE code IN ('zz_tpl', 'zz_new')`,
+			`DELETE FROM hlstats_Games WHERE code IN ('zz_tpl', 'zz_new', 'zz_cs2')`,
 			`DELETE FROM hlstats_Options WHERE keyname = 'gamewe_command_display'`,
 		} {
 			if _, err := db.Exec(db.Q(q)); err != nil {
@@ -79,7 +79,7 @@ func TestAdmin(t *testing.T) {
 	clean()
 	t.Cleanup(clean)
 	for _, q := range []string{
-		`INSERT INTO hlstats_Games (code, name, realgame, hidden) VALUES ('zz_tpl', 'Template', 'cstrike', '0')`,
+		`INSERT INTO hlstats_Games (code, name, realgame, hidden) VALUES ('zz_tpl', 'Template', 'cstrike', '0'), ('zz_cs2', 'CS2', 'cs2', '0')`,
 		`INSERT INTO hlstats_Teams (game, code, name, hidden) VALUES ('zz_tpl', 'CT', 'Counter-Terrorists', '0'), ('zz_tpl', 'TERRORIST', 'Terrorists', '0')`,
 		`INSERT INTO hlstats_Actions (game, code, reward_player, reward_team, team, description, for_PlayerActions, for_PlayerPlayerActions, for_TeamActions, for_WorldActions)
 			VALUES ('zz_tpl', 'Planted_The_Bomb', 7, 0, 'TERRORIST', 'Bomb', '1', '0', '0', '0')`,
@@ -156,7 +156,7 @@ func TestAdmin(t *testing.T) {
 	}
 	// Counter-Strike 2: the log token per server. Made-up test value.
 	const cs2Addr, logToken = "198.51.100.98:27015", "dummy_log-token-1"
-	cs2 := "cs2"
+	cs2 := "zz_cs2"
 	if err := a.AddServer(ctx, cs2Addr, ServerFields{Game: &cs2}); err != nil {
 		t.Fatal(err)
 	}
