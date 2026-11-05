@@ -2237,7 +2237,6 @@ INSERT IGNORE INTO hlstats_Options (keyname, value) VALUES
   ('gamewe_commands', '1'),           -- 1 = answer !rank, !top10, ... in game
   ('gamewe_menu_time', '15'),         -- seconds the panels (!top10, !rank, ...) stay open
   ('gamewe_rcon_timeout', '5'),       -- seconds for RCON
-  ('gamewe_log_lines', '1'),          -- 1 = every received log line in the collector's journal
   ('gamewe_idle_timeout', '300'),     -- seconds without a log line before a player's visit ends; 0 = never
   ('gamewe_command_display', 'panel'), -- !rank, !session, ... as a panel on the left (gameME), chat or both
   ('gamewe_command_prefix', 'gamewe'), -- gameme for servers with the original gameME plugin

@@ -52,8 +52,7 @@ type Hub struct {
 	log   *slog.Logger
 
 	// LineLog receives every accepted log line as "[name ip:port] line\n"
-	// while gamewe_log_lines is 1 (nil: never). 'gamewe run' sets it to
-	// stderr, i.e. the journal. Set it before the first SetServers.
+	// (nil: none). 'gamewe run' sets it to stderr, i.e. the journal. Set it before the first SetServers.
 	LineLog io.Writer
 	// Geo looks up player and server locations (nil: no GeoIP). Set it
 	// before the first SetServers.
@@ -402,7 +401,7 @@ func (h *Hub) run(w *worker, addr string) {
 			cancel()
 			continue
 		}
-		if h.LineLog != nil && h.set.Get().LogLines {
+		if h.LineLog != nil {
 			// One Write per line, so lines of different servers do not mix.
 			h.LineLog.Write([]byte("[" + w.proc.Label() + "] " + Printable(pk.line) + "\n"))
 		}

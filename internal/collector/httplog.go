@@ -24,7 +24,7 @@ import (
 var ErrNotSource2 = errors.New("HTTP log post for a server that is not Source 2 (CS2); other games log over UDP")
 
 // MaxHTTPLine is the longest log line taken from an HTTP post; a longer one
-// is not processed, only its start goes to the line log (gamewe_log_lines).
+// is not processed, only its start goes to the line log.
 const MaxHTTPLine = 8 << 10
 
 // HTTPConfig is the HTTP input (listen.http).

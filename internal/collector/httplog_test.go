@@ -240,11 +240,10 @@ func TestHTTPLogAccepted(t *testing.T) {
 
 // The lines of a post go to the line log like those of a UDP server, JSON
 // blocks too. A line over MaxHTTPLine shows cut and is not processed. The
-// token in the path never shows, and gamewe_log_lines 0 switches it all off.
+// token in the path never shows.
 func TestHTTPLineLog(t *testing.T) {
 	st := newMemStore()
-	set := settings.NewLive(settings.Defaults())
-	hub := NewHub(st, set, &recorder{}, quiet)
+	hub := NewHub(st, settings.NewLive(settings.Defaults()), &recorder{}, quiet)
 	var out syncBuffer
 	hub.LineLog = &out
 	hub.SetServers(st.addServers([]string{"192.0.2.10:27015"}, map[string]string{"192.0.2.10:27015": "cs2"}))
@@ -257,11 +256,6 @@ func TestHTTPLineLog(t *testing.T) {
 	kill := ts + `"A<2><[U:1:11]><CT>" [1 2 3] killed "B<3><[U:1:22]><TERRORIST>" [4 5 6] with "ak47"`
 	long := kill + " " + strings.Repeat("y", MaxHTTPLine)
 	post(h, "192.0.2.10:1", path, ts+"JSON_BEGIN{\n\"name\": \"round_stats\"\n}}JSON_END\n"+long+"\n")
-	time.Sleep(50 * time.Millisecond) // let the worker write before switching off
-	off := settings.Defaults()
-	off.LogLines = false
-	set.Set(off)
-	post(h, "192.0.2.10:1", path, ts+`World triggered "Round_End"`+"\n")
 	hub.Close(context.Background())
 
 	got := out.String()

@@ -39,7 +39,6 @@ type Settings struct {
 	Commands        bool     // gamewe_commands
 	MenuTime        int      // gamewe_menu_time (seconds)
 	RconTimeout     int      // gamewe_rcon_timeout (seconds)
-	LogLines        bool     // gamewe_log_lines
 	IdleTimeout     int      // gamewe_idle_timeout (seconds, 0 = off)
 	CommandPrefix   string   // gamewe_command_prefix (gamewe or gameme)
 	CommandDisplay  string   // gamewe_command_display (panel, chat or both)
@@ -78,7 +77,7 @@ func Defaults() Settings {
 			"All_Hostages_Rescued", "Hostages_Not_Rescued", "VIP_Escaped", "VIP_Assassinated",
 			"VIP_Not_Escaped", "Round_Win",
 		},
-		StorePlayerIP: true, StoreChat: true, Commands: true, MenuTime: 15, RconTimeout: 5, LogLines: true, IdleTimeout: 300,
+		StorePlayerIP: true, StoreChat: true, Commands: true, MenuTime: 15, RconTimeout: 5, IdleTimeout: 300,
 		CommandPrefix: PrefixGameWE, CommandDisplay: DisplayPanel, StoreLocations: true, GeoIPDB: DefaultGeoIPDB, ServerLoad: true,
 		ResetCooldown: 24,
 	}
@@ -183,7 +182,6 @@ func Keys() []Key {
 		{"gamewe_commands", b(d.Commands), "1 = answer !rank, !top10, ... in game"},
 		{"gamewe_menu_time", strconv.Itoa(d.MenuTime), "seconds the panels (!top10, !rank, ...) stay open"},
 		{"gamewe_rcon_timeout", strconv.Itoa(d.RconTimeout), "seconds for RCON connect, send and receive"},
-		{"gamewe_log_lines", b(d.LogLines), "1 = write every received game-server log line to the collector's log (journal)"},
 		{"gamewe_idle_timeout", strconv.Itoa(d.IdleTimeout), "seconds without any log line of a player after which the visit ends (lost disconnect); 0 = never"},
 		{"gamewe_command_display", d.CommandDisplay, "how !rank, !statsme, !session, !status and !next are answered: panel (menu on the left, as gameME), chat, or both"},
 		{"gamewe_command_prefix", d.CommandPrefix, "prefix of the plugin's server commands: gamewe, or gameme for servers with the original gameME plugin"},
@@ -261,6 +259,7 @@ func otherKey(k string) bool {
 		"gamewe_next_awards", "gamewe_next_bans", "gamewe_next_inactive", "gamewe_next_resets", // the job plan, written by the collector
 		"gamewe_daily_awards",                    // 1.4.x; now features.daily_awards in the config file
 		"gamewe_default_game",                    // old web setting nothing reads; migration 13 deletes both
+		"gamewe_log_lines",                       // log lines are always written; migration 26 deletes it
 		"gamewe_geoip_db",                        // legacy, read below; config.yaml geoip.path replaces it
 		"gamewe_rank_bots", "gamewe_ignore_bots": // reported above
 		return true
@@ -332,7 +331,6 @@ func FromOptions(opts map[string]string) (Settings, []string) {
 	flag("gamewe_store_player_ip", &s.StorePlayerIP)
 	flag("gamewe_store_chat", &s.StoreChat)
 	flag("gamewe_commands", &s.Commands)
-	flag("gamewe_log_lines", &s.LogLines)
 	num("gamewe_menu_time", &s.MenuTime, 1)
 	num("gamewe_rcon_timeout", &s.RconTimeout, 1)
 	num("gamewe_idle_timeout", &s.IdleTimeout, 0)

@@ -140,7 +140,7 @@ docker run -d --name gamewe-collector --restart unless-stopped --network host \
   ghcr.io/dennispohlmann/gamewe-collector:latest
 ```
 
-Every received log line goes to the container log (`gamewe_log_lines`), hence
+Every received log line goes to the container log, hence
 the log limits. Other commands run the same way, e.g.
 `docker run --rm --network host -v ...config.yaml:ro ghcr.io/dennispohlmann/gamewe-collector:latest check`.
 
@@ -708,8 +708,7 @@ player names are shown as `\xNN`. Besides those:
 - `processing log line failed`: a database error
 
 Every line in the journal can be a lot: a busy server sends several lines per
-second. Set `gamewe_log_lines` to `0` in `hlstats_Options` to switch it off (within
-a minute, no restart), and limit the journal size, e.g. `SystemMaxUse=1G` in
+second. Limit the journal size, e.g. `SystemMaxUse=1G` in
 `/etc/systemd/journald.conf`.
 
 Use `systemctl edit gamewe-collector` to add `-log-level debug` to `ExecStart` for

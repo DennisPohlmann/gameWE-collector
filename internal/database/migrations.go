@@ -255,6 +255,11 @@ var Migrations = []Migration{
 			"TeamSpeak passwords move there from hlstats_Options; the website reads them with DB_ADMIN_USER",
 		Sync: true, SecretOptions: true,
 	},
+	{
+		Version: 26, Name: "always-log-lines",
+		Desc:          "delete the hlstats_Options row gamewe_log_lines: the collector always writes every received log line to its log",
+		RetireOptions: []RetiredOption{{Key: "gamewe_log_lines"}},
+	},
 }
 
 // Latest is the newest schema version this collector knows.

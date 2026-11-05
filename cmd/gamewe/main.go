@@ -409,7 +409,7 @@ func runCmd(args []string) error {
 	store.HistoryZone, _ = cfg.Features.DailyAwards.Location(cfg.Timezone) // checked by config.Validate
 	replier := collector.NewRconReplier(ctx, set, log)
 	hub := collector.NewHub(store, set, replier, log)
-	hub.LineLog = os.Stderr // gamewe_log_lines: every received log line in the journal
+	hub.LineLog = os.Stderr // every received log line in the journal
 	auto := &geoip.Auto{DB: geoip.New(log), Explicit: func() string {
 		if cfg.GeoIP.Path != "" {
 			return cfg.GeoIP.Path // config.yaml wins

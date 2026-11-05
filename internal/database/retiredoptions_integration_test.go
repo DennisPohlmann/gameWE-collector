@@ -25,7 +25,7 @@ func TestMigrateRetiredOptions(t *testing.T) {
 		err := db.QueryRow(`SELECT value FROM hlstats_Options WHERE keyname = '` + key + `'`).Scan(&v) // key: a constant below
 		return v, err == nil
 	}
-	for _, k := range []string{"gamewe_default_game", "contact", "siteurl", "gamewe_geoip_db"} {
+	for _, k := range []string{"gamewe_default_game", "contact", "siteurl", "gamewe_geoip_db", "gamewe_log_lines"} {
 		if _, ok := value(k); ok {
 			t.Errorf("new database has %s", k)
 		}
@@ -35,7 +35,8 @@ func TestMigrateRetiredOptions(t *testing.T) {
 	for _, q := range []string{
 		`DELETE FROM ` + MigrationsTable + ` WHERE version >= 13`,
 		`INSERT INTO hlstats_Options (keyname, value) VALUES ('gamewe_default_game', 'css'), ('gamewe_daily_awards', '1'),
-			('contact', ' '), ('siteurl', 'https://stats.example.org/'), ('gamewe_geoip_db', '/var/lib/gamewe/GeoLite2-City.mmdb')`,
+			('contact', ' '), ('siteurl', 'https://stats.example.org/'), ('gamewe_geoip_db', '/var/lib/gamewe/GeoLite2-City.mmdb'),
+			('gamewe_log_lines', '0')`,
 	} {
 		if _, err := admin.Exec(q); err != nil {
 			t.Fatalf("%s: %v", q, err)
@@ -56,6 +57,7 @@ func TestMigrateRetiredOptions(t *testing.T) {
 		"contact":             false, // blank
 		"siteurl":             true,  // set on purpose
 		"gamewe_geoip_db":     false, // the old default
+		"gamewe_log_lines":    false, // migration 26
 		"sitename":            true,
 		"gamewe_page_size":    true,
 	} {

@@ -2222,7 +2222,6 @@ INSERT INTO hlstats_Options (keyname, value) VALUES
   ('gamewe_commands', '1'),
   ('gamewe_menu_time', '15'),
   ('gamewe_rcon_timeout', '5'),
-  ('gamewe_log_lines', '1'),
   ('gamewe_idle_timeout', '300'),
   ('gamewe_command_display', 'panel'),
   ('gamewe_command_prefix', 'gamewe'),

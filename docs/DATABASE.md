@@ -209,6 +209,7 @@ What it does:
 | 23 | `ribbon-classes-admin` | `gamewe_web_admin` may insert, update and delete `hlstats_Definition_Ribbons_Classes` (bronze, silver and gold of the ribbons), which the web copies with the other definitions of a template into a new ranking ("New ranking from a template" failed at that last step before); only the grants are run again, no table or data changes |
 | 24 | `log-only-actions` | column `log_only` (tinyint(1)) on `hlstats_Events_PlayerActions`: 1 for the headshot and kill streak of kills with bots in a ranking with `gamewe_bot_points_<game>` = 0 and `gamewe_bot_kills_<game>` = 1. The event lists show these rows; awards leave them out ([DB-SEMANTICS](DB-SEMANTICS.md)). Old rows keep 0 |
 | 25 | `secret-options` | table `hlstats_gamewe_secrets`, which `gamewe_web` cannot read: the Steam Web API key, the metrics token and the TeamSpeak passwords move there from `hlstats_Options`. The website reads them with `DB_ADMIN_USER`, so update the website together with the collector: an older website has no Steam key, metrics or TeamSpeak query until then |
+| 26 | `always-log-lines` | deletes the `hlstats_Options` row `gamewe_log_lines`: the collector always writes every received log line to its log |
 
 The SQL files of older packages (`/opt/gamewe/collector/doc/schema/hlstatsx.sql`,
 `init/01_schema.sql`, `02_seed.sql`, `03_grants.sql` and the PostgreSQL

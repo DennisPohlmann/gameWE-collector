@@ -396,7 +396,7 @@ func (s *syncBuffer) String() string {
 }
 
 // Every accepted line is written as "[name ip:port] line"; rejected
-// packets are not; gamewe_log_lines 0 switches it off.
+// packets are not.
 func TestHubLineLog(t *testing.T) {
 	st := newMemStore()
 	set := settings.NewLive(settings.Defaults())
@@ -409,11 +409,6 @@ func TestHubLineLog(t *testing.T) {
 	hub.Dispatch(netip.MustParseAddrPort(addrs[0]), pkt(`World triggered "Round_Start"`), now)
 	hub.Dispatch(netip.MustParseAddrPort(addrs[1]), pkt("\"Evil\x1b[31m<2><STEAM_1:0:9><CT>\" say \"hi\x07\""), now)
 	hub.Dispatch(netip.MustParseAddrPort("203.0.113.1:27015"), pkt(`World triggered "Round_Start"`), now)
-	off := settings.Defaults()
-	off.LogLines = false
-	time.Sleep(50 * time.Millisecond) // let the workers write before switching off
-	set.Set(off)
-	hub.Dispatch(netip.MustParseAddrPort(addrs[0]), pkt(`World triggered "Round_End"`), now)
 	hub.Close(context.Background())
 
 	got := strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n")
