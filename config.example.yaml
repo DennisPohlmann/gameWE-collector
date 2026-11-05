@@ -34,9 +34,10 @@ listen:
     # the game servers reach the collector at another address (NAT).
     # public_address: 203.0.113.4:41337
   # HTTP: the logs of Counter-Strike 2 (Source 2), which sends them only
-  # over HTTP: logaddress_add_http "http://<collector>:41338/<token>/<game port>"
+  # over HTTP: logaddress_add_http "http://<collector>:41338/<token>/<game port>/<log token>"
   # (<token>: listen.http.token below, the same for all CS2 servers; the
-  # game port as in the web admin).
+  # game port as in the web admin; <log token>: the server's own, stored in
+  # the web admin or with gamewe server set -logsecret; each left out when not set).
   # Plain HTTP (CS2 offers no HTTPS); open the TCP port only for the game
   # servers. Only servers of hlstats_Servers with a Source 2 game are
   # accepted.
@@ -49,8 +50,9 @@ listen:
     # http:// and the collector's address of the RCON connection, with port.
     # public_url: http://203.0.113.4:41338
     # A secret first path segment (16 to 128 letters, digits, - or _): only
-    # posts to /<token>/<game port> are accepted. Recommended, since CS2's
-    # HTTP logs carry no sv_logsecret. Make one with: openssl rand -hex 24
+    # posts to /<token>/<game port> are accepted. Recommended unless every
+    # CS2 server has a log token, since CS2's HTTP logs carry no sv_logsecret.
+    # Make one with: openssl rand -hex 24
     # (docs/INSTALLATION.md, "Creating the token for CS2"); keep it secret.
     # token: ""
     max_body: 128KiB      # largest post (4KiB to 16MiB)

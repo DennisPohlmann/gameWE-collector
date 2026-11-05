@@ -7,8 +7,8 @@ HLstatsX. The **collector** is its core: one static Go binary that
 - receives the logs of many game servers at once over UDP (`logaddress_add`)
   and, for Counter-Strike 2, over HTTP (`logaddress_add_http`); both inputs
   can be switched on and off. Only servers registered in `hlstats_Servers` are
-  accepted, on Source servers with a log secret (`sv_logsecret`) per server set
-  in the CLI or the web admin,
+  accepted, on Source servers with a log secret (`sv_logsecret`), on Counter-Strike 2
+  with a log token in the URL, each per server, set in the CLI or the web admin,
 - tracks connects, disconnects, team changes, kills (weapon, headshot), suicides,
   teamkills, round wins and team scores, plus per-weapon stats from the gameWE plugins,
 - writes players, kills, skill, rounds, weapon and action statistics into an
@@ -285,11 +285,14 @@ and the [web](https://github.com/DennisPohlmann/gameWE-web/blob/main/docs/INSTAL
    rcon_password "change-me"            // the same as in hlstats_Servers
    ```
 
-   Counter-Strike 2 (started with `-usercon`): switch on `listen.http` with a
-   `token` in the config ([how to make one](docs/INSTALLATION.md#creating-the-token-for-cs2)) and use `logaddress_delall_http` and
-   `logaddress_add_http "http://203.0.113.5:41338/<token>/27015"` (the
-   collector's IP and HTTP port, `listen.http.token`, then the game server's
-   port as in the web admin) instead of `logaddress_add`.
+   Counter-Strike 2 (started with `-usercon`): switch on `listen.http` in the
+   config, give the server a log token of its own in the web admin
+   ([how to make one](docs/INSTALLATION.md#creating-the-token-for-cs2)) and use
+   `logaddress_delall_http` and
+   `logaddress_add_http "http://203.0.113.5:41338/27015/<log token>"` (the
+   collector's IP and HTTP port, the game server's port as in the web admin,
+   its log token; with `listen.http.token` set, that token comes before the
+   port) instead of `logaddress_add`.
 
 Every step in detail: [docs/INSTALLATION.md](docs/INSTALLATION.md).
 

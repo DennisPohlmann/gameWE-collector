@@ -546,8 +546,8 @@ func (a *Admin) DeleteGame(ctx context.Context, code string) error {
 // ServerFields are the values of `server add` / `server set`; nil = keep.
 type ServerFields struct {
 	Game, Name, RconPassword, PublicAddress *string
-	// LogSecret is hlstats_Servers.log_secret (sv_logsecret, "" = none);
-	// shown only as changed.
+	// LogSecret is hlstats_Servers.log_secret (sv_logsecret, on Source 2 the
+	// log token; "" = none); shown only as changed.
 	LogSecret *string
 }
 
@@ -630,22 +630,32 @@ func (a *Admin) Servers(ctx context.Context) ([]ServerRow, error) {
 	return list, rows.Err()
 }
 
-func (a *Admin) checkFields(ctx context.Context, f ServerFields) error {
-	if f.Game != nil {
-		if _, err := a.game(ctx, *f.Game); err != nil {
-			return err
-		}
+// checkFields checks the given fields; game is the row's game after the change
+// and kept its stored log secret (a new row: ""), since what a log secret may
+// look like depends on the engine.
+func (a *Admin) checkFields(ctx context.Context, f ServerFields, game, kept string) error {
+	g, err := a.game(ctx, game)
+	if err != nil && (f.Game != nil || !errors.Is(err, ErrNotFound)) {
+		return err
 	}
+	_, engine, _ := games.Resolve(g.Realgame, game)
 	if f.Name != nil && utf8.RuneCountInString(*f.Name) > 255 {
 		return errors.New("name: at most 255 characters")
 	}
 	if f.RconPassword != nil && (len(*f.RconPassword) > 128 || strings.ContainsAny(*f.RconPassword, "\"\r\n\x00")) {
 		return errors.New("rcon password: at most 128 characters, no quotes or line breaks")
 	}
-	if f.LogSecret != nil {
+	switch {
+	case f.LogSecret != nil && engine == games.Source2:
+		if err := logparse.CheckToken(*f.LogSecret); err != nil {
+			return err
+		}
+	case f.LogSecret != nil:
 		if err := logparse.CheckSecret(*f.LogSecret); err != nil {
 			return err
 		}
+	case f.Game != nil && engine != games.Source2 && logparse.CheckSecret(kept) != nil:
+		return errors.New("the stored log token is no sv_logsecret for this game: remove it with -logsecret \"\" or give a number")
 	}
 	if f.PublicAddress != nil && utf8.RuneCountInString(*f.PublicAddress) > 255 {
 		return errors.New("public address: at most 255 characters")
@@ -667,7 +677,7 @@ func (a *Admin) AddServer(ctx context.Context, addr string, f ServerFields) erro
 	if f.Game == nil {
 		return errors.New("-game is required")
 	}
-	if err := a.checkFields(ctx, f); err != nil {
+	if err := a.checkFields(ctx, f, *f.Game, ""); err != nil {
 		return err
 	}
 	if s, err := a.server(ctx, ap.String()); err == nil {
@@ -703,7 +713,11 @@ func (a *Admin) SetServer(ctx context.Context, ref string, f ServerFields) error
 	if err != nil {
 		return err
 	}
-	if err := a.checkFields(ctx, f); err != nil {
+	game := s.game
+	if f.Game != nil {
+		game = *f.Game
+	}
+	if err := a.checkFields(ctx, f, game, s.secret); err != nil {
 		return err
 	}
 	var sets []string

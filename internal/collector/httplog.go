@@ -93,8 +93,8 @@ func (h *Hub) DispatchLines(src netip.AddrPort, lines []string, now time.Time) (
 }
 
 // ServeHTTP receives the HTTP logs of Counter-Strike 2 (logaddress_add_http
-// "http://<collector>/<game port>", or ".../<token>/<game port>") on
-// cfg.Addr and hands them to the hub until ctx is done. ready (if not nil)
+// "http://<collector>/<game port>", or ".../<token>/<game port>", each with
+// the server's log token as a last segment when one is stored) on cfg.Addr and hands them to the hub until ctx is done. ready (if not nil)
 // is called with the bound address once the socket is open.
 func ServeHTTP(ctx context.Context, cfg HTTPConfig, hub *Hub, log *slog.Logger, ready func(net.Addr)) error {
 	ln, err := net.Listen("tcp", cfg.Addr)
@@ -168,7 +168,7 @@ var (
 	errHTTPSender     = errors.New("HTTP sender unknown: X-Forwarded-For of a trusted proxy is not an IP address")
 	errHTTPBody       = errors.New("HTTP body larger than listen.http.max_body")
 	errHTTPRead       = errors.New("HTTP body could not be read")
-	errHTTPRowSecret  = errors.New("HTTP path does not end with the log secret stored for this server")
+	errHTTPRowSecret  = errors.New("HTTP path does not end with the log token stored for this server")
 )
 
 func (hh *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -263,10 +263,12 @@ func (h *Hub) httpHint(src netip.AddrPort, err error) []any {
 	return nil
 }
 
-// httpSecretOK checks the path's last segment against the log secret stored
-// for the row: the token is one per collector and the port only selects a row,
-// so this is what keeps parties that share an IP apart. No stored secret: not
-// checked.
+// httpSecretOK checks the path's last segment against the log token stored
+// for the row (hlstats_Servers.log_secret): listen.http.token is one per
+// collector and the port only selects a row, so this is what keeps parties that
+// share an IP apart. No stored token: not checked. Unlike UDP there is no grace
+// time for the old value: a server has both URLs until logaddress_delall_http,
+// and would be counted twice.
 func (h *Hub) httpSecretOK(src netip.AddrPort, secret string) bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()

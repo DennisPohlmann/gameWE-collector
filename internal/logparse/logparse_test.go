@@ -135,6 +135,19 @@ func TestPlayerKey(t *testing.T) {
 	}
 }
 
+func TestCheckToken(t *testing.T) {
+	for _, ok := range []string{"", "abcdefghijklmnop", "A-b_c-0123456789", strings.Repeat("a", 64)} {
+		if err := CheckToken(ok); err != nil {
+			t.Errorf("CheckToken(%q) = %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"short", "12345", strings.Repeat("a", 65), "abcdefghijklmnop/x", "abcdefghijklmnop\"", "abcdefghijklmnop;quit", "abcdefghijklmnop q", "abcdefghijklmnop\n"} {
+		if err := CheckToken(bad); err == nil {
+			t.Errorf("CheckToken(%q) accepted", bad)
+		}
+	}
+}
+
 func TestCheckSecret(t *testing.T) {
 	for _, ok := range []string{"", "1", "42", "2147483647"} {
 		if err := CheckSecret(ok); err != nil {

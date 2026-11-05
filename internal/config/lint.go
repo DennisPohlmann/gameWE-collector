@@ -559,7 +559,7 @@ func (l *linter) secrets(cfg Config) {
 	if h.Enabled {
 		switch {
 		case h.Token == "":
-			l.warnf("listen.http.token", "not set while listen.http is on: CS2's HTTP logs carry no sv_logsecret, so only the sender's IP protects the input; set a random token of 16 to 128 letters, digits, - or _ (e.g. openssl rand -hex 24)")
+			l.warnf("listen.http.token", "not set while listen.http is on: CS2's HTTP logs carry no sv_logsecret, so a server without a log token of its own (web admin, gamewe server set -logsecret) is protected only by the sender's IP; set a log token per server, or here a random token of 16 to 128 letters, digits, - or _ (e.g. openssl rand -hex 24)")
 		case reToken.MatchString(h.Token) && distinct(h.Token) < 8:
 			l.warnf("listen.http.token", "weak: it has fewer than 8 different characters; use a random value (e.g. openssl rand -hex 24)")
 		}

@@ -264,7 +264,7 @@ What it checks:
   the same address, where `0.0.0.0` covers every IPv4 address and `::` every
   address (UDP and TCP on the same port are fine). A TCP input on the port of
   a database on this host (`localhost`, `127.0.0.1`) is an error too.
-- **Secrets:** `listen.http` on without `token` (CS2 sends no log secret),
+- **Secrets:** `listen.http` on without `token` (the check cannot see the log tokens of the servers),
   a weak token, a database password that is missing, the example value or
   shorter than 12 characters are warnings; a token in the wrong form or
   `change-me` is an error (as at start). A config file, `password_file` or
@@ -578,6 +578,8 @@ gamewe server set 198.51.100.7:27315 -game css1    # or the serverId; only the g
 gamewe server set 3 -logsecret 1234567890          # the log secret, a number 1..2147483647; put the same
                                                    #   sv_logsecret in the server's server.cfg
 gamewe server set 3 -logsecret ""                  # no secret: all log packets of the server are accepted
+gamewe server set 4 -logsecret "$(openssl rand -hex 24)"  # a CS2 server: its log token, 16 to 64 letters, digits, - or _;
+                                                   #   it ends the server's log URL
 gamewe server remove 3                             # players and statistics are kept
 gamewe option list                                 # the collector settings with values and defaults
 gamewe option get gamewe_command_display

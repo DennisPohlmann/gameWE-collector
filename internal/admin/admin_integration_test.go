@@ -154,6 +154,33 @@ func TestAdmin(t *testing.T) {
 			t.Errorf("log secret %q accepted", bad)
 		}
 	}
+	// Counter-Strike 2: the log token per server. Made-up test value.
+	const cs2Addr, logToken = "198.51.100.98:27015", "dummy_log-token-1"
+	cs2 := "cs2"
+	if err := a.AddServer(ctx, cs2Addr, ServerFields{Game: &cs2}); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{"1234567", "short", "dummy log token 1", "dummy_log-token/1", "dummy_log-token;1"} {
+		if err := a.SetServer(ctx, cs2Addr, ServerFields{LogSecret: &bad}); err == nil {
+			t.Errorf("log token %q accepted", bad)
+		}
+	}
+	tok := logToken
+	if err := a.SetServer(ctx, cs2Addr, ServerFields{LogSecret: &tok}); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Servers WHERE address = '198.51.100.98' AND log_secret = '`+logToken+`' AND log_secret_changed > 0`); n != 1 {
+		t.Error("log token not stored")
+	}
+	if err := a.SetServer(ctx, "198.51.100.99:27015", ServerFields{LogSecret: &tok}); err == nil {
+		t.Error("log token accepted as sv_logsecret")
+	}
+	if err := a.SetServer(ctx, cs2Addr, ServerFields{Game: &other}); err == nil {
+		t.Error("move to a Source game kept the log token")
+	}
+	if err := a.RemoveServer(ctx, cs2Addr); err != nil {
+		t.Fatal(err)
+	}
 	if err := a.DeleteGame(ctx, "zz_tpl"); err == nil {
 		t.Error("game with a server deleted")
 	}

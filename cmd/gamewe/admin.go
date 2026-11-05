@@ -28,7 +28,7 @@ const adminUsage = `usage:
   gamewe server list
   gamewe server add IP:PORT -game CODE [-name NAME] [-rcon-password-file FILE | -rcon-password PW] [-public-address ADDR] [-logsecret N]
   gamewe server set ID|IP:PORT [-game CODE] [-name NAME] [-rcon-password-file FILE | -rcon-password PW] [-public-address ADDR]
-                    [-logsecret N|""]  (must match sv_logsecret in the game server's server.cfg; "": none, packets not checked)
+                    [-logsecret N|""]  (must match sv_logsecret in the game server's server.cfg, on CS2 the log token at the end of its URL; "": none, not checked)
   gamewe server remove ID|IP:PORT
   gamewe option list
   gamewe option get KEY
@@ -92,7 +92,7 @@ func adminCmd(kind string, args []string) error {
 	fs.Var(&rcon, "rcon-password", "RCON password (visible in the process list: prefer -rcon-password-file)")
 	fs.Var(&rconFile, "rcon-password-file", "file with the RCON password ('-' = stdin)")
 	fs.Var(&public, "public-address", "address shown in the web; an IP[:PORT] is also where A2S_INFO and RCON go")
-	fs.Var(&logSecret, "logsecret", "log secret (sv_logsecret in server.cfg): a number 1..2147483647, or \"\" (none: the server's log packets are not checked)")
+	fs.Var(&logSecret, "logsecret", "log secret (sv_logsecret in server.cfg): a number 1..2147483647; on CS2 the log token: 16 to 64 letters, digits, - or _; or \"\" (none: the server's logs are not checked)")
 	addOutputFlag(fs)
 	pos, err := parseInterspersed(fs, args)
 	if err != nil {
@@ -314,10 +314,10 @@ func adminRun(ctx context.Context, a *admin.Admin, kind, sub string, rest []stri
 // The value is not printed.
 func secretHint(w io.Writer, secret string) {
 	if secret == "" {
-		fmt.Fprintln(w, "note: no log secret: the collector accepts all log packets of this server (remove sv_logsecret from server.cfg too)")
+		fmt.Fprintln(w, "note: no log secret: the collector accepts all log packets of this server (remove sv_logsecret from server.cfg too; CS2: the URL may stay, or use logaddress_delall_http)")
 		return
 	}
-	fmt.Fprintln(w, "note: set the same value as sv_logsecret in the game server's server.cfg; until then its log packets are rejected (GoldSrc servers are never checked)")
+	fmt.Fprintln(w, "note: set the same value as sv_logsecret in the game server's server.cfg; until then its log packets are rejected (GoldSrc servers are never checked). CS2: the value ends the log URL, the collector registers it over RCON; remove the old URL with logaddress_delall_http")
 }
 
 // readAllLimited reads at most 1 KiB (an RCON password).

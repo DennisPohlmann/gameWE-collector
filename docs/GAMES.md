@@ -120,10 +120,10 @@ css adds 3 and 8, one cloned from dod 2 and 35.
 UDP packets are accepted only from servers in `hlstats_Servers` (exactly the
 source ip:port). An HTTP post is accepted only from a Source 2 server in
 `hlstats_Servers`: the sender's IP plus the game port from the URL (the TCP
-source port of a post is random), plus the path token when one is set and the row's log secret as the last path segment when one is stored. UDP lines
+source port of a post is random), plus the path token when one is set and the server's log token (`hlstats_Servers.log_secret`) as the last path segment when one is stored. UDP lines
 for a Source 2 server are refused unless `listen.udp.source2` is on (e.g. for a
-forwarder from the server's own ip:port); they then need the row's log secret,
-if one is stored. A UDP line longer than 8 KiB is refused, as on HTTP.
+forwarder from the server's own ip:port); they then need the value of that column
+as `sv_logsecret`, if one is stored. A UDP line longer than 8 KiB is refused, as on HTTP.
 
 ## Log formats
 
@@ -207,24 +207,25 @@ plain HTTP; the game offers no HTTPS), and SourceMod and AMX Mod X do not run
 on it. Set up:
 
 1. Switch on `listen.http` in the collector's config (TCP port 41338 by
-   default) with a `token` (one for all CS2 servers, not `sv_logsecret`;
-   e.g. `openssl rand -hex 24`, see
-   [Creating the token for CS2](INSTALLATION.md#creating-the-token-for-cs2))
-   and open the port for the CS2 servers.
+   default) and open the port for the CS2 servers. Optional: a `token`, one
+   for all CS2 servers (not `sv_logsecret`; e.g. `openssl rand -hex 24`, see
+   [Creating the token for CS2](INSTALLATION.md#creating-the-token-for-cs2)).
 2. Add the server in the web admin or with `gamewe server add` with a game
-   whose realgame is `cs2` (the seed has `cs2`).
+   whose realgame is `cs2` (the seed has `cs2`), with a **log token** of its
+   own: 16 to 64 letters, digits, `-` or `_` (web admin: "Log token";
+   `-logsecret <token>`).
 3. Start CS2 with `-usercon` (RCON, needed for the collector's checks and
    the in-game replies). With `rcon_password` and `features.log_address.http`
    (default) the collector registers itself
-   (`logaddress_add_http "http://<collector>:41338/<token>/<game port>"` and
-   `log on`). By hand, in the server's `server.cfg`:
+   (`logaddress_add_http "http://<collector>:41338/<token>/<game port>/<log token>"`
+   and `log on`). By hand, in the server's `server.cfg`:
    `log on`, `logaddress_delall_http`,
-   `logaddress_add_http "http://203.0.113.5:41338/<token>/27015"`.
-   `<token>` is `listen.http.token` (left out with its `/` when no token is
-   set); the last segment is the game port exactly as in the web admin, the
-   server is found by the sender's IP and this port. The log secret is
-   ignored on CS2. 404 in the collector's log (`rejected HTTP log post`):
-   wrong path or token; 403: the IP and port are not a CS2 server of the
+   `logaddress_add_http "http://203.0.113.5:41338/<token>/27015/<log token>"`.
+   `<token>` is `listen.http.token` and `<log token>` the server's own (each
+   left out with its `/` when none is set); between them the game port exactly
+   as in the web admin, the server is found by the sender's IP and this port.
+   404 in the collector's log (`rejected HTTP log post`): wrong path or
+   token; 403: the IP and port are not a CS2 server of the
    web admin ([INSTALLATION.md](INSTALLATION.md#g-troubleshooting)).
 
 The base data of `cs2` is the csgo data (see [CS:GO](#csgo)) without the VIP

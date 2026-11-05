@@ -539,6 +539,19 @@ func props(s string) map[string]string {
 // secret), so secrets are decimal numbers from 1 to the largest int32.
 const MaxSecret = 2147483647
 
+// CheckToken reports whether s can be stored as the log token of a Source 2
+// (CS2) server: empty (none), or 16 to 64 letters, digits, - or _. It becomes
+// a URL path segment inside a quoted RCON command, and hlstats_Servers.log_secret
+// holds 64 characters.
+func CheckToken(s string) error {
+	if s != "" && !reLogToken.MatchString(s) {
+		return errors.New("log token: want 16 to 64 letters, digits, - or _ (e.g. openssl rand -hex 24)")
+	}
+	return nil
+}
+
+var reLogToken = regexp.MustCompile(`^[A-Za-z0-9_-]{16,64}$`)
+
 // CheckSecret reports whether s can be used as sv_logsecret: empty (no
 // secret) or a decimal number 1..MaxSecret without leading zeros.
 func CheckSecret(s string) error {

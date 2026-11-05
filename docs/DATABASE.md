@@ -310,8 +310,8 @@ and `log_secret_changed` (column rights, `grants.sql`): `SELECT *` on
 `hlstats_Servers` fails for it, so the public web pages must name the columns.
 The collector and `gamewe_web_admin` can read (and the web admin write) them.
 
-`log_secret` is the server's `sv_logsecret` (a number 1..2147483647, `''` =
-packets not checked), set by hand with `gamewe server set -logsecret` or in
+`log_secret` is the server's `sv_logsecret` (a number 1..2147483647), on CS2
+its log token (16 to 64 letters, digits, `-` or `_`; `''` = not checked), set by hand with `gamewe server set -logsecret` or in
 the web admin; the collector only reads it. `log_secret_changed` is the Unix
 time it was last changed there (0 = unknown); it is informational only.
 

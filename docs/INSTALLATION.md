@@ -457,30 +457,34 @@ for the in-game replies (`!rank`, `!top10`, menus) and the extra statistics
 the gameWE AMX Mod X plugin ([GAMES.md](GAMES.md)).
 
 **Counter-Strike 2**: CS2 logs only over HTTP. Switch on `listen.http` in
-the config with a `token` (and open TCP 41338 for the server), add the
-server with a cs2 game (`gamewe server add 198.51.100.7:27015 -game cs2 ...`),
+the config (and open TCP 41338 for the server), add the server with a cs2
+game and a log token of its own
+(`gamewe server add 198.51.100.7:27015 -game cs2 -logsecret <log token> ...`,
+or the field "Log token" in the web admin),
 start CS2 with `-usercon` (RCON is off without it) and put into `server.cfg`:
 
 ```
 log on
 logaddress_delall_http
-logaddress_add_http "http://203.0.113.5:41338/<token>/27015"  // collector IP, HTTP port, listen.http.token, game port
+logaddress_add_http "http://203.0.113.5:41338/27015/<log token>"  // collector IP, HTTP port, game port, log token of this server
 rcon_password "change-me"                                      // the same as in hlstats_Servers
 ```
 
-- `<token>` is `listen.http.token` from the collector's config file: one
-  token for the collector, the same on every CS2 server. It is not
-  `sv_logsecret` and not set per server. Without a token in the config the
-  URL has no token segment (`http://203.0.113.5:41338/27015`); a token is
-  recommended. How to make one: [Creating the token](#creating-the-token-for-cs2).
+- `<log token>` is the token of this server, 16 to 64 letters, digits, `-` or
+  `_`. It is stored per server (`hlstats_Servers.log_secret`) and is not
+  `sv_logsecret`; without one the URL ends with the port. Recommended, so that
+  no one else on the server's IP can post for it.
+- With `listen.http.token` in the collector's config, one token for all CS2
+  servers, it comes first: `http://203.0.113.5:41338/<token>/27015/<log token>`.
+  How to make either: [Creating the token](#creating-the-token-for-cs2).
 - The last segment is the game server's port exactly as in the web admin
   (`hlstats_Servers`). The collector finds the server by the sender's IP and
   this port; a server added or changed in the web admin is picked up within
   about a minute.
 - `logaddress_delall_http` removes old URLs (another port, an old token), so
   the server posts to one URL only.
-- The log secret of a CS2 server is ignored (CS2's HTTP logs carry none);
-  leave it empty. The token and the firewall protect the input instead.
+- `sv_logsecret` plays no part on CS2 (its HTTP logs carry none). The tokens
+  and the firewall protect the input instead.
 
 With the RCON password the collector registers this URL itself
 (`features.log_address.http`, every minute, then `log on`). Without the
@@ -533,8 +537,9 @@ or `=`, it is part of the URL path). The collector does not generate it.
    [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(24))
    ```
 
-   Do not use a word, a password you use elsewhere, the RCON password or
-   the log secret; `gamewe check` warns about a token with fewer than 8
+   A log token for one server is made the same way and goes into the web
+   admin instead of the config. Do not use a word, a password you use
+   elsewhere, the RCON password or the log secret; `gamewe check` warns about a token with fewer than 8
    different characters.
 
 2. Put it into the collector's config file (archive:
@@ -626,7 +631,9 @@ Stop both, update the collector first (it migrates at start), then the website.
 - **Counter-Strike 2:** UDP lines for CS2 rows are now refused unless
   `listen.udp.source2` is on. A row with a stored log secret needs it as the
   last URL segment; the collector registers that URL, remove the old one on the
-  game server with `logaddress_delall_http`.
+  game server with `logaddress_delall_http`. That value is the server's log
+  token and may now be 16 to 64 letters, digits, `-` or `_`; a number stored
+  before keeps working until you change it.
 - **PostgreSQL only, by hand once:** `REVOKE SELECT (hostname, hostgroup) ON
   hlstats_Events_Connects FROM gamewe_web;` (MariaDB: done by the migration's
   grants).

@@ -63,6 +63,21 @@ func TestHTTPRowSecret(t *testing.T) {
 	if got := RedactURL("http://x:1/"+dummyToken+"/27015/55", dummyToken); got != "http://x:1/<token>/27015/<secret>" {
 		t.Errorf("redact: %s", got)
 	}
+	// A log token per server: letters, digits, - and _, also without listen.http.token.
+	const rowToken = "dummy_row-token-1"
+	hub.resolve(src).srv.LogSecret = rowToken
+	if !hub.httpSecretOK(src, rowToken) || hub.httpSecretOK(src, rowToken+"x") || hub.httpSecretOK(src, "") {
+		t.Error("stored log token must match")
+	}
+	if p, s, err := hh.port("/27015/" + rowToken); err != nil || p != 27015 || s != rowToken {
+		t.Errorf("log token: %d %q %v", p, s, err)
+	}
+	if u, err := HTTPLogURL(nil, "http://x:1", 41338, "", 27015, rowToken); err != nil || u != "http://x:1/27015/"+rowToken {
+		t.Errorf("url: %q %v", u, err)
+	}
+	if got := RedactURL("http://x:1/27015/"+rowToken, ""); got != "http://x:1/27015/<secret>" {
+		t.Errorf("redact log token: %s", got)
+	}
 }
 
 func TestVACKickChecksStatus(t *testing.T) {

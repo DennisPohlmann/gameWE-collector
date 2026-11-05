@@ -67,19 +67,25 @@ with exit code 2 when it is given.
 | `address` | `0.0.0.0` | IP to listen on |
 | `port` | `41338` | TCP port |
 | `public_url` | – | `http://host:port` (no path) the CS2 servers post to, registered with `logaddress_add_http` (`features.log_address.http`). The collector adds `/<token>/<game port>`. Default: `http://`, the collector's address of the RCON connection and `port`. |
-| `token` | – | a secret first path segment, 16 to 128 letters, digits, `-` or `_`. One token for the collector: every CS2 server uses the same one in its URL (`logaddress_add_http "http://<collector>:41338/<token>/<game port>"`); it is not `sv_logsecret` and not set per server. When it is set, only posts to `/<token>/<game port>` are accepted and everything else gets 404. Recommended, because CS2's HTTP logs carry no `sv_logsecret`. The token is never logged; `gamewe logaddress` and the log show it as `<token>`. Make it yourself, e.g. `openssl rand -hex 24`, and restart the collector after changing it ([Creating the token for CS2](INSTALLATION.md#creating-the-token-for-cs2)). |
+| `token` | – | a secret first path segment, 16 to 128 letters, digits, `-` or `_`. One token for the collector: every CS2 server uses the same one in its URL (`logaddress_add_http "http://<collector>:41338/<token>/<game port>"`); it is not `sv_logsecret`. The token per server is the **log token** below. When it is set, only posts to `/<token>/<game port>` are accepted and everything else gets 404. Recommended, because CS2's HTTP logs carry no `sv_logsecret`. The token is never logged; `gamewe logaddress` and the log show it as `<token>`. Make it yourself, e.g. `openssl rand -hex 24`, and restart the collector after changing it ([Creating the token for CS2](INSTALLATION.md#creating-the-token-for-cs2)). |
 | `max_body` | `128KiB` | largest post, `4KiB` to `16MiB` (`KiB`, `MiB`, `KB`, `MB` or bytes); a larger one gets 413 |
 | `read_timeout` | `10s` | time to read one post, `1s` to `2m` |
 | `max_connections` | `64` | open connections at most (1 to 4096); more are closed at once |
 | `max_connections_per_ip` | `8` | open connections from one IP at most (1 to `max_connections`) |
 | `trusted_proxies` | – | IPs or networks (CIDR) of reverse proxies in front of the collector. Only for a request from one of them the sender is taken from `X-Forwarded-For` (the right-most address that is not itself a trusted proxy). |
 
-The game port in the URL only selects a row at the sender's IP, and there is
-one token per collector. So that parties sharing one IP cannot post lines for
-each other's CS2 servers, store a log secret for the row: the URL must then end
-with it (`/<token>/<game port>/<log secret>`). The collector registers that URL
-itself (`features.log_address.http`); after setting a secret, remove the old URL
-from the game server (`logaddress_delall_http`).
+**Log token per server:** the game port in the URL only selects a row at the
+sender's IP, and `token` is one per collector. Each CS2 server can have a token
+of its own, 16 to 64 letters, digits, `-` or `_` (e.g. `openssl rand -hex 24`),
+stored in `hlstats_Servers.log_secret`, with the web admin ("Log token") or
+`gamewe server set <id> -logsecret <token>`. The URL must then end with it:
+`/<game port>/<log token>`, or `/<token>/<game port>/<log token>` while `token`
+is set. Everything else of that server gets 404. A server without a log token is
+not checked for one. The check does not depend on `features.log_secret`. The
+collector registers the new URL itself within about a minute
+(`features.log_address.http`), but does not remove the old one: it keeps being
+rejected until you run `logaddress_delall_http` on the game server. By hand, put
+the URL into `server.cfg`.
 
 A post is checked before its body is read. The sender's IP and the game port
 from the URL must be a server in `hlstats_Servers` whose game is a Source 2
@@ -293,13 +299,13 @@ Then:
   GAMES.md) are never checked. Nothing is said about it, unless a secret is
   stored for one anyway: then a note says it is ignored. (Assumption: HLDS
   has no `sv_logsecret`.)
-- **Source 2 servers** (cs2) are never checked either: their HTTP logs carry
-  no secret. Nothing is said about it, unless a secret is stored for one
-  anyway: then a note says it is ignored (remove it with
-  `gamewe server set <id> -logsecret ""`). Protect the HTTP input with
-  `listen.http.token` and the firewall instead (only TCP connections from the
-  server's own IP and game port in `hlstats_Servers` are accepted; TCP cannot
-  forge its sender address the way UDP can).
+- **Source 2 servers** (cs2) send no `sv_logsecret`. For them the column holds
+  the server's log token, the last segment of its HTTP log URL
+  ([`listen.http`](#listenhttp), "Log token per server"). A note says so, and one
+  says when a server has none. Together with the firewall it protects the HTTP
+  input (only TCP connections from the server's own IP and game port in
+  `hlstats_Servers` are accepted; TCP cannot forge its sender address the way
+  UDP can).
 
 The secret travels in plain text in every UDP packet: it protects against
 packets with a forged sender address from elsewhere, not against someone who

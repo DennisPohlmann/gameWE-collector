@@ -456,7 +456,7 @@ func ensureLogAddress(c rcon.Conn, srv stats.Server, cfg MonitorConfig, st *http
 // logaddress_add_http: public (listen.http.public_url, http://host:port)
 // or http:// and the collector's address of the RCON connection with the
 // HTTP port, then the token (if set), the game server's port and the log
-// secret stored for the server (if any).
+// token stored for the server (hlstats_Servers.log_secret, if any).
 func HTTPLogURL(c rcon.Conn, public string, httpPort int, token string, gamePort uint16, rowSecret string) (string, error) {
 	base := strings.TrimRight(public, "/")
 	if base == "" {
