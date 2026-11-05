@@ -18,7 +18,6 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -168,9 +167,10 @@ type ListenHTTP struct {
 	// to (logaddress_add_http); empty: http://, the collector's address of
 	// the RCON connection and Port.
 	PublicURL string `yaml:"public_url"`
-	// Token, if set, is a secret first path segment: only posts to
-	// /<token>/<port> are accepted.
-	Token string `yaml:"token"`
+	// OldToken is the removed collector-wide token (a first path segment).
+	// It is read only to warn: the log token per server
+	// (hlstats_Servers.log_secret, web admin) replaces it.
+	OldToken string `yaml:"token"`
 	// MaxBody is the largest request body ("128KiB", "1MiB" or bytes).
 	MaxBody string `yaml:"max_body"`
 	// ReadTimeout is how long reading one request may take ("10s").
@@ -195,8 +195,6 @@ const (
 	MaxHTTPReadTimeout = 2 * time.Minute
 	MaxHTTPConnections = 4096
 )
-
-var reToken = regexp.MustCompile(`^[A-Za-z0-9_-]{16,128}$`)
 
 // Addr returns the listen address of the HTTP input as host:port.
 func (h ListenHTTP) Addr() string {
@@ -913,9 +911,6 @@ func (h ListenHTTP) problems() []Problem {
 			}
 			out = append(out, problem("listen.http.public_url", "%s must be http://host:port (CS2 sends plain HTTP; no user, no path, the collector adds it)", shown))
 		}
-	}
-	if h.Token != "" && (!reToken.MatchString(h.Token) || strings.EqualFold(h.Token, "change-me")) {
-		out = append(out, problem("listen.http.token", "want 16 to 128 letters, digits, - or _ (it is part of the URL), not the example value"))
 	}
 	if n, err := h.BodyLimit(); err != nil || n < MinHTTPBody || n > MaxHTTPBody {
 		out = append(out, problem("listen.http.max_body", "%q: want a size from 4KiB to 16MiB, e.g. \"128KiB\"", h.MaxBody))

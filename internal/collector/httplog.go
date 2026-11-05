@@ -30,7 +30,6 @@ const MaxHTTPLine = 8 << 10
 // HTTPConfig is the HTTP input (listen.http).
 type HTTPConfig struct {
 	Addr                string
-	Token               string // secret first path segment ("": none)
 	MaxBody             int64
 	ReadTimeout         time.Duration
 	MaxConnections      int
@@ -97,9 +96,10 @@ func (h *Hub) DispatchLines(src netip.AddrPort, lines []string, now time.Time) (
 }
 
 // ServeHTTP receives the HTTP logs of Counter-Strike 2 (logaddress_add_http
-// "http://<collector>/<game port>", or ".../<token>/<game port>", each with
-// the server's log token as a last segment when one is stored) on cfg.Addr and hands them to the hub until ctx is done. ready (if not nil)
-// is called with the bound address once the socket is open.
+// "http://<collector>/<game port>", with the server's log token as a last
+// segment when one is stored) on cfg.Addr and hands them to the hub until ctx
+// is done. ready (if not nil) is called with the bound address once the
+// socket is open.
 func ServeHTTP(ctx context.Context, cfg HTTPConfig, hub *Hub, log *slog.Logger, ready func(net.Addr)) error {
 	ln, err := net.Listen("tcp", cfg.Addr)
 	if err != nil {
@@ -117,7 +117,7 @@ func ServeHTTP(ctx context.Context, cfg HTTPConfig, hub *Hub, log *slog.Logger, 
 		// Broken requests (port scans, TLS hellos) are not worth a warning.
 		ErrorLog: slog.NewLogLogger(log.Handler(), slog.LevelDebug),
 	}
-	log.Info("listening for game server logs", "http", ln.Addr().String(), "token", cfg.Token != "")
+	log.Info("listening for game server logs", "http", ln.Addr().String())
 	if ready != nil {
 		ready(ln.Addr())
 	}
@@ -161,14 +161,12 @@ func newHTTPHandler(cfg HTTPConfig, hub *Hub, rl *rejectLog, log *slog.Logger) *
 const HTTPQuiet = 10 * time.Minute
 
 // Why a post is answered with 404. The path itself is never logged: it
-// may hold the token, or a token that is nearly right.
+// may hold the server's log token, or one that is nearly right.
 var (
 	errHTTPMethod     = errors.New("HTTP method is not POST")
-	errHTTPPath       = errors.New("HTTP path is not /<game port> (or /<token>/<game port>)")
+	errHTTPPath       = errors.New("HTTP path is not /<game port> or /<game port>/<log token>")
 	errHTTPPort       = errors.New("HTTP path does not end with a game port (1-65535)")
-	errHTTPNoToken    = errors.New("HTTP path has no token, but listen.http.token is set")
-	errHTTPToken      = errors.New("HTTP path has a wrong token (listen.http.token)")
-	errHTTPExtraToken = errors.New("HTTP path has a token (or another segment), but listen.http.token is not set")
+	errHTTPExtraToken = errors.New("HTTP path has a segment before the game port (the collector-wide listen.http.token was removed): register logaddress_add_http again without it, after logaddress_delall_http")
 	errHTTPSender     = errors.New("HTTP sender unknown: X-Forwarded-For of a trusted proxy is not an IP address")
 	errHTTPBody       = errors.New("HTTP body larger than listen.http.max_body")
 	errHTTPRead       = errors.New("HTTP body could not be read")
@@ -268,9 +266,9 @@ func (h *Hub) httpHint(src netip.AddrPort, err error) []any {
 }
 
 // httpSecretOK checks the path's last segment against the log token stored
-// for the row (hlstats_Servers.log_secret): listen.http.token is one per
-// collector and the port only selects a row, so this is what keeps parties that
-// share an IP apart. No stored token: not checked. Unlike UDP there is no grace
+// for the row (hlstats_Servers.log_secret), like sv_logsecret for UDP: the
+// port only selects a row, so this is what keeps parties that share an IP
+// apart. No stored token: not checked. Unlike UDP there is no grace
 // time for the old value: a server has both URLs until logaddress_delall_http,
 // and would be counted twice.
 func (h *Hub) httpSecretOK(src netip.AddrPort, secret string) bool {
@@ -280,42 +278,27 @@ func (h *Hub) httpSecretOK(src netip.AddrPort, secret string) bool {
 	return w != nil && (w.srv.LogSecret == "" || subtle.ConstantTimeCompare([]byte(secret), []byte(w.srv.LogSecret)) == 1)
 }
 
-// port reads the game port from the path: /<port>, or /<token>/<port>
-// when a token is set (compared in constant time), each with the row's log
+// port reads the game port from the path: /<port>, with the row's log
 // secret as a last segment when one is stored. The error says what is wrong
 // with the path.
 func (hh *httpHandler) port(path string) (port uint16, rowSecret string, err error) {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
-	// A segment after a port is the secret; a token (at least 16 characters)
-	// is never a valid port.
-	if n := len(parts); n >= 2 && validPort(parts[n-2]) && (hh.cfg.Token != "" || n == 2) {
+	// A segment after a port is the secret.
+	if n := len(parts); n >= 2 && validPort(parts[n-2]) {
 		rowSecret = parts[n-1]
 		parts = parts[:n-1]
 	}
-	p, err := hh.portOf(parts)
+	p, err := portOf(parts)
 	return p, rowSecret, err
 }
 
-func (hh *httpHandler) portOf(parts []string) (uint16, error) {
-	if hh.cfg.Token != "" {
-		switch {
-		case len(parts) == 1 && validPort(parts[0]):
-			return 0, errHTTPNoToken
-		case len(parts) == 1 && subtle.ConstantTimeCompare([]byte(parts[0]), []byte(hh.cfg.Token)) == 1:
-			return 0, errHTTPPort // the token alone
-		case len(parts) != 2:
-			return 0, errHTTPPath
-		case subtle.ConstantTimeCompare([]byte(parts[0]), []byte(hh.cfg.Token)) != 1:
-			return 0, errHTTPToken
-		}
-		parts = parts[1:]
-	} else if len(parts) == 2 && validPort(parts[1]) {
+func portOf(parts []string) (uint16, error) {
+	switch {
+	case len(parts) == 2 && validPort(parts[1]):
 		return 0, errHTTPExtraToken
-	}
-	if len(parts) != 1 {
+	case len(parts) != 1:
 		return 0, errHTTPPath
-	}
-	if !validPort(parts[0]) {
+	case !validPort(parts[0]):
 		return 0, errHTTPPort
 	}
 	n, _ := strconv.ParseUint(parts[0], 10, 16)

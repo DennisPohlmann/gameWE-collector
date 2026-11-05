@@ -76,12 +76,13 @@ func TestHTTPLogHandler(t *testing.T) {
 	}
 }
 
+// The log token per server ends the path; the removed collector-wide token
+// before the game port is refused.
 func TestHTTPLogToken(t *testing.T) {
 	hub, _ := httpTestHub(t)
-	cfg := httpCfg()
-	cfg.Token = "abcdefghijklmnop1234" // gitleaks:allow (made-up test token)
-	h := newHTTPHandler(cfg, hub, newRejectLog(quiet, "test"), quiet)
-	for path, want := range map[string]int{"/abcdefghijklmnop1234/27015": 200, "/27015": 404, "/abcdefghijklmnop1235/27015": 404, "/abcdefghijklmnop1234/": 404} {
+	hub.resolve(netip.MustParseAddrPort("192.0.2.10:27015")).srv.LogSecret = "abcdefghijklmnop1234" // gitleaks:allow (made-up test token)
+	h := newHTTPHandler(httpCfg(), hub, newRejectLog(quiet, "test"), quiet)
+	for path, want := range map[string]int{"/27015/abcdefghijklmnop1234": 200, "/27015": 404, "/27015/abcdefghijklmnop1235": 404, "/abcdefghijklmnop1234/27015": 404} {
 		if got := post(h, "192.0.2.10:1", path, "x\n"); got != want {
 			t.Errorf("%s: got %d, want %d", path, got, want)
 		}
@@ -129,23 +130,20 @@ func TestHTTPLogPathReasons(t *testing.T) {
 	hub, _ := httpTestHub(t)
 	const token = "abcdefghijklmnop1234" // gitleaks:allow (made-up test token)
 	for _, c := range []struct {
-		token, path string
-		want        error
+		path string
+		want error
 	}{
-		{"", "/", errHTTPPort},
-		{"", "/70000", errHTTPPort},
-		{"", "/+27015", errHTTPPort},
-		{"", "/x/y/27015", errHTTPPath},
-		{"", "/" + token + "/27015", errHTTPExtraToken},
-		{token, "/27015", errHTTPNoToken},
-		{token, "/abcdefghijklmnop1235/27015", errHTTPToken},
-		{token, "/" + token + "/", errHTTPPort},
-		{token, "/" + token + "/x/27015", errHTTPPath},
+		{"/", errHTTPPort},
+		{"/70000", errHTTPPort},
+		{"/+27015", errHTTPPort},
+		{"/x/y/27015", errHTTPPath},
+		{"/" + token + "/27015", errHTTPExtraToken},
+		{"/" + token + "/27015/x", errHTTPExtraToken},
+		{"/" + token + "/", errHTTPPort},
+		{"/" + token + "/x/27015", errHTTPPath},
 	} {
-		cfg := httpCfg()
-		cfg.Token = c.token
 		log, buf := logBuf()
-		h := newHTTPHandler(cfg, hub, newRejectLog(log, "rejected HTTP log post"), log)
+		h := newHTTPHandler(httpCfg(), hub, newRejectLog(log, "rejected HTTP log post"), log)
 		if got := post(h, "192.0.2.10:1", c.path, "x\n"); got != 404 {
 			t.Errorf("%s: got %d", c.path, got)
 		}
@@ -247,11 +245,12 @@ func TestHTTPLineLog(t *testing.T) {
 	var out syncBuffer
 	hub.LineLog = &out
 	hub.SetServers(st.addServers([]string{"192.0.2.10:27015"}, map[string]string{"192.0.2.10:27015": "cs2"}))
+	const token = "abcdefghijklmnop1234" // gitleaks:allow (made-up test token)
+	hub.resolve(netip.MustParseAddrPort("192.0.2.10:27015")).srv.LogSecret = token
 	cfg := httpCfg()
-	cfg.Token = "abcdefghijklmnop1234"
 	cfg.MaxBody = 4 * MaxHTTPLine
 	h := newHTTPHandler(cfg, hub, newRejectLog(quiet, "test"), quiet)
-	path := "/" + cfg.Token + "/27015"
+	path := "/27015/" + token
 	const ts = "10/30/2026 - 20:00:00.000 - "
 	kill := ts + `"A<2><[U:1:11]><CT>" [1 2 3] killed "B<3><[U:1:22]><TERRORIST>" [4 5 6] with "ak47"`
 	long := kill + " " + strings.Repeat("y", MaxHTTPLine)
@@ -265,7 +264,7 @@ func TestHTTPLineLog(t *testing.T) {
 	if got != want {
 		t.Errorf("line log:\n%.300s\nwant:\n%.300s", got, want)
 	}
-	if strings.Contains(got, cfg.Token) {
+	if strings.Contains(got, token) {
 		t.Error("token in the line log")
 	}
 	st.mu.Lock()

@@ -110,7 +110,7 @@ the audit summary of `security-privacy-audit`.
   `internal/collector/httplog.go`) accepts a post only from a Source 2
   server of `hlstats_Servers` (sender IP plus the game port of the URL,
   `X-Forwarded-For` only from `trusted_proxies`), checked before the body
-  is read; optional path token, and the server's log token
+  is read; the server's log token
   (`hlstats_Servers.log_secret`, 16 to 64 letters, digits, `-`, `_`,
   `logparse.CheckToken`) as the last path segment when one is stored, compared
   in constant time and never logged (`RedactURL`); body, line length,

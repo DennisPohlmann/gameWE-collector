@@ -280,7 +280,6 @@ type MonitorConfig struct {
 	HTTP          bool
 	HTTPPublicURL string // listen.http.public_url
 	HTTPPort      int    // listen.http.port
-	HTTPToken     string // listen.http.token
 }
 
 // monitor polls one game server over RCON until ctx is done: "status" every
@@ -455,9 +454,9 @@ func ensureLogAddress(c rcon.Conn, srv stats.Server, cfg MonitorConfig, st *http
 // HTTPLogURL returns the URL to register on a CS2 server with
 // logaddress_add_http: public (listen.http.public_url, http://host:port)
 // or http:// and the collector's address of the RCON connection with the
-// HTTP port, then the token (if set), the game server's port and the log
+// HTTP port, then the game server's port and the log
 // token stored for the server (hlstats_Servers.log_secret, if any).
-func HTTPLogURL(c rcon.Conn, public string, httpPort int, token string, gamePort uint16, rowSecret string) (string, error) {
+func HTTPLogURL(c rcon.Conn, public string, httpPort int, gamePort uint16, rowSecret string) (string, error) {
 	base := strings.TrimRight(public, "/")
 	if base == "" {
 		ap, err := LogAddress(c, "", httpPort)
@@ -465,9 +464,6 @@ func HTTPLogURL(c rcon.Conn, public string, httpPort int, token string, gamePort
 			return "", err
 		}
 		base = "http://" + ap.String()
-	}
-	if token != "" {
-		base += "/" + token
 	}
 	u := fmt.Sprintf("%s/%d", base, gamePort)
 	if rowSecret != "" {
@@ -478,14 +474,9 @@ func HTTPLogURL(c rcon.Conn, public string, httpPort int, token string, gamePort
 
 var reURLRowSecret = regexp.MustCompile(`(/\d{1,5})/[^/]+$`)
 
-// RedactURL hides the token and the row's log secret of a log URL for logs and
-// output.
-func RedactURL(u, token string) string {
-	u = reURLRowSecret.ReplaceAllString(u, "$1/<secret>")
-	if token == "" {
-		return u
-	}
-	return strings.ReplaceAll(u, "/"+token+"/", "/<token>/")
+// RedactURL hides the row's log secret of a log URL for logs and output.
+func RedactURL(u string) string {
+	return reURLRowSecret.ReplaceAllString(u, "$1/<secret>")
 }
 
 // httpAddState remembers a logaddress_add_http that logaddress_list_http
@@ -528,11 +519,11 @@ func ensureHTTPLogAddress(c rcon.Conn, srv stats.Server, cfg MonitorConfig, st *
 	if _, err := c.Exec("echo"); err != nil { // connect, for the local address
 		return err
 	}
-	url, err := HTTPLogURL(c, cfg.HTTPPublicURL, cfg.HTTPPort, cfg.HTTPToken, srv.AddrPort.Port(), srv.LogSecret)
+	url, err := HTTPLogURL(c, cfg.HTTPPublicURL, cfg.HTTPPort, srv.AddrPort.Port(), srv.LogSecret)
 	if err != nil {
 		return err
 	}
-	shown := RedactURL(url, cfg.HTTPToken)
+	shown := RedactURL(url)
 	// Added before but not listed since: the list may look different on
 	// this server version; add again only after httpReAdd.
 	add := st.url != url || time.Since(st.last) >= httpReAdd

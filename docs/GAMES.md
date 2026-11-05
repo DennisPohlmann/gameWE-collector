@@ -115,7 +115,7 @@ css adds 3 and 8, one cloned from dod 2 and 35.
 |--------|-----------|---------------|
 | Source | UDP to `listen.port` | `\xff\xff\xff\xffRL 10/23/2026 - 12:00:00: <event>` |
 | GoldSrc | UDP to `listen.port` | `\xff\xff\xff\xfflog L 10/23/2026 - 12:00:00: <event>` |
-| Source 2 | HTTP `POST` to `listen.http` `/<game port>` (or `/<token>/<game port>`) | one or more lines per post: `10/23/2026 - 12:00:00.250 - <event>` |
+| Source 2 | HTTP `POST` to `listen.http` `/<game port>` (or `/<game port>/<log token>`) | one or more lines per post: `10/23/2026 - 12:00:00.250 - <event>` |
 
 UDP packets are accepted only from servers in `hlstats_Servers` (exactly the
 source ip:port). An HTTP post is accepted only from a Source 2 server in
@@ -207,23 +207,22 @@ plain HTTP; the game offers no HTTPS), and SourceMod and AMX Mod X do not run
 on it. Set up:
 
 1. Switch on `listen.http` in the collector's config (TCP port 41338 by
-   default) and open the port for the CS2 servers. Optional: a `token`, one
-   for all CS2 servers (not `sv_logsecret`; e.g. `openssl rand -hex 24`, see
-   [Creating the token for CS2](INSTALLATION.md#creating-the-token-for-cs2)).
+   default) and open the port for the CS2 servers.
 2. Add the server in the web admin or with `gamewe server add` with a game
    whose realgame is `cs2` (the seed has `cs2`), with a **log token** of its
    own: 16 to 64 letters, digits, `-` or `_` (web admin: "Log token";
-   `-logsecret <token>`).
+   `-logsecret <token>`; e.g. `openssl rand -hex 24`, see
+   [Creating the log token for CS2](INSTALLATION.md#creating-the-log-token-for-cs2)).
 3. Start CS2 with `-usercon` (RCON, needed for the collector's checks and
    the in-game replies). With `rcon_password` and `features.log_address.http`
    (default) the collector registers itself
-   (`logaddress_add_http "http://<collector>:41338/<token>/<game port>/<log token>"`
+   (`logaddress_add_http "http://<collector>:41338/<game port>/<log token>"`
    and `log on`). By hand, in the server's `server.cfg`:
    `log on`, `logaddress_delall_http`,
-   `logaddress_add_http "http://203.0.113.5:41338/<token>/27015/<log token>"`.
-   `<token>` is `listen.http.token` and `<log token>` the server's own (each
-   left out with its `/` when none is set); between them the game port exactly
-   as in the web admin, the server is found by the sender's IP and this port.
+   `logaddress_add_http "http://203.0.113.5:41338/27015/<log token>"`.
+   `<log token>` is the server's own (left out with its `/` when none is
+   set); before it the game port exactly as in the web admin, the server is
+   found by the sender's IP and this port.
    404 in the collector's log (`rejected HTTP log post`): wrong path or
    token; 403: the IP and port are not a CS2 server of the
    web admin ([INSTALLATION.md](INSTALLATION.md#g-troubleshooting)).

@@ -31,7 +31,7 @@ with `false`, are accepted and the secret is cut off unchecked (CONFIG.md,
 "Log secret"). The collector never sends `sv_logsecret` over RCON.
 
 Counter-Strike 2 posts its log over HTTP instead (`listen.http`): `POST
-/<game port>` (or `/<token>/<game port>`), one or more lines per body, each
+/<game port>` (or `/<game port>/<log token>`), one or more lines per body, each
 `10/22/2026 - 12:00:00.250 - <event>` (no `L `, milliseconds). The answer is
 `200` (also when a line was dropped, so that the server does not post it
 again), `403` for a sender that is not a Source 2 server of

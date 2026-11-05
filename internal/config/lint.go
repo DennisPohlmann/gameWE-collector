@@ -508,7 +508,6 @@ func (l *linter) unused(cfg Config) {
 		changed("listen.http.address", h.Address != dh.Address),
 		changed("listen.http.port", h.Port != dh.Port),
 		changed("listen.http.public_url", h.PublicURL != ""),
-		changed("listen.http.token", h.Token != ""),
 		changed("listen.http.max_body", h.MaxBody != dh.MaxBody),
 		changed("listen.http.read_timeout", h.ReadTimeout != dh.ReadTimeout),
 		changed("listen.http.max_connections", h.MaxConnections != dh.MaxConnections),
@@ -556,13 +555,10 @@ func (l *linter) unused(cfg Config) {
 // their values are never part of a message.
 func (l *linter) secrets(cfg Config) {
 	h := cfg.Listen.HTTP
+	if h.OldToken != "" {
+		l.warnf("listen.http.token", "is no longer read and ignored: CS2 servers are checked by their log token, entered per server in the web admin (or gamewe server set -logsecret), like sv_logsecret; delete the line, then on each CS2 server logaddress_delall_http (the collector registers the new URL)")
+	}
 	if h.Enabled {
-		switch {
-		case h.Token == "":
-			l.warnf("listen.http.token", "not set while listen.http is on: CS2's HTTP logs carry no sv_logsecret, so a server without a log token of its own (web admin, gamewe server set -logsecret) is protected only by the sender's IP; set a log token per server, or here a random token of 16 to 128 letters, digits, - or _ (e.g. openssl rand -hex 24)")
-		case reToken.MatchString(h.Token) && distinct(h.Token) < 8:
-			l.warnf("listen.http.token", "weak: it has fewer than 8 different characters; use a random value (e.g. openssl rand -hex 24)")
-		}
 		if p, err := h.Proxies(); err == nil {
 			for _, n := range p {
 				if (n.Addr().Is4() && n.Bits() < 8) || (n.Addr().Is6() && n.Bits() < 16) {
@@ -598,15 +594,6 @@ func cause(err error) error {
 		return u
 	}
 	return err
-}
-
-// distinct counts the different characters of s.
-func distinct(s string) int {
-	seen := map[rune]bool{}
-	for _, c := range s {
-		seen[c] = true
-	}
-	return len(seen)
 }
 
 // worldReadable warns when every user may read the secret file name.

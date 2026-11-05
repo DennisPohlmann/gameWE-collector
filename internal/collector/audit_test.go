@@ -49,21 +49,14 @@ func TestHTTPRowSecret(t *testing.T) {
 	if hub.httpSecretOK(src, "") || hub.httpSecretOK(src, "54") || !hub.httpSecretOK(src, "55") {
 		t.Error("stored secret must match")
 	}
-	hh := &httpHandler{cfg: HTTPConfig{Token: dummyToken}}
-	if p, s, err := hh.port("/" + dummyToken + "/27015/55"); err != nil || p != 27015 || s != "55" {
-		t.Errorf("token form: %d %q %v", p, s, err)
+	hh := &httpHandler{}
+	if _, _, err := hh.port("/" + dummyToken + "/27015/55"); !errors.Is(err, errHTTPExtraToken) {
+		t.Errorf("old collector-wide token form: %v", err)
 	}
-	if _, _, err := hh.port("/27015/55"); err == nil {
-		t.Error("no token, token set")
-	}
-	hh = &httpHandler{}
 	if p, s, err := hh.port("/27015/55"); err != nil || p != 27015 || s != "55" {
-		t.Errorf("no token: %d %q %v", p, s, err)
+		t.Errorf("log token: %d %q %v", p, s, err)
 	}
-	if got := RedactURL("http://x:1/"+dummyToken+"/27015/55", dummyToken); got != "http://x:1/<token>/27015/<secret>" {
-		t.Errorf("redact: %s", got)
-	}
-	// A log token per server: letters, digits, - and _, also without listen.http.token.
+	// A log token per server: letters, digits, - and _.
 	const rowToken = "dummy_row-token-1"
 	hub.resolve(src).srv.LogSecret = rowToken
 	if !hub.httpSecretOK(src, rowToken) || hub.httpSecretOK(src, rowToken+"x") || hub.httpSecretOK(src, "") {
@@ -72,10 +65,10 @@ func TestHTTPRowSecret(t *testing.T) {
 	if p, s, err := hh.port("/27015/" + rowToken); err != nil || p != 27015 || s != rowToken {
 		t.Errorf("log token: %d %q %v", p, s, err)
 	}
-	if u, err := HTTPLogURL(nil, "http://x:1", 41338, "", 27015, rowToken); err != nil || u != "http://x:1/27015/"+rowToken {
+	if u, err := HTTPLogURL(nil, "http://x:1", 41338, 27015, rowToken); err != nil || u != "http://x:1/27015/"+rowToken {
 		t.Errorf("url: %q %v", u, err)
 	}
-	if got := RedactURL("http://x:1/27015/"+rowToken, ""); got != "http://x:1/27015/<secret>" {
+	if got := RedactURL("http://x:1/27015/" + rowToken); got != "http://x:1/27015/<secret>" {
 		t.Errorf("redact log token: %s", got)
 	}
 }

@@ -432,7 +432,7 @@ func runCmd(args []string) error {
 	hub.Monitor = collector.MonitorConfig{Status: rs.Enabled, StatusInterval: every, LogAddress: la.Enabled, LogInterval: laEvery,
 		ServerInfo: si.Enabled, InfoInterval: siEvery,
 		PublicAddress: cfg.Listen.PublicAddress, ListenPort: cfg.Listen.Port, NoUDP: !udpOn,
-		HTTP: lh.Enabled && la.HTTP, HTTPPublicURL: lh.PublicURL, HTTPPort: lh.Port, HTTPToken: lh.Token}
+		HTTP: lh.Enabled && la.HTTP, HTTPPublicURL: lh.PublicURL, HTTPPort: lh.Port}
 	hub.Source2Hits = cfg.Features.CS2Hitgroups.Enabled
 	sb := cfg.Features.SourceBans
 	sbEvery, _ := sb.Every() // checked by config.Validate
@@ -600,7 +600,7 @@ func httpConfig(h config.ListenHTTP) (collector.HTTPConfig, error) {
 	if err != nil {
 		return collector.HTTPConfig{}, err
 	}
-	return collector.HTTPConfig{Addr: h.Addr(), Token: h.Token, MaxBody: body, ReadTimeout: timeout,
+	return collector.HTTPConfig{Addr: h.Addr(), MaxBody: body, ReadTimeout: timeout,
 		MaxConnections: h.MaxConnections, MaxConnectionsPerIP: h.MaxConnectionsPerIP, TrustedProxies: proxies}, nil
 }
 
@@ -612,9 +612,6 @@ func listenText(l config.Listen) (udp, http string) {
 	}
 	if l.HTTP.Enabled {
 		http = l.HTTP.Addr()
-		if l.HTTP.Token != "" {
-			http += " (token set)"
-		}
 	}
 	return udp, http
 }
@@ -1344,13 +1341,13 @@ func (l statusList) Rows() [][]string {
 }
 
 // httpLogAddress is gamewe logaddress for a CS2 server: logaddress_list_http
-// and logaddress_add_http with listen.http (the token shown as <token>).
+// and logaddress_add_http with listen.http (the log token shown as <secret>).
 func httpLogAddress(c rcon.Conn, cfg config.Config, s stats.Server, add, text bool, d *logaddressDoc) error {
 	h := cfg.Listen.HTTP
 	if !h.Enabled {
 		return errors.New("Counter-Strike 2 logs over HTTP only: switch on listen.http in the config")
 	}
-	url, err := collector.HTTPLogURL(c, h.PublicURL, h.Port, h.Token, s.AddrPort.Port(), s.LogSecret)
+	url, err := collector.HTTPLogURL(c, h.PublicURL, h.Port, s.AddrPort.Port(), s.LogSecret)
 	if err != nil {
 		return err
 	}
@@ -1358,7 +1355,7 @@ func httpLogAddress(c rcon.Conn, cfg config.Config, s stats.Server, add, text bo
 	if err != nil {
 		return err
 	}
-	shown := collector.RedactURL(url, h.Token)
+	shown := collector.RedactURL(url)
 	d.Collector, d.Added, d.Registered = shown, added, listed || added
 	if !text {
 		return nil

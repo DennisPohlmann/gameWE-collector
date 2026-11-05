@@ -58,7 +58,7 @@ func TestLint(t *testing.T) {
 		}
 		os.Chmod(name, mode)
 	}
-	httpOn := "listen:\n  http:\n    enabled: true\n    token: " + goodToken + "\n"
+	httpOn := "listen:\n  http:\n    enabled: true\n"
 	cases := []struct {
 		name  string
 		in    string
@@ -111,9 +111,7 @@ func TestLint(t *testing.T) {
 			want: []wantFinding{{SevError, "listen.http.port", "port of the local database"}}},
 
 		// secrets
-		{name: "http without token", in: lintBase + "listen:\n  http:\n    enabled: true\n", want: []wantFinding{{SevWarning, "listen.http.token", "not set"}}},
-		{name: "weak token", in: lintBase + "listen:\n  http:\n    enabled: true\n    token: aaaaaaaabbbbbbbb\n", want: []wantFinding{{SevWarning, "listen.http.token", "weak"}}},
-		{name: "example token", in: lintBase + "listen:\n  http:\n    enabled: true\n    token: change-me\n", want: []wantFinding{{SevError, "listen.http.token", "not the example value"}}},
+		{name: "removed http token", in: lintBase + "listen:\n  http:\n    enabled: true\n    token: " + goodToken + "\n", want: []wantFinding{{SevWarning, "listen.http.token", "no longer read"}}},
 		{name: "everyone a trusted proxy", in: lintBase + httpOn + "    trusted_proxies: [0.0.0.0/0]\n",
 			want: []wantFinding{{SevWarning, "listen.http.trusted_proxies", "almost) everyone"}}},
 		{name: "trusted proxy", in: lintBase + httpOn + "    trusted_proxies: [127.0.0.1]\n", clean: true},
@@ -130,8 +128,8 @@ func TestLint(t *testing.T) {
 			want: []wantFinding{{SevWarning, "database.password_file", "every user may read"}}},
 
 		// switches that contradict each other
-		{name: "http settings while http is off", in: lintBase + "listen:\n  http:\n    port: 8080\n    token: " + goodToken + "\n",
-			want: []wantFinding{{SevWarning, "listen.http.port", "no effect while listen.http.enabled is false"}, {SevWarning, "listen.http.token", "no effect"}}},
+		{name: "http settings while http is off", in: lintBase + "listen:\n  http:\n    port: 8080\n",
+			want: []wantFinding{{SevWarning, "listen.http.port", "no effect while listen.http.enabled is false"}}},
 		{name: "udp settings while udp is off", in: lintBase + httpOn + "  udp:\n    enabled: false\n    port: 27500\n    public_address: 203.0.113.4:27500\n",
 			want: []wantFinding{{SevWarning, "listen.udp.port", "no effect while listen.udp.enabled is false"}, {SevWarning, "listen.udp.public_address", "no effect"}}},
 		{name: "interval while the feature is off", in: lintBase + "features:\n  rcon_status:\n    enabled: false\n    interval: 30s\n",

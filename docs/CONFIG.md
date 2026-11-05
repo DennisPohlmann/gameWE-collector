@@ -38,7 +38,7 @@ be on, and both can run at the same time.
   (`logaddress_add <ip> <port>`, space instead of colon). On
   by default.
 - `listen.http`: Counter-Strike 2 (Source 2), which logs only over HTTP
-  (`logaddress_add_http "http://<ip>:<port>/<token>/<game port>"`). Off by default.
+  (`logaddress_add_http "http://<ip>:<port>/<game port>/<log token>"`). Off by default.
   CS2 sends plain HTTP; HTTPS is not supported by the game.
 
 All keys are optional.
@@ -50,7 +50,7 @@ All keys are optional.
 | `enabled` | `true` | receive UDP logs; `false` closes the UDP port and stops `logaddress_add` |
 | `address` | `0.0.0.0` | IP to listen on (`0.0.0.0` = all IPv4, `::` = all) |
 | `port` | `41337` | UDP port |
-| `source2` | `false` | read UDP lines for Counter-Strike 2 rows (e.g. a forwarder from the server's own ip:port). They must then carry the row's log secret, if one is stored. Off: refused, as neither `listen.http.token` nor a log secret protects them |
+| `source2` | `false` | read UDP lines for Counter-Strike 2 rows (e.g. a forwarder from the server's own ip:port). They must then carry the row's log secret, if one is stored. Off: refused, as nothing but the sender's IP protects them |
 | `public_address` | – | `ip:port` the game servers send their logs to, registered with `logaddress_add` (`features.log_address`). Default: the collector's address of the RCON connection to the game server, with `port`. Set it when the servers reach the collector at another address (NAT, several IPs). |
 
 The older form, `address`, `port` and `public_address` directly under `listen`,
@@ -66,8 +66,7 @@ with exit code 2 when it is given.
 | `enabled` | `false` | receive the HTTP logs of Counter-Strike 2 |
 | `address` | `0.0.0.0` | IP to listen on |
 | `port` | `41338` | TCP port |
-| `public_url` | – | `http://host:port` (no path) the CS2 servers post to, registered with `logaddress_add_http` (`features.log_address.http`). The collector adds `/<token>/<game port>`. Default: `http://`, the collector's address of the RCON connection and `port`. |
-| `token` | – | a secret first path segment, 16 to 128 letters, digits, `-` or `_`. One token for the collector: every CS2 server uses the same one in its URL (`logaddress_add_http "http://<collector>:41338/<token>/<game port>"`); it is not `sv_logsecret`. The token per server is the **log token** below. When it is set, only posts to `/<token>/<game port>` are accepted and everything else gets 404. Recommended, because CS2's HTTP logs carry no `sv_logsecret`. The token is never logged; `gamewe logaddress` and the log show it as `<token>`. Make it yourself, e.g. `openssl rand -hex 24`, and restart the collector after changing it ([Creating the token for CS2](INSTALLATION.md#creating-the-token-for-cs2)). |
+| `public_url` | – | `http://host:port` (no path) the CS2 servers post to, registered with `logaddress_add_http` (`features.log_address.http`). The collector adds `/<game port>` and the server's log token. Default: `http://`, the collector's address of the RCON connection and `port`. |
 | `max_body` | `128KiB` | largest post, `4KiB` to `16MiB` (`KiB`, `MiB`, `KB`, `MB` or bytes); a larger one gets 413 |
 | `read_timeout` | `10s` | time to read one post, `1s` to `2m` |
 | `max_connections` | `64` | open connections at most (1 to 4096); more are closed at once |
@@ -75,24 +74,30 @@ with exit code 2 when it is given.
 | `trusted_proxies` | – | IPs or networks (CIDR) of reverse proxies in front of the collector. Only for a request from one of them the sender is taken from `X-Forwarded-For` (the right-most address that is not itself a trusted proxy). |
 
 **Log token per server:** the game port in the URL only selects a row at the
-sender's IP, and `token` is one per collector. Each CS2 server can have a token
+sender's IP. Like `sv_logsecret` for UDP, each CS2 server can have a token
 of its own, 16 to 64 letters, digits, `-` or `_` (e.g. `openssl rand -hex 24`),
 stored in `hlstats_Servers.log_secret`, with the web admin ("Log token") or
 `gamewe server set <id> -logsecret <token>`. The URL must then end with it:
-`/<game port>/<log token>`, or `/<token>/<game port>/<log token>` while `token`
-is set. Everything else of that server gets 404. A server without a log token is
+`/<game port>/<log token>`. Everything else of that server gets 404. A server without a log token is
 not checked for one. The check does not depend on `features.log_secret`. The
 collector registers the new URL itself within about a minute
 (`features.log_address.http`), but does not remove the old one: it keeps being
 rejected until you run `logaddress_delall_http` on the game server. By hand, put
 the URL into `server.cfg`.
 
+The collector-wide `token` (a first path segment, `/<token>/<game port>`) was
+removed: the log token per server replaces it. A `token` still in the config is
+ignored with a warning (`gamewe config test`), and posts to the old URL get 404
+(`a segment before the game port`). Delete the line, give each CS2 server a log
+token in the web admin and run `logaddress_delall_http` on it; the collector
+registers the new URL.
+
 A post is checked before its body is read. The sender's IP and the game port
 from the URL must be a server in `hlstats_Servers` whose game is a Source 2
 game (`cs2`); every other post gets 403. The port at the end of the URL is the
 game port exactly as in the web admin; the collector re-reads `hlstats_Servers`
 every minute, so a new server is accepted within about a minute. Only `POST` is accepted (405
-otherwise); a path that is not `/<game port>` (or `/<token>/<game port>`)
+otherwise); a path that is not `/<game port>` (or `/<game port>/<log token>`)
 gets 404. A line longer than 8 KiB is not processed; its start still goes to the
 log with `... [cut, N bytes, not processed]`. Rejected posts are logged
 (`rejected HTTP log post`) the first time per sender and reason, then every

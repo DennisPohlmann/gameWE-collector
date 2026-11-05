@@ -397,15 +397,12 @@ func TestEnsureHTTPLogAddress(t *testing.T) {
 	if _, err := c.Exec("echo"); err != nil {
 		t.Fatal(err)
 	}
-	u, err := HTTPLogURL(c, "", 41338, "", 27015, "")
+	u, err := HTTPLogURL(c, "", 41338, 27015, "")
 	if err != nil || u != "http://127.0.0.1:41338/27015" {
 		t.Fatalf("auto url %q %v", u, err)
 	}
-	if u, _ := HTTPLogURL(c, "http://stats.example.org:8080/", 41338, "abcdefghijklmnop1234", 27016, ""); u != "http://stats.example.org:8080/abcdefghijklmnop1234/27016" {
+	if u, _ := HTTPLogURL(c, "http://stats.example.org:8080/", 41338, 27016, ""); u != "http://stats.example.org:8080/27016" {
 		t.Errorf("public url %q", u)
-	}
-	if r := RedactURL("http://x:1/abcdefghijklmnop1234/27016", "abcdefghijklmnop1234"); r != "http://x:1/<token>/27016" {
-		t.Errorf("redacted %q", r)
 	}
 	srv := stats.Server{ID: 3, AddrPort: netip.MustParseAddrPort("127.0.0.1:27015"), Engine: games.Source2}
 	cfg := MonitorConfig{LogAddress: true, HTTP: true, HTTPPort: 41338, ListenPort: 41337}

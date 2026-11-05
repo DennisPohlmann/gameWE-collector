@@ -264,14 +264,14 @@ What it checks:
   the same address, where `0.0.0.0` covers every IPv4 address and `::` every
   address (UDP and TCP on the same port are fine). A TCP input on the port of
   a database on this host (`localhost`, `127.0.0.1`) is an error too.
-- **Secrets:** `listen.http` on without `token` (the check cannot see the log tokens of the servers),
-  a weak token, a database password that is missing, the example value or
-  shorter than 12 characters are warnings; a token in the wrong form or
-  `change-me` is an error (as at start). A config file, `password_file` or
+- **Secrets:** a database password that is missing, the example value or
+  shorter than 12 characters is a warning; so is the removed
+  `listen.http.token` (ignored: CS2 servers use their log token from the web
+  admin). A config file, `password_file` or
   `tls.key_file` that every user may read is a warning. Secret values are never
   printed.
 - **Switches that contradict each other** (warnings): a changed setting under
-  an input or feature that is off (`listen.http.token` while `listen.http` is
+  an input or feature that is off (`listen.http.port` while `listen.http` is
   off, `features.rcon_status.interval` while `rcon_status` is off, ...;
   values written out with their default are fine), `features.log_address.http`
   while `log_address` is off, `listen.http.public_url` /
@@ -300,7 +300,6 @@ gamewe: configuration file /etc/gamewe/collector/config.yaml test is successful
 $ gamewe config test -config broken.yaml
 gamewe: [error] listen.udp.enabled: udp and http are both off; enable at least one input for the game server logs in broken.yaml:3
 gamewe: [warning] listen.http.port: has no effect while listen.http.enabled is false in broken.yaml:6
-gamewe: [warning] listen.http.token: has no effect while listen.http.enabled is false in broken.yaml:7
 gamewe: [warning] database.password: not set: the collector connects without a password; set password or password_file in broken.yaml:8
 gamewe: [error] database.pasword: unknown key; did you mean "password"? in broken.yaml:12
 gamewe: [warning] features.log_address.http: has no effect while features.log_address.enabled is false in broken.yaml:19
@@ -453,7 +452,7 @@ gamewe status -server 3                       # one server: serverId or ip:port
 gamewe logaddress                             # is the collector registered on every server?
 gamewe logaddress -add                        # register it where it is missing
 gamewe logaddress -server 198.51.100.7:27015 -address 203.0.113.4:41337 -add
-gamewe logaddress -server 198.51.100.8:27015 -add  # a CS2 server: logaddress_add_http with listen.http (token shown as <token>)
+gamewe logaddress -server 198.51.100.8:27015 -add  # a CS2 server: logaddress_add_http with listen.http (log token shown as <secret>)
 gamewe rcon -server 3 sv_maxplayers           # any RCON command, prints the answer
 gamewe serverinfo                             # A2S_INFO of all servers, store version, OS, VAC, max players (-dry-run: only show)
 gamewe awards -date 2026-10-21                # decide the daily awards of a day again
