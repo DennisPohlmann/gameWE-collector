@@ -97,13 +97,14 @@ type worker struct {
 }
 
 type packet struct {
-	line   string
-	at     time.Time
-	update *stats.Server     // changed name / RCON password, applied in order
-	tick   bool              // end idle visits (Processor.Tick at time at)
-	status *Status           // RCON status polled at time at
-	info   *stats.ServerInfo // A2S_INFO answer
-	pause  *pause            // stop here (between two lines) until released
+	line    string
+	at      time.Time
+	logOnly bool              // for the line log only, not processed (too long)
+	update  *stats.Server     // changed name / RCON password, applied in order
+	tick    bool              // end idle visits (Processor.Tick at time at)
+	status  *Status           // RCON status polled at time at
+	info    *stats.ServerInfo // A2S_INFO answer
+	pause   *pause            // stop here (between two lines) until released
 }
 
 // pause stops a worker for a ranking reset: it drops the processor's
@@ -404,6 +405,9 @@ func (h *Hub) run(w *worker, addr string) {
 		if h.LineLog != nil && h.set.Get().LogLines {
 			// One Write per line, so lines of different servers do not mix.
 			h.LineLog.Write([]byte("[" + w.proc.Label() + "] " + Printable(pk.line) + "\n"))
+		}
+		if pk.logOnly {
+			continue
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		if err := w.proc.Handle(ctx, pk.line, pk.at); err != nil {

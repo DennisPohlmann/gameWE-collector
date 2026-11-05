@@ -23,8 +23,8 @@ import (
 // not a Source 2 game. Only Counter-Strike 2 logs over HTTP.
 var ErrNotSource2 = errors.New("HTTP log post for a server that is not Source 2 (CS2); other games log over UDP")
 
-// MaxHTTPLine is the longest log line taken from an HTTP post; longer
-// lines are dropped.
+// MaxHTTPLine is the longest log line taken from an HTTP post; a longer one
+// is not processed, only its start goes to the line log (gamewe_log_lines).
 const MaxHTTPLine = 8 << 10
 
 // HTTPConfig is the HTTP input (listen.http).
@@ -85,7 +85,11 @@ func (h *Hub) DispatchLines(src netip.AddrPort, lines []string, now time.Time) (
 		return 0, err
 	}
 	for i, line := range lines {
-		if err := w.enqueue(packet{line: line, at: now}); err != nil {
+		pk := packet{line: line, at: now}
+		if len(line) > MaxHTTPLine {
+			pk.line, pk.logOnly = line[:MaxHTTPLine]+" ... [cut, "+strconv.Itoa(len(line))+" bytes, not processed]", true
+		}
+		if err := w.enqueue(pk); err != nil {
 			return i, err
 		}
 	}
@@ -367,13 +371,12 @@ func (hh *httpHandler) trusted(ip netip.Addr) bool {
 	return false
 }
 
-// splitHTTPLines splits a CS2 log post into lines; empty lines and lines
-// longer than MaxHTTPLine are dropped.
+// splitHTTPLines splits a CS2 log post into lines; empty lines are dropped.
 func splitHTTPLines(body string) []string {
 	var out []string
 	for _, l := range strings.Split(body, "\n") {
 		l = strings.TrimRight(l, "\r\x00 ")
-		if l == "" || len(l) > MaxHTTPLine {
+		if l == "" {
 			continue
 		}
 		out = append(out, l)

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -237,9 +238,52 @@ func TestHTTPLogAccepted(t *testing.T) {
 	}
 }
 
+// The lines of a post go to the line log like those of a UDP server, JSON
+// blocks too. A line over MaxHTTPLine shows cut and is not processed. The
+// token in the path never shows, and gamewe_log_lines 0 switches it all off.
+func TestHTTPLineLog(t *testing.T) {
+	st := newMemStore()
+	set := settings.NewLive(settings.Defaults())
+	hub := NewHub(st, set, &recorder{}, quiet)
+	var out syncBuffer
+	hub.LineLog = &out
+	hub.SetServers(st.addServers([]string{"192.0.2.10:27015"}, map[string]string{"192.0.2.10:27015": "cs2"}))
+	cfg := httpCfg()
+	cfg.Token = "abcdefghijklmnop1234"
+	cfg.MaxBody = 4 * MaxHTTPLine
+	h := newHTTPHandler(cfg, hub, newRejectLog(quiet, "test"), quiet)
+	path := "/" + cfg.Token + "/27015"
+	const ts = "10/30/2026 - 20:00:00.000 - "
+	kill := ts + `"A<2><[U:1:11]><CT>" [1 2 3] killed "B<3><[U:1:22]><TERRORIST>" [4 5 6] with "ak47"`
+	long := kill + " " + strings.Repeat("y", MaxHTTPLine)
+	post(h, "192.0.2.10:1", path, ts+"JSON_BEGIN{\n\"name\": \"round_stats\"\n}}JSON_END\n"+long+"\n")
+	time.Sleep(50 * time.Millisecond) // let the worker write before switching off
+	off := settings.Defaults()
+	off.LogLines = false
+	set.Set(off)
+	post(h, "192.0.2.10:1", path, ts+`World triggered "Round_End"`+"\n")
+	hub.Close(context.Background())
+
+	got := out.String()
+	const label = "[srv1 192.0.2.10:27015] "
+	want := label + ts + "JSON_BEGIN{\n" + label + "\"name\": \"round_stats\"\n" + label + "}}JSON_END\n" +
+		label + long[:MaxHTTPLine] + " ... [cut, " + strconv.Itoa(len(long)) + " bytes, not processed]\n"
+	if got != want {
+		t.Errorf("line log:\n%.300s\nwant:\n%.300s", got, want)
+	}
+	if strings.Contains(got, cfg.Token) {
+		t.Error("token in the line log")
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if len(st.kills) != 0 {
+		t.Errorf("a cut line was processed: %d kills", len(st.kills))
+	}
+}
+
 func TestSplitHTTPLines(t *testing.T) {
 	got := splitHTTPLines("a\r\n\nb\n" + strings.Repeat("y", MaxHTTPLine+1) + "\nc")
-	if strings.Join(got, "|") != "a|b|c" {
+	if strings.Join(got, "|") != "a|b|"+strings.Repeat("y", MaxHTTPLine+1)+"|c" {
 		t.Errorf("got %q", got)
 	}
 }

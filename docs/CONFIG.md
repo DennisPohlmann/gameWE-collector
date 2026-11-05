@@ -93,7 +93,8 @@ game (`cs2`); every other post gets 403. The port at the end of the URL is the
 game port exactly as in the web admin; the collector re-reads `hlstats_Servers`
 every minute, so a new server is accepted within about a minute. Only `POST` is accepted (405
 otherwise); a path that is not `/<game port>` (or `/<token>/<game port>`)
-gets 404. Lines longer than 8 KiB are dropped. Rejected posts are logged
+gets 404. A line longer than 8 KiB is not processed; its start still goes to the
+log (`gamewe_log_lines`) with `... [cut, N bytes, not processed]`. Rejected posts are logged
 (`rejected HTTP log post`) the first time per sender and reason, then every
 5 minutes while they keep coming, with `status` (the HTTP answer), `count`
 (all), `new` (since the last line) and a `hint`. A 404 says what is wrong
@@ -339,7 +340,7 @@ seed only adds missing keys and never changes values that are already set.
 | `gamewe_commands` | `1` | 1 = answer `!rank`, `!top10`, ... in game |
 | `gamewe_menu_time` | `15` | seconds the panels (`!top10`, `!rank`, ...) stay open |
 | `gamewe_rcon_timeout` | `5` | seconds for RCON connect, send and receive |
-| `gamewe_log_lines` | `1` | 1 = write every received game-server log line to the collector's log (the journal), as `[name ip:port] L 10/22/2026 - …`. That can be many lines; see [INSTALLATION.md](INSTALLATION.md#g-troubleshooting). |
+| `gamewe_log_lines` | `1` | 1 = write every received game-server log line to the collector's log (the journal), as `[name ip:port] L 10/22/2026 - …`, over UDP and HTTP (CS2, with its `JSON_BEGIN` blocks line by line), whatever the `-log-level`. 0 only ends this output: everything is still processed and rejected packets are still logged. That can be many lines; see [INSTALLATION.md](INSTALLATION.md#g-troubleshooting). |
 | `gamewe_idle_timeout` | `300` | seconds without any log line of a player after which the collector ends the visit, as for a disconnect but without an `hlstats_Events_Disconnects` row: the connection time up to now is stored and the live row deleted. Catches lost disconnect lines (server crash or restart, lost packets). A player who shows up again starts a new visit. Bots end after at most 3 minutes without a line (bot_quota kicks them without a disconnect line; RCON status keeps listed bots). 0 = never |
 | `gamewe_command_display` | `panel` | how `!rank`, `!kpd`, `!session` and `!next` (and `!statsme` without a browser) are answered: `panel` = a menu panel on the left of the screen for `gamewe_menu_time` seconds (as gameME showed it), `chat` = private chat lines, `both` |
 | `gamewe_command_prefix` | `gamewe` | prefix of the plugin's server commands: `gamewe` (the gameWE plugin also knows `gameme_`), or `gameme` for a server that still runs the original gameME plugin |

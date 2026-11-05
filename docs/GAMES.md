@@ -123,7 +123,7 @@ source ip:port). An HTTP post is accepted only from a Source 2 server in
 source port of a post is random), plus the path token when one is set and the server's log token (`hlstats_Servers.log_secret`) as the last path segment when one is stored. UDP lines
 for a Source 2 server are refused unless `listen.udp.source2` is on (e.g. for a
 forwarder from the server's own ip:port); they then need the value of that column
-as `sv_logsecret`, if one is stored. A UDP line longer than 8 KiB is refused, as on HTTP.
+as `sv_logsecret`, if one is stored. A UDP line longer than 8 KiB is refused; on HTTP it is not processed either, but its start is logged.
 
 ## Log formats
 
