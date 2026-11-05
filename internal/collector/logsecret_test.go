@@ -144,8 +144,8 @@ func TestSecretNotChecked(t *testing.T) {
 	if msg, info := SecretNote(SecretOn, stats.Server{ID: 6, Engine: games.Source2}); !info || !strings.Contains(msg, "no log token") {
 		t.Errorf("CS2 without token: note %q %v", msg, info)
 	}
-	if msg, info := SecretNote(SecretOn, stats.Server{ID: 5, Address: "192.0.2.5:27015", Engine: games.Source2, LogSecret: "111"}); !info || !strings.Contains(msg, "Source 2 (CS2)") || !strings.Contains(msg, "must end") {
-		t.Errorf("CS2 with secret: note %q %v", msg, info)
+	if msg, _ := SecretNote(SecretOn, stats.Server{ID: 5, Address: "192.0.2.5:27015", Engine: games.Source2, LogSecret: "111"}); msg != "" {
+		t.Errorf("CS2 with token: note %q", msg)
 	}
 	if msg, _ := SecretNote(SecretOn, stats.Server{ID: 3, LogSecret: "111"}); msg != "" {
 		t.Errorf("with secret: note %q", msg)
