@@ -249,7 +249,8 @@ func gameCode(g string) bool {
 // schedule the web admin turned off), the bot settings per game
 // (gamewe_rank_bots_<game>, gamewe_bot_points_<game>, gamewe_bot_kills_<game>,
 // gamewe_bot_stats_<game>), the VAC block per game
-// (gamewe_block_vac_<game>), the collector's heartbeat, version, runtime and job
+// (gamewe_block_vac_<game>), the web's FastDL address per game
+// (gamewe_fastdl_url_<game>), the collector's heartbeat, version, runtime and job
 // plan (gamewe_next_awards, gamewe_next_bans, gamewe_next_inactive, gamewe_next_resets,
 // gamewe_next_reset_<game>) and retired keys that the migrations delete.
 func otherKey(k string) bool {
@@ -272,7 +273,7 @@ func otherKey(k string) bool {
 			return n != "" && strings.Trim(n, "0123456789") == ""
 		}
 	}
-	for _, p := range []string{"gamewe_next_reset_", "gamewe_reset_schedule_", "gamewe_reset_mode_", "gamewe_reset_last_", "gamewe_hof_", "gamewe_rank_bots_", "gamewe_bot_points_", "gamewe_bot_kills_", "gamewe_bot_stats_", "gamewe_block_vac_"} {
+	for _, p := range []string{"gamewe_next_reset_", "gamewe_reset_schedule_", "gamewe_reset_mode_", "gamewe_reset_last_", "gamewe_hof_", "gamewe_rank_bots_", "gamewe_bot_points_", "gamewe_bot_kills_", "gamewe_bot_stats_", "gamewe_block_vac_", "gamewe_fastdl_url_"} {
 		if g, ok := strings.CutPrefix(k, p); ok {
 			return gameCode(g)
 		}
