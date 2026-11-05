@@ -479,7 +479,8 @@ CREATE TABLE `hlstats_Players` (
   KEY `game_id` (`game_id`,`rank`),
   KEY `kills` (`kills`),
   KEY `game_skill` (`game`,`hideranking`,`skill`,`playerId`),
-  KEY `game_activity` (`game`,`hideranking`,`last_event`,`playerId`)
+  KEY `game_activity` (`game`,`hideranking`,`last_event`,`playerId`),
+  KEY `skill` (`skill`,`playerId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_PlayersInactive` (
   `playerId` mediumint(8) unsigned NOT NULL,
@@ -524,7 +525,8 @@ CREATE TABLE `hlstats_PlayersInactive` (
   KEY `game` (`game`),
   KEY `game_id` (`game_id`,`hideranking`),
   KEY `clan` (`clan`),
-  KEY `game_activity` (`game`,`hideranking`,`last_event`,`playerId`)
+  KEY `game_activity` (`game`,`hideranking`,`last_event`,`playerId`),
+  KEY `skill` (`skill`,`playerId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Players_Actions` (
   `player_id` mediumint(8) unsigned NOT NULL,

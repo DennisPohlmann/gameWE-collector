@@ -260,6 +260,12 @@ var Migrations = []Migration{
 		Desc:          "delete the hlstats_Options row gamewe_log_lines: the collector always writes every received log line to its log",
 		RetireOptions: []RetiredOption{{Key: "gamewe_log_lines"}},
 	},
+	{
+		Version: 27, Name: "player-skill-index",
+		Desc: "index skill (skill, playerId) on hlstats_Players and hlstats_PlayersInactive: the admin's players list reads " +
+			"the best rows of each table along it instead of sorting every player",
+		Sync: true,
+	},
 }
 
 // Latest is the newest schema version this collector knows.

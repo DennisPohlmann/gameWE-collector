@@ -210,6 +210,7 @@ What it does:
 | 24 | `log-only-actions` | column `log_only` (tinyint(1)) on `hlstats_Events_PlayerActions`: 1 for the headshot and kill streak of kills with bots in a ranking with `gamewe_bot_points_<game>` = 0 and `gamewe_bot_kills_<game>` = 1. The event lists show these rows; awards leave them out ([DB-SEMANTICS](DB-SEMANTICS.md)). Old rows keep 0 |
 | 25 | `secret-options` | table `hlstats_gamewe_secrets`, which `gamewe_web` cannot read: the Steam Web API key, the metrics token and the TeamSpeak passwords move there from `hlstats_Options`. The website reads them with `DB_ADMIN_USER`, so update the website together with the collector: an older website has no Steam key, metrics or TeamSpeak query until then |
 | 26 | `always-log-lines` | deletes the `hlstats_Options` row `gamewe_log_lines`: the collector always writes every received log line to its log |
+| 27 | `player-skill-index` | index `skill` (skill, playerId) on `hlstats_Players` and `hlstats_PlayersInactive`: the web's admin players list reads the best rows of each table along it instead of sorting every player |
 
 The SQL files of older packages (`/opt/gamewe/collector/doc/schema/hlstatsx.sql`,
 `init/01_schema.sql`, `02_seed.sql`, `03_grants.sql` and the PostgreSQL

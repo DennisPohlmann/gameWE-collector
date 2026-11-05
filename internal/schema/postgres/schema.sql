@@ -486,6 +486,7 @@ CREATE INDEX hlstats_Players_game_id ON hlstats_Players (game_id, rank);
 CREATE INDEX hlstats_Players_kills ON hlstats_Players (kills);
 CREATE INDEX hlstats_Players_game_skill ON hlstats_Players (game, hideranking, skill, playerId);
 CREATE INDEX hlstats_Players_game_activity ON hlstats_Players (game, hideranking, last_event, playerId);
+CREATE INDEX hlstats_Players_skill ON hlstats_Players (skill, playerId);
 CREATE TABLE hlstats_PlayersInactive (
   playerId integer NOT NULL,
   last_event bigint NOT NULL DEFAULT 0,
@@ -531,6 +532,7 @@ CREATE INDEX hlstats_PlayersInactive_game ON hlstats_PlayersInactive (game);
 CREATE INDEX hlstats_PlayersInactive_game_id ON hlstats_PlayersInactive (game_id, hideranking);
 CREATE INDEX hlstats_PlayersInactive_clan ON hlstats_PlayersInactive (clan);
 CREATE INDEX hlstats_PlayersInactive_game_activity ON hlstats_PlayersInactive (game, hideranking, last_event, playerId);
+CREATE INDEX hlstats_PlayersInactive_skill ON hlstats_PlayersInactive (skill, playerId);
 CREATE TABLE hlstats_Players_Actions (
   player_id integer NOT NULL,
   yearweek_id integer NOT NULL,
