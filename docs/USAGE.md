@@ -217,6 +217,7 @@ is the service and never asks; its automatic migration is
 | `gamewe serverinfo` | ask the servers for version, OS, VAC and slots (`A2S_INFO`) and store what changed, as `features.server_info` does |
 | `gamewe game`, `gamewe server`, `gamewe option` | games, servers and settings like the web admin (below) |
 | `gamewe reset GAME -mode player-stats\|all-stats\|all` | reset a ranking (below) |
+| `gamewe delete-player GAME PLAYER-ID` | delete one player of a ranking with all of their rows, for erasure requests, as the web admin's "Delete player data" ([below](#collector-jobs-by-hand-and-from-cron)) |
 | `gamewe awards [-date YYYY-MM-DD]` | decide the daily awards of a day (again), also with `features.daily_awards` off |
 | `gamewe inactive` | move the inactive players to `hlstats_PlayersInactive` now, also with `features.inactive_players` off |
 | `gamewe bans` | read the bans of all known players now (Steam Web API for every due account, the whole SourceBans list) into `hlstats_Bans`, as `features.bans_sync` does, also when it is off; `--dry-run` only counts the due accounts |
@@ -470,7 +471,7 @@ asks first, `--dry-run` shows what it would do, `--force` does not ask):
 | move inactive players (`features.inactive_players`) | daily at `time` | `gamewe inactive` |
 | bans of all known players into `hlstats_Bans` (`features.bans_sync`; needs Steam and the SourceBans list besides the database) | every minute, each account every `steam_recheck`, the list every `sourcebans.interval` | `gamewe bans` (one complete pass) |
 | ranking reset queued by the web admin | every 10 s | `gamewe reset GAME -mode ... --force` ([below](#resetting-a-ranking)) |
-| delete a player's data, queued by the web admin (level 100, for erasure requests): pauses the ranking's servers; a kill shared with another player goes too, that player's totals stay; whoever plays again is recorded anew | every 10 s | - |
+| delete a player's data, queued by the web admin (level 100, for erasure requests): pauses the ranking's servers; a kill shared with another player goes too, that player's totals stay; whoever plays again is recorded anew; a player id belongs to one ranking, so whoever plays in three rankings needs three jobs | every 10 s | `gamewe delete-player GAME PLAYER-ID --force` |
 | scheduled ranking reset with the hall of fame, when a period of a ranking's schedule has ended | checked every minute | `gamewe halloffame run GAME` ([below](#scheduled-resets-and-the-hall-of-fame)) |
 | delete finished jobs older than 30 days | hourly | part of `gamewe db purge -older-than DAYS` |
 | server info `A2S_INFO` (`features.server_info`) | every 5 min | `gamewe serverinfo [-server ...]` |
@@ -501,7 +502,7 @@ MySQL, `pg_advisory_lock` on PostgreSQL), in the collector and in the
 commands; a command waits for a job in progress up to `-wait` (default 10
 minutes, then exit code 1 and nothing changed). So a cron run of
 `gamewe awards` at the minute of the collector's own run cannot write a day
-twice. `gamewe reset`, `gamewe inactive` and `gamewe halloffame run` hand the job
+twice. `gamewe reset`, `gamewe inactive`, `gamewe delete-player` and `gamewe halloffame run` hand the job
 to a running collector (heartbeat less than 2 minutes old) through
 `hlstats_gamewe_jobs` and wait for its result; without one they run it
 themselves. While they wait they say what happens: the place in the queue
@@ -516,9 +517,23 @@ The queue and the results:
 ```bash
 gamewe jobs                       # the latest 20 jobs of all types, newest first
 gamewe jobs -queue                # only pending and running, in the order the collector takes them
-gamewe jobs -type inactive -n 5   # -type reset|scheduled-reset|inactive|awards, -status pending|running|done|failed (comma separated)
+gamewe jobs -type inactive -n 5   # -type reset|scheduled-reset|inactive|awards|delete-player, -status pending|running|done|failed (comma separated)
 gamewe inactive -list             # the same as gamewe jobs -type inactive
 gamewe reset -list                # the same as gamewe jobs -type reset,scheduled-reset
+gamewe delete-player -list        # the same as gamewe jobs -type delete-player
+```
+
+Erasure requests: `gamewe delete-player GAME PLAYER-ID` deletes one player
+of the ranking `GAME` with all of their rows, as "Delete player data" on the
+player's page in the web admin. `PLAYER-ID` is the number in the address of
+that page (`/admin/players/1234`). A player id belongs to one ranking:
+whoever plays in three rankings has three ids and needs three runs. Without
+`--force` it asks for the player id; `--dry-run` only checks that the player
+is in the ranking. A running collector pauses the ranking's servers for it.
+
+```bash
+gamewe delete-player css 1234 --dry-run   # is player 1234 in ranking css?
+gamewe delete-player css 1234             # asks for the id, then deletes
 ```
 
 Finished jobs stay 30 days (the collector deletes older ones hourly, as

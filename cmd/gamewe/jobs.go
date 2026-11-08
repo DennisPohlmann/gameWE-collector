@@ -23,16 +23,19 @@ const jobsUsage = `Usage:
 
 Lists the jobs in hlstats_gamewe_jobs: ranking resets (reset, from the
 command line or the web admin), scheduled resets (scheduled-reset), moves
-of inactive players (inactive) and the daily awards (awards, the day as
-mode), newest first. The running collector queues its daily jobs itself
+of inactive players (inactive), the daily awards (awards, the day as
+mode) and erasures of a player (delete-player, the player id as mode),
+newest first. The running collector queues its daily jobs itself
 (requested by "schedule") and takes pending jobs one after the other.
   -queue    only the waiting and running jobs (pending, running), in the
             order the collector does them
-  -type     reset, scheduled-reset, inactive, awards (comma separated)
+  -type     reset, scheduled-reset, inactive, awards, delete-player (comma
+            separated)
   -status   pending, running, done, failed (comma separated)
   -n        at most N jobs (default 20)
 Finished jobs stay 30 days (gamewe db purge deletes them).
-gamewe reset -list and gamewe inactive -list are the same with -type.
+gamewe reset -list, gamewe inactive -list and gamewe delete-player -list are
+the same with -type.
 -o json|yaml|csv|tsv|name writes the list as a document.`
 
 var (

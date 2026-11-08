@@ -110,9 +110,14 @@ Usage:
                                    statistics too; all: players deleted too); queued for
                                    the running collector if there is one
   gamewe reset -list               the latest ranking resets (also the scheduled ones)
+  gamewe delete-player GAME PLAYER-ID [--dry-run|-n] [--force|-f]
+                                   delete one player of a ranking with all of their rows
+                                   (erasure requests; one run per ranking the person
+                                   plays in); queued for the running collector if there is one
+  gamewe delete-player -list       the latest erasures and their results
   gamewe jobs [-queue] [-type TYPE] [-status STATUS] [-n N]
                                    the jobs for the collector (resets, scheduled resets,
-                                   inactive players) and their results; -queue: only the
+                                   inactive players, erasures) and their results; -queue: only the
                                    waiting and running ones, in the order they run
   gamewe halloffame [list] [GAME] | schedule GAME [EVERY] [-mode MODE] | run GAME
                   [--dry-run|-n] [--force|-f]
@@ -141,7 +146,7 @@ GAMEWE_UPDATE_CHECK=off turns that off. Nothing is updated automatically.
 Every command except run takes -o FORMAT (or --output FORMAT, also before the
 command: gamewe -o json server list): text (default), json, yaml; the lists
 (game|server|option list, status, serverinfo, logaddress, awards, jobs,
-reset -list, inactive -list) also csv, tsv and name (only the id / code / key, one per line). Passwords and log
+reset -list, inactive -list, delete-player -list) also csv, tsv and name (only the id / code / key, one per line). Passwords and log
 secrets are never printed, in no format: only whether they are set.
 
 The config file (default ` + config.DefaultPath + `) holds the inputs
@@ -199,6 +204,8 @@ func main() {
 		err = resetCmd(args)
 	case "inactive":
 		err = inactiveCmd(args)
+	case "delete-player":
+		err = deletePlayerCmd(args)
 	case "bans":
 		err = bansCmd(args)
 	case "jobs":

@@ -126,6 +126,29 @@ func TestMigrateJobCommands(t *testing.T) {
 	out, code = gw(t, bin, "awards", "-yes", "-config", cfg) // features.daily_awards is off; -yes: older name of --force
 	expect(t, out, code, 0, "daily awards of")
 
+	// gamewe delete-player: one player of one ranking, here without a collector.
+	newPlayer := func() string {
+		t.Helper()
+		sql(`INSERT INTO hlstats_Players (game, game_id, last_event) VALUES ('css', 1, ?)`, time.Now().Unix())
+		id := strconv.Itoa(num(`SELECT MAX(playerId) FROM hlstats_Players`))
+		sql(`INSERT INTO hlstats_PlayerNames (playerId, name) VALUES (?, 'erase me')`, id)
+		return id
+	}
+	erase := newPlayer()
+	out, code = gw(t, bin, "delete-player", "css", erase, "-n", "-config", cfg)
+	expect(t, out, code, 0, "player "+erase+" of ranking css", "dry run: nothing changed")
+	out, code = gw(t, bin, "delete-player", "tf", erase, "-n", "-config", cfg)
+	expect(t, out, code, 1, "no player "+erase+" in ranking tf")
+	out, code = gw(t, bin, "delete-player", "css", "x1", "-config", cfg)
+	expect(t, out, code, 2, "must be a number")
+	out, code = gw(t, bin, "delete-player", "css", erase, "-config", cfg)
+	expect(t, out, code, 1, "no interactive confirmation possible")
+	out, code = gw(t, bin, "delete-player", "css", erase, "-f", "-config", cfg)
+	expect(t, out, code, 0, "no running collector", "deleting here", "done:", "Players 1")
+	if n := num(`SELECT COUNT(*) FROM hlstats_Players WHERE playerId = ?`, erase) + num(`SELECT COUNT(*) FROM hlstats_PlayerNames WHERE playerId = ?`, erase); n != 0 {
+		t.Errorf("%d rows of the deleted player left", n)
+	}
+
 	// A running collector (heartbeat, jobs loop): queued and done there.
 	players(3, old)
 	stop := beating(t, admin)
@@ -147,6 +170,18 @@ func TestMigrateJobCommands(t *testing.T) {
 			}
 		}
 	}()
+	erase = newPlayer()
+	out, code = gw(t, bin, "delete-player", "css", erase, "-f", "-wait", "30s", "-config", cfg)
+	expect(t, out, code, 0, "queued as job", "done:")
+	if n := num(`SELECT COUNT(*) FROM hlstats_Players WHERE playerId = ?`, erase); n != 0 {
+		t.Errorf("the collector did not delete player %s", erase)
+	}
+	if n := num(`SELECT COUNT(*) FROM hlstats_gamewe_jobs WHERE job_type = 'delete-player' AND game = 'css' AND mode = ? AND origin = 'cli' AND status = 'done'`, erase); n != 1 {
+		t.Errorf("%d done delete-player jobs from the cli, want 1", n)
+	}
+	out, code = gw(t, bin, "delete-player", "-list", "-config", cfg)
+	expect(t, out, code, 0, "delete-player", "css", erase)
+	sql(`DELETE FROM hlstats_gamewe_jobs WHERE job_type = 'delete-player'`) // the purge below counts one job
 	out, code = gw(t, bin, "inactive", "-f", "-wait", "30s", "-config", cfg)
 	cancel()
 	<-loop
