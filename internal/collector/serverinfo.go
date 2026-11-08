@@ -129,7 +129,8 @@ func ParseA2SInfo(b []byte) (info stats.ServerInfo, challenge []byte, err error)
 		if r.err != nil {
 			return info, nil, r.err
 		}
-		info = stats.ServerInfo{Version: CleanVersion(version), OS: a2sOS(env), VAC: a2sVAC(vac), MaxPlayers: int(slots[1]), Name: stats.ServerName(name)}
+		info = stats.ServerInfo{Version: CleanVersion(version), OS: a2sOS(env), VAC: a2sVAC(vac), MaxPlayers: int(slots[1]), Name: stats.ServerName(name),
+			Players: int(slots[0]), Bots: int(slots[2])}
 		return info, nil, nil
 	case 'm':
 		r.str() // address

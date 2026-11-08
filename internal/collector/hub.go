@@ -249,6 +249,7 @@ func (h *Hub) SetServers(list []stats.Server) (added, removed int) {
 		w.proc.Source2Hits = h.Source2Hits
 		w.proc.Bans = h.Bans
 		w.proc.VAC = h.VAC
+		w.proc.InfoInterval = h.Monitor.InfoInterval
 		h.applySecret(w, srv, now, grace)
 		if h.Monitor.Status || h.Monitor.LogAddress || h.Monitor.ServerInfo {
 			ctx, cancel := context.WithCancel(context.Background())

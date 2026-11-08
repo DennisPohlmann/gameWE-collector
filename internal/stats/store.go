@@ -145,6 +145,9 @@ type ServerInfo struct {
 	// Processor.ServerInfo).
 	MaxPlayers int
 	Name       string
+	// Players (bots included) and Bots of an A2S_INFO answer of the Source
+	// format; not stored, the collector counts with them (Processor.online).
+	Players, Bots int
 }
 
 // Or fills the empty fields of i from o.

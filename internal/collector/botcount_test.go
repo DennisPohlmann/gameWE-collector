@@ -156,3 +156,78 @@ func TestActBotsFromLogLines(t *testing.T) {
 		t.Errorf("after a bot left: act_players %d, act_bots %d, want 2, 1", n, b)
 	}
 }
+
+// Without RCON status, bots that log nothing for botIdle (dead in a long
+// round) are ended, yet still on the server: the bots of a fresh A2S_INFO
+// answer count (act_bots, hlstats_server_load), humans come from the log
+// lines; a stale answer counts no more.
+func TestA2SBotsWithoutStatus(t *testing.T) {
+	p, st := newTestProcessor(t)
+	ctx, t0 := context.Background(), time.Now()
+	line := func(l string, at time.Time) {
+		t.Helper()
+		if err := p.Handle(ctx, l, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tick := func(at time.Time) {
+		t.Helper()
+		if err := p.Tick(ctx, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < 4; i++ {
+		line(fmt.Sprintf(`"Bot %d<%d><BOT><TERRORIST>" joined team "TERRORIST"`, i, 10+i), t0)
+	}
+	line(`"K<2><STEAM_1:0:1><CT>" joined team "CT"`, t0)
+	if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "1", MaxPlayers: 20, Players: 4, Bots: 4}, t0.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	// The bots log nothing for longer than botIdle: idle ends them.
+	line(`"K<2><STEAM_1:0:1><CT>" say "hi"`, t0.Add(4*time.Minute))
+	tick(t0.Add(4 * time.Minute))
+	if n, bots := p.online(t0.Add(4 * time.Minute)); len(p.srv.players) != 1 || n != 5 || bots != 4 {
+		t.Fatalf("tracked %d, online %d (%d bots), want 1 tracked, 5 (4 bots)", len(p.srv.players), n, bots)
+	}
+	if n, bots := lastActive(st); n != 5 || bots != 4 {
+		t.Errorf("act_players %d, act_bots %d, want 5, 4", n, bots)
+	}
+	// Two load intervals with an answer every 5 minutes: the second row
+	// (the first starts at 0) stays at 5 throughout.
+	for m := 5; m <= 20; m += 5 {
+		at := t0.Add(time.Duration(m)*time.Minute - 30*time.Second)
+		if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "1", MaxPlayers: 20, Players: 4, Bots: 4}, at); err != nil {
+			t.Fatal(err)
+		}
+		line(`"K<2><STEAM_1:0:1><CT>" say "hi"`, at)
+		tick(at.Add(31 * time.Second))
+	}
+	st.mu.Lock()
+	loads := append([]stats.Load(nil), st.loads...)
+	st.mu.Unlock()
+	if len(loads) != 2 || loads[0].Players != 5 || loads[1].Players != 5 || loads[1].MinPlayers != 5 || loads[1].MaxPlayers != 5 {
+		t.Errorf("server load %+v, want two rows, the second 5/5/5", loads)
+	}
+	// The answer is older than two intervals: the tracked players only.
+	line(`"K<2><STEAM_1:0:1><CT>" say "hi"`, t0.Add(31*time.Minute))
+	if n, bots := p.online(t0.Add(31 * time.Minute)); n != 1 || bots != 0 {
+		t.Errorf("stale A2S: online %d (%d bots), want 1 (0 bots)", n, bots)
+	}
+}
+
+// The A2S bots never push the count over the slots.
+func TestA2SBotsCappedAtSlots(t *testing.T) {
+	p, _ := newTestProcessor(t)
+	ctx, t0 := context.Background(), time.Now()
+	for i := 0; i < 3; i++ {
+		if err := p.Handle(ctx, fmt.Sprintf(`"P%d<%d><STEAM_1:0:%d><CT>" joined team "CT"`, i, 2+i, 1+i), t0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "1", MaxPlayers: 4, Players: 4, Bots: 4}, t0); err != nil {
+		t.Fatal(err)
+	}
+	if n, bots := p.online(t0); n != 4 || bots != 1 {
+		t.Errorf("online %d (%d bots), want 4 (1 bot)", n, bots)
+	}
+}

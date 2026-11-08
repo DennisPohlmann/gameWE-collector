@@ -55,14 +55,14 @@ func TestParseA2SInfo(t *testing.T) {
 		in   []byte
 		want stats.ServerInfo
 	}{
-		{"source linux secure", a2sSourceReply(240, 'l', 1, "9540945"), stats.ServerInfo{Version: "9540945", OS: OSLinux, VAC: VACSecure, MaxPlayers: 24, Name: "Example Server"}},
-		{"cs2 windows insecure", a2sSourceReply(730, 'w', 0, "1.40.2.2"), stats.ServerInfo{Version: "1.40.2.2", OS: OSWindows, VAC: VACInsecure, MaxPlayers: 24, Name: "Example Server"}},
-		{"mac", a2sSourceReply(440, 'm', 1, "8622567"), stats.ServerInfo{Version: "8622567", OS: OSMac, VAC: VACSecure, MaxPlayers: 24, Name: "Example Server"}},
-		{"the ship", a2sSourceReply(2400, 'w', 1, "1.0.0.4"), stats.ServerInfo{Version: "1.0.0.4", OS: OSWindows, VAC: VACSecure, MaxPlayers: 24, Name: "Example Server"}},
-		{"goldsrc version suffix", a2sSourceReply(10, 'l', 1, "1.1.2.7/Stdio"), stats.ServerInfo{Version: "1.1.2.7", OS: OSLinux, VAC: VACSecure, MaxPlayers: 24, Name: "Example Server"}},
-		{"unknown env and vac", a2sSourceReply(240, 'x', 7, "1"), stats.ServerInfo{Version: "1", MaxPlayers: 24, Name: "Example Server"}},
+		{"source linux secure", a2sSourceReply(240, 'l', 1, "9540945"), stats.ServerInfo{Version: "9540945", OS: OSLinux, VAC: VACSecure, MaxPlayers: 24, Name: "Example Server", Players: 3, Bots: 1}},
+		{"cs2 windows insecure", a2sSourceReply(730, 'w', 0, "1.40.2.2"), stats.ServerInfo{Version: "1.40.2.2", OS: OSWindows, VAC: VACInsecure, MaxPlayers: 24, Name: "Example Server", Players: 3, Bots: 1}},
+		{"mac", a2sSourceReply(440, 'm', 1, "8622567"), stats.ServerInfo{Version: "8622567", OS: OSMac, VAC: VACSecure, MaxPlayers: 24, Name: "Example Server", Players: 3, Bots: 1}},
+		{"the ship", a2sSourceReply(2400, 'w', 1, "1.0.0.4"), stats.ServerInfo{Version: "1.0.0.4", OS: OSWindows, VAC: VACSecure, MaxPlayers: 24, Name: "Example Server", Players: 3, Bots: 1}},
+		{"goldsrc version suffix", a2sSourceReply(10, 'l', 1, "1.1.2.7/Stdio"), stats.ServerInfo{Version: "1.1.2.7", OS: OSLinux, VAC: VACSecure, MaxPlayers: 24, Name: "Example Server", Players: 3, Bots: 1}},
+		{"unknown env and vac", a2sSourceReply(240, 'x', 7, "1"), stats.ServerInfo{Version: "1", MaxPlayers: 24, Name: "Example Server", Players: 3, Bots: 1}},
 		{"hostile version", a2sSourceReply(240, 'l', 1, "1.0\x1b[31m\n<b>\xff"+strings.Repeat("9", 100)), stats.ServerInfo{
-			Version: ("1.0[31m<b>" + strings.Repeat("9", 100))[:maxVersionLen], OS: OSLinux, VAC: VACSecure, MaxPlayers: 24, Name: "Example Server"}},
+			Version: ("1.0[31m<b>" + strings.Repeat("9", 100))[:maxVersionLen], OS: OSLinux, VAC: VACSecure, MaxPlayers: 24, Name: "Example Server", Players: 3, Bots: 1}},
 		{"goldsrc m", a2sGoldSrcReply('l', 1, false), stats.ServerInfo{OS: OSLinux, VAC: VACSecure, MaxPlayers: 32, Name: "Example CS 1.6"}},
 		{"goldsrc m mod", a2sGoldSrcReply('w', 0, true), stats.ServerInfo{OS: OSWindows, VAC: VACInsecure, MaxPlayers: 32, Name: "Example CS 1.6"}},
 	} {
@@ -121,7 +121,7 @@ func TestQueryServerInfoChallenge(t *testing.T) {
 	}()
 	addr := netip.MustParseAddrPort(pc.LocalAddr().String())
 	info, err := QueryServerInfo(context.Background(), addr, time.Second)
-	if err != nil || info != (stats.ServerInfo{Version: "7604765", OS: OSWindows, VAC: VACSecure, MaxPlayers: 24, Name: "Example Server"}) {
+	if err != nil || info != (stats.ServerInfo{Version: "7604765", OS: OSWindows, VAC: VACSecure, MaxPlayers: 24, Name: "Example Server", Players: 3, Bots: 1}) {
 		t.Fatalf("got %+v %v", info, err)
 	}
 	if first := <-reqs; !bytes.Equal(first, a2sRequest) {
@@ -220,7 +220,7 @@ func TestProcessorA2SMaxPlayers(t *testing.T) {
 	ctx := context.Background()
 	id := p.srv.info.ID
 	for range 2 {
-		if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "1", MaxPlayers: 24, Name: "Example Server"}, time.Now().UTC()); err != nil {
+		if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "1", MaxPlayers: 24, Name: "Example Server", Players: 3, Bots: 1}, time.Now().UTC()); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -296,7 +296,7 @@ func TestProcessorA2SName(t *testing.T) {
 	if err := p.Status(ctx, status, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "1", MaxPlayers: 24, Name: "Example Server"}, time.Now().UTC()); err != nil {
+	if err := p.ServerInfo(ctx, stats.ServerInfo{Version: "1", MaxPlayers: 24, Name: "Example Server", Players: 3, Bots: 1}, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
 	if host := stats.ServerName(status.Hostname); len(st.names) != 2 || st.names[1] != host || p.srv.info.Name != host {
@@ -336,7 +336,7 @@ func TestMonitorServerInfo(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		select {
 		case info := <-got:
-			if info != (stats.ServerInfo{Version: "9540945", OS: OSLinux, VAC: VACSecure, MaxPlayers: 24, Name: "Example Server"}) {
+			if info != (stats.ServerInfo{Version: "9540945", OS: OSLinux, VAC: VACSecure, MaxPlayers: 24, Name: "Example Server", Players: 3, Bots: 1}) {
 				t.Fatalf("info %+v", info)
 			}
 		case <-time.After(5 * time.Second):

@@ -108,6 +108,9 @@ type Processor struct {
 	// VAC is told every connect of a player (gamewe_block_vac_<game>;
 	// nil: off). Set before the first line.
 	VAC VACNotifier
+	// InfoInterval is how often A2S_INFO is queried (features.server_info;
+	// 0: DefaultServerInfoInterval). Set before the first line.
+	InfoInterval time.Duration
 }
 
 // GeoLookup finds the location of an IP address (*geoip.DB).
@@ -147,6 +150,7 @@ type serverState struct {
 	a2sInfo, rconInfo, storedInfo stats.ServerInfo
 	a2sMax                        int
 	a2sName                       string
+	a2sBots                       int                  // bots of the last A2S_INFO answer (Source format), see online
 	gone                          map[string]time.Time // players whose disconnect was logged, by key
 	// Players whose connect is stored (connect line, or status for those
 	// already on the server), by key, until their disconnect line. Kept over
@@ -872,12 +876,17 @@ func (p *Processor) ServerInfo(ctx context.Context, info stats.ServerInfo, at ti
 	}
 	p.srv.lastInfo = at
 	p.srv.a2sMax, p.srv.a2sName = info.MaxPlayers, stats.ServerName(info.Name)
-	info.MaxPlayers, info.Name = 0, ""
+	p.srv.a2sBots = min(info.Bots, info.Players)
+	info.MaxPlayers, info.Name, info.Players, info.Bots = 0, "", 0, 0
 	p.srv.a2sInfo = info
 	if err := p.writeInfo(ctx); err != nil {
 		return err
 	}
-	return p.writeA2S(ctx)
+	if err := p.writeA2S(ctx); err != nil {
+		return err
+	}
+	p.counted(at)
+	return p.setActive(ctx, at)
 }
 
 // writeA2S stores the slots and the name of A2S_INFO in hlstats_Servers
@@ -1248,7 +1257,29 @@ func (p *Processor) online(now time.Time) (players, bots int) {
 	if srv.lastStatus.After(srv.mapAt) && now.Sub(srv.lastStatus) <= statusFresh {
 		return srv.statusCount, srv.statusBots
 	}
-	return len(srv.players), countBots(srv.players)
+	players, bots = len(srv.players), countBots(srv.players)
+	if srv.lastInfo.After(srv.mapAt) && now.Sub(srv.lastInfo) <= 2*p.infoInterval() {
+		// No status: bots that log nothing for botIdle (dead in a long round)
+		// are ended by idle, yet A2S_INFO still counts them. Only the bots
+		// take the larger count: humans have connect and disconnect lines,
+		// and A2S is up to InfoInterval old.
+		humans := players - bots
+		bots = max(srv.a2sBots, bots)
+		if limit := p.maxPlayers(); limit > 0 && humans+bots > limit {
+			bots = max(limit-humans, 0)
+		}
+		players = humans + bots
+	}
+	return players, bots
+}
+
+// infoInterval is how often A2S_INFO answers come (InfoInterval or the
+// default).
+func (p *Processor) infoInterval() time.Duration {
+	if p.InfoInterval > 0 {
+		return p.InfoInterval
+	}
+	return DefaultServerInfoInterval
 }
 
 // countBots counts the bots (keys BOT:<name>) among player keys.
