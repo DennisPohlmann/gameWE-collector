@@ -500,9 +500,10 @@ func knownRealgame(realgame, code string) error {
 	return nil
 }
 
-// DeleteGame deletes an unused game with its definitions. A default
-// ranking (a known base game) and a game with servers or players are
-// refused.
+// DeleteGame deletes an unused game with its definitions and its settings
+// in hlstats_Options (settings.GameKeyPrefixes, e.g. the FastDL address). A
+// default ranking (a known base game) and a game with servers or players
+// are refused.
 func (a *Admin) DeleteGame(ctx context.Context, code string) error {
 	if games.IsBase(code) {
 		return fmt.Errorf("game %q is a default ranking: not deleted (hide it instead)", code)
@@ -531,6 +532,24 @@ func (a *Admin) DeleteGame(ctx context.Context, code string) error {
 		if n > 0 {
 			a.say("  %s: %d rows deleted", c.table, n)
 		}
+	}
+	keys := make([]any, len(settings.GameKeyPrefixes))
+	for i, p := range settings.GameKeyPrefixes {
+		keys[i] = p + code
+	}
+	in := `keyname IN (?` + strings.Repeat(", ?", len(keys)-1) + `)`
+	var n int64
+	var err error
+	if a.DryRun {
+		err = a.row(ctx, `SELECT COUNT(*) FROM hlstats_Options WHERE `+in, keys...).Scan(&n)
+	} else {
+		n, err = a.exec(ctx, `DELETE FROM hlstats_Options WHERE `+in, keys...)
+	}
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		a.say("  hlstats_Options: %d settings of the game deleted", n)
 	}
 	if !a.DryRun {
 		if _, err := a.exec(ctx, `DELETE FROM hlstats_Games WHERE code = ?`, code); err != nil {

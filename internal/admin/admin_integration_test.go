@@ -210,11 +210,29 @@ func TestAdmin(t *testing.T) {
 	if err := a.RemoveServer(ctx, "198.51.100.99:27015"); err != nil {
 		t.Fatal(err)
 	}
+	for _, k := range []string{"gamewe_fastdl_url_zz_new", "gamewe_block_vac_zz_new", "gamewe_fastdl_url_zz_tpl"} {
+		if _, err := db.ExecContext(ctx, db.Q(`INSERT INTO hlstats_Options (keyname, value) VALUES (?, '1')`), k); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { db.ExecContext(context.Background(), db.Q(`DELETE FROM hlstats_Options WHERE keyname = ?`), "gamewe_fastdl_url_zz_tpl") })
+	if err := dry.DeleteGame(ctx, "zz_new"); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Options WHERE keyname LIKE '%zz!_new' ESCAPE '!'`); n != 2 {
+		t.Errorf("dry run: %d settings of zz_new left, want 2", n)
+	}
 	if err := a.DeleteGame(ctx, "zz_new"); err != nil {
 		t.Fatal(err)
 	}
 	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Teams WHERE game = 'zz_new'`); n != 0 {
 		t.Error("definitions of the deleted game left")
+	}
+	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Options WHERE keyname LIKE '%zz!_new' ESCAPE '!'`); n != 0 {
+		t.Errorf("%d settings of the deleted game left", n)
+	}
+	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Options WHERE keyname = 'gamewe_fastdl_url_zz_tpl'`); n != 1 {
+		t.Error("the setting of another game was deleted")
 	}
 
 	cssRows := count(t, db, `SELECT COUNT(*) FROM hlstats_Games WHERE code = 'css'`)

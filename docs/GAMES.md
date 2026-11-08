@@ -58,7 +58,8 @@ guessed as tf). The collector logs a warning once at start
 (`... is no longer supported`), and `gamewe game list` marks the ranking
 `(retired)`. Such a ranking is no longer a default ranking: once it has no
 servers and no players, `gamewe game delete <code>` deletes it with its
-definitions (nothing does this on its own).
+definitions and its settings in `hlstats_Options` (bots, VAC block, reset
+schedule, hall of fame, FastDL address; nothing does this on its own).
 
 ## Default data
 

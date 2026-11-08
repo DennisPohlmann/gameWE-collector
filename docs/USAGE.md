@@ -584,7 +584,8 @@ gamewe game set css3 -bot-kills=false              # kills of bots do not count 
 gamewe game set css3 -bot-stats=true               # kills with bots count in the stats (kills, deaths, K/D)
 gamewe game set css3 -block-vac=true               # kick players with a VAC ban on record (needs the Steam key)
 gamewe game hide css                               # hide / show in the web's game list
-gamewe game delete css3                            # only a game without servers and players;
+gamewe game delete css3                            # only a game without servers and players, with its definitions
+                                                   #   and settings (bots, VAC block, schedule, FastDL address ...);
                                                    #   default games (css, cstrike, tf, ...) are refused: hide them
 gamewe server list                                 # the RCON password and the log secret only as set / -
 gamewe server add 198.51.100.7:27315 -game css3 -name "GunGame" -rcon-password-file /root/rcon.txt

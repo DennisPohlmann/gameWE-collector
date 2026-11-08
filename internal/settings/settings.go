@@ -253,6 +253,10 @@ func gameCode(g string) bool {
 // (gamewe_fastdl_url_<game>), the collector's heartbeat, version, runtime and job
 // plan (gamewe_next_awards, gamewe_next_bans, gamewe_next_inactive, gamewe_next_resets,
 // gamewe_next_reset_<game>) and retired keys that the migrations delete.
+// GameKeyPrefixes are the hlstats_Options keys that belong to one ranking
+// (the prefix and its hlstats_Games.code); gamewe game delete removes them.
+var GameKeyPrefixes = []string{"gamewe_next_reset_", "gamewe_reset_schedule_", "gamewe_reset_mode_", "gamewe_reset_last_", "gamewe_hof_", "gamewe_rank_bots_", "gamewe_bot_points_", "gamewe_bot_kills_", "gamewe_bot_stats_", "gamewe_block_vac_", "gamewe_fastdl_url_"}
+
 func otherKey(k string) bool {
 	switch k {
 	case "gamewe_reset_schedule", "gamewe_reset_mode", "gamewe_reset_paused", // the scheduled reset of all rankings
@@ -273,7 +277,7 @@ func otherKey(k string) bool {
 			return n != "" && strings.Trim(n, "0123456789") == ""
 		}
 	}
-	for _, p := range []string{"gamewe_next_reset_", "gamewe_reset_schedule_", "gamewe_reset_mode_", "gamewe_reset_last_", "gamewe_hof_", "gamewe_rank_bots_", "gamewe_bot_points_", "gamewe_bot_kills_", "gamewe_bot_stats_", "gamewe_block_vac_", "gamewe_fastdl_url_"} {
+	for _, p := range GameKeyPrefixes {
 		if g, ok := strings.CutPrefix(k, p); ok {
 			return gameCode(g)
 		}
