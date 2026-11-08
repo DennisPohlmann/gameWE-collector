@@ -17,3 +17,5 @@
 .DS_Store
 /geoip-data/
 /tools/release/node_modules/
+.claude/
+CLAUDE.md
