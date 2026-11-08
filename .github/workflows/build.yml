@@ -253,7 +253,7 @@ jobs:
           fetch-depth: 0 # all tags and commits since the last release
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: 24
+          node-version: 26
       - name: semantic-release
         id: release
         env:
@@ -364,7 +364,7 @@ jobs:
           if [ -z "$RELEASE" ]; then v="$v-edge+${GITHUB_SHA::7}"; fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
-      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
         if: env.PUBLISH == 'true'
         with:
           registry: ghcr.io

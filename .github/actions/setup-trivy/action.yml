@@ -11,8 +11,8 @@ runs:
       env:
         # A new version: the checksum of trivy_<version>_Linux-64bit.tar.gz
         # from trivy_<version>_checksums.txt of the GitHub release.
-        TRIVY_VERSION: 0.76.1
-        TRIVY_SHA256: c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0
+        TRIVY_VERSION: 0.76.2
+        TRIVY_SHA256: bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf
       run: |
         dir="$RUNNER_TEMP/trivy"
         mkdir -p "$dir"
