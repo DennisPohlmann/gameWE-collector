@@ -540,13 +540,18 @@ func (a *Admin) DeleteGame(ctx context.Context, code string) error {
 	in := `keyname IN (?` + strings.Repeat(", ?", len(keys)-1) + `)`
 	var n int64
 	var err error
-	if a.DryRun {
-		err = a.row(ctx, `SELECT COUNT(*) FROM hlstats_Options WHERE `+in, keys...).Scan(&n)
-	} else {
-		n, err = a.exec(ctx, `DELETE FROM hlstats_Options WHERE `+in, keys...)
-	}
-	if err != nil {
-		return err
+	// Per-ranking secrets (the FastDL password, token, header) live in hlstats_gamewe_secrets.
+	for _, table := range []string{"hlstats_Options", "hlstats_gamewe_secrets"} {
+		var m int64
+		if a.DryRun {
+			err = a.row(ctx, `SELECT COUNT(*) FROM `+table+` WHERE `+in, keys...).Scan(&m)
+		} else {
+			m, err = a.exec(ctx, `DELETE FROM `+table+` WHERE `+in, keys...)
+		}
+		if err != nil {
+			return err
+		}
+		n += m
 	}
 	if n > 0 {
 		a.say("  hlstats_Options: %d settings of the game deleted", n)
@@ -851,7 +856,7 @@ func (a *Admin) Options(ctx context.Context) ([]Option, error) {
 // optionTable is where a setting is stored: secrets in a table the public web
 // user cannot read.
 func optionTable(key string) string {
-	if slices.Contains(settings.SecretKeys, key) {
+	if settings.IsSecretKey(key) {
 		return "hlstats_gamewe_secrets"
 	}
 	return "hlstats_Options"

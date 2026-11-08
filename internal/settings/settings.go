@@ -9,6 +9,7 @@ package settings
 import (
 	"fmt"
 	"log/slog"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -205,7 +206,21 @@ func Keys() []Key {
 //
 // SecretKeys are stored in hlstats_gamewe_secrets, which the public web user
 // cannot read, instead of hlstats_Options.
-var SecretKeys = []string{"gamewe_steam_api_key", "gamewe_ts_query_password", "gamewe_ts_password", "gamewe_metrics_token"}
+var SecretKeys = []string{"gamewe_steam_api_key", "gamewe_ts_query_password", "gamewe_ts_password", "gamewe_metrics_token", "gamewe_fastdl_password", "gamewe_fastdl_token", "gamewe_fastdl_header"}
+
+// IsSecretKey reports whether key belongs in hlstats_gamewe_secrets: one of
+// SecretKeys, or a ranking's own FastDL secret (gamewe_fastdl_token_<game>, ...).
+func IsSecretKey(key string) bool {
+	if slices.Contains(SecretKeys, key) {
+		return true
+	}
+	for _, p := range []string{"gamewe_fastdl_password_", "gamewe_fastdl_token_", "gamewe_fastdl_header_"} {
+		if g, ok := strings.CutPrefix(key, p); ok && gameCode(g) {
+			return true
+		}
+	}
+	return false
+}
 
 var WebKeys = []string{
 	"gamewe_page_size", "gamewe_site_url", "gamewe_logo_url", "gamewe_header_logo",
@@ -222,7 +237,8 @@ var WebKeys = []string{
 	"gamewe_default_lang", "gamewe_steam_profiles", "gamewe_steam_api_key",
 	"gamewe_privacy_name", "gamewe_privacy_address", "gamewe_privacy_email",
 	"gamewe_admin_auto_logout", "gamewe_admin_logout_minutes", "gamewe_api_enabled",
-	"gamewe_fastdl", "gamewe_fastdl_url",
+	"gamewe_fastdl", "gamewe_fastdl_url", "gamewe_fastdl_agent", "gamewe_fastdl_referer", "gamewe_fastdl_user",
+	"gamewe_fastdl_password", "gamewe_fastdl_token", "gamewe_fastdl_header",
 }
 
 var webKeys = func() map[string]bool {
@@ -250,12 +266,14 @@ func gameCode(g string) bool {
 // (gamewe_rank_bots_<game>, gamewe_bot_points_<game>, gamewe_bot_kills_<game>,
 // gamewe_bot_stats_<game>), the VAC block per game
 // (gamewe_block_vac_<game>), the web's FastDL address per game
-// (gamewe_fastdl_url_<game>), the collector's heartbeat, version, runtime and job
+// (gamewe_fastdl_url_<game>) and what its downloads send (gamewe_fastdl_agent_<game>,
+// ..._referer_, _user_, _password_, _token_, _header_), the collector's heartbeat, version, runtime and job
 // plan (gamewe_next_awards, gamewe_next_bans, gamewe_next_inactive, gamewe_next_resets,
 // gamewe_next_reset_<game>) and retired keys that the migrations delete.
 // GameKeyPrefixes are the hlstats_Options keys that belong to one ranking
 // (the prefix and its hlstats_Games.code); gamewe game delete removes them.
-var GameKeyPrefixes = []string{"gamewe_next_reset_", "gamewe_reset_schedule_", "gamewe_reset_mode_", "gamewe_reset_last_", "gamewe_hof_", "gamewe_rank_bots_", "gamewe_bot_points_", "gamewe_bot_kills_", "gamewe_bot_stats_", "gamewe_block_vac_", "gamewe_fastdl_url_"}
+var GameKeyPrefixes = []string{"gamewe_next_reset_", "gamewe_reset_schedule_", "gamewe_reset_mode_", "gamewe_reset_last_", "gamewe_hof_", "gamewe_rank_bots_", "gamewe_bot_points_", "gamewe_bot_kills_", "gamewe_bot_stats_", "gamewe_block_vac_", "gamewe_fastdl_url_",
+	"gamewe_fastdl_agent_", "gamewe_fastdl_referer_", "gamewe_fastdl_user_", "gamewe_fastdl_password_", "gamewe_fastdl_token_", "gamewe_fastdl_header_"}
 
 func otherKey(k string) bool {
 	switch k {

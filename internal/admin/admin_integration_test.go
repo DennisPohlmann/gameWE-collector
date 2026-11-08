@@ -215,7 +215,12 @@ func TestAdmin(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	t.Cleanup(func() { db.ExecContext(context.Background(), db.Q(`DELETE FROM hlstats_Options WHERE keyname = ?`), "gamewe_fastdl_url_zz_tpl") })
+	if _, err := db.ExecContext(ctx, db.Q(`INSERT INTO hlstats_gamewe_secrets (keyname, value) VALUES ('gamewe_fastdl_token_zz_new', 'secret')`)); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		db.ExecContext(context.Background(), db.Q(`DELETE FROM hlstats_Options WHERE keyname = ?`), "gamewe_fastdl_url_zz_tpl")
+	})
 	if err := dry.DeleteGame(ctx, "zz_new"); err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +233,7 @@ func TestAdmin(t *testing.T) {
 	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Teams WHERE game = 'zz_new'`); n != 0 {
 		t.Error("definitions of the deleted game left")
 	}
-	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Options WHERE keyname LIKE '%zz!_new' ESCAPE '!'`); n != 0 {
+	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Options WHERE keyname LIKE '%zz!_new' ESCAPE '!'`) + count(t, db, `SELECT COUNT(*) FROM hlstats_gamewe_secrets WHERE keyname LIKE '%zz!_new' ESCAPE '!'`); n != 0 {
 		t.Errorf("%d settings of the deleted game left", n)
 	}
 	if n := count(t, db, `SELECT COUNT(*) FROM hlstats_Options WHERE keyname = 'gamewe_fastdl_url_zz_tpl'`); n != 1 {

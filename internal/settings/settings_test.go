@@ -228,3 +228,15 @@ func TestBlockVAC(t *testing.T) {
 		t.Error(BlockVACKey("css"))
 	}
 }
+
+func TestIsSecretKey(t *testing.T) {
+	for k, want := range map[string]bool{
+		"gamewe_steam_api_key": true, "gamewe_fastdl_token": true, "gamewe_fastdl_token_css": true,
+		"gamewe_fastdl_header_cs2": true, "gamewe_fastdl_password_x1": true,
+		"gamewe_fastdl_user_css": false, "gamewe_fastdl_token_": false, "gamewe_fastdl_token_A B": false, "gamewe_fastdl_url_css": false,
+	} {
+		if got := IsSecretKey(k); got != want {
+			t.Errorf("IsSecretKey(%q) = %v, want %v", k, got, want)
+		}
+	}
+}
