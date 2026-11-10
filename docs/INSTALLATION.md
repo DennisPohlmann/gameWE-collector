@@ -157,6 +157,36 @@ firewall-cmd --permanent --add-rich-rule='rule family=ipv4 source address=198.51
   && firewall-cmd --reload                                          # firewalld, CS2 (HTTP)
 ```
 
+### With Podman
+
+The commands and Compose files above also run with Podman, rootless as well
+(tested with Podman 5.7): write `podman` for `docker`. The host network works
+rootless too and keeps the source address of the log packets. What is
+different:
+
+- **Compose:** use Docker Compose against the Podman socket
+  (`systemctl --user enable --now podman.socket`,
+  `export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock`, then
+  `podman compose ...` or `docker-compose ...`). podman-compose (1.5) leaves
+  out `configs:` with `content:` without a warning: in
+  `docker-compose.quickstart.yml` the collector then has no config and the
+  database no users.
+- **Short image names:** `podman run` and `podman pull` can pull
+  `mariadb:12.3` or `postgres:18` only if `/etc/containers/registries.conf`
+  names a search registry. Write `docker.io/library/mariadb:12.3`. Through
+  the socket (Compose) Podman takes Docker Hub itself.
+- **The config file:** rootless, uid 65532 of the container is a different
+  uid on the host, so a `config.yaml` with mode `0600` or `0640` gives
+  `permission denied`. Hand it to that uid once, the mode stays:
+  `podman unshare chown 65532:65532 config/config.yaml`; edit it from then on
+  with `podman unshare $EDITOR config/config.yaml`. On hosts with
+  SELinux (Fedora, RHEL) also add `:Z` to the bind mount (`...config.yaml:ro,Z`).
+- **Start after a reboot:** there is no daemon. Rootless containers come back
+  only through `podman-restart.service`, and only those with the restart
+  policy `always` (not `unless-stopped`):
+  `systemctl --user enable podman-restart.service` and
+  `loginctl enable-linger <user>` (user services without a login).
+
 ### On Kubernetes (Helm)
 
 The chart `charts/gamewe-collector` runs the same image; every release
