@@ -266,6 +266,14 @@ jobs:
         run: |
           npm ci --prefix tools/release --ignore-scripts --no-audit --no-fund
           tools/release/node_modules/.bin/semantic-release
+      # semantic-release exits 0 also when it made no release: no feat/fix
+      # since the last tag, or main moved on while the checks ran. A run with
+      # release ticked must not end green then.
+      - name: stop if nothing was released
+        if: steps.release.outputs.version == ''
+        run: |
+          echo "::error::semantic-release made no release, see the step above"
+          exit 1
 
   # Runs after the release job (or without it when there is no release) and
   # builds the new tag if there was a release, otherwise the pushed commit.
