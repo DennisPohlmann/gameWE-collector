@@ -102,7 +102,7 @@
   },
   {
     "path": "golang.org/x/sync",
-    "version": "v0.24.0",
+    "version": "v0.25.0",
     "scope": "binary",
     "license": "BSD-3-Clause",
     "files": [
@@ -111,7 +111,7 @@
   },
   {
     "path": "golang.org/x/sys",
-    "version": "v0.49.0",
+    "version": "v0.50.0",
     "scope": "binary",
     "license": "BSD-3-Clause",
     "files": [
@@ -120,7 +120,7 @@
   },
   {
     "path": "golang.org/x/text",
-    "version": "v0.43.0",
+    "version": "v0.44.0",
     "scope": "binary",
     "license": "BSD-3-Clause",
     "files": [
