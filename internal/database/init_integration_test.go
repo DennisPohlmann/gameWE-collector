@@ -150,7 +150,7 @@ func TestInitWebGrants(t *testing.T) {
 				t.Errorf("gamewe_web may: %s", q)
 			}
 		}
-		if _, err := db.ExecContext(ctx, `SELECT timestamp_id, game_id, map, playerId FROM hlstats_Events_Connects`); err != nil {
+		if _, err := db.ExecContext(ctx, `SELECT timestamp_id, game_id, server_id, map, playerId FROM hlstats_Events_Connects`); err != nil {
 			t.Errorf("gamewe_web cannot read the connects without address and host name: %v", err)
 		}
 		if _, err := db.ExecContext(ctx, `INSERT INTO hlstats_Options (keyname, value) VALUES ('zzt_web', '1')`); err == nil {

@@ -272,8 +272,8 @@ JOIN mig_action a ON a.ce_id = e.actionId
 LEFT JOIN hlstats_Maps m ON m.game = s.game AND m.map = e.map;
 
 -- IPv4 addresses become integers (INET_ATON); anything else becomes 0.
-INSERT INTO hlstats_Events_Connects (timestamp_id, game_id, map, playerId, ipAddress, hostname, hostgroup)
-SELECT IFNULL(UNIX_TIMESTAMP(e.eventTime), 0), s.game_id, IFNULL(m.id, 0), e.playerId,
+INSERT INTO hlstats_Events_Connects (timestamp_id, game_id, server_id, map, playerId, ipAddress, hostname, hostgroup)
+SELECT IFNULL(UNIX_TIMESTAMP(e.eventTime), 0), s.game_id, e.serverId, IFNULL(m.id, 0), e.playerId,
     IFNULL(INET_ATON(IF(e.ipAddress REGEXP '^[0-9]+([.][0-9]+){3}$', e.ipAddress, NULL)), 0),
     e.hostname, e.hostgroup
 FROM hlstatsx_ce.hlstats_Events_Connects e JOIN mig_srv s USING (serverId)
@@ -296,15 +296,15 @@ FROM hlstatsx_ce.hlstats_Events_ChangeTeam e JOIN mig_srv s USING (serverId)
 LEFT JOIN hlstats_Maps m ON m.game = s.game AND m.map = e.map
 LEFT JOIN hlstats_Teams t ON t.game = s.game AND t.code = e.team;
 
-INSERT INTO hlstats_Events_ChangeRole (timestamp_id, game_id, map, playerId, role)
-SELECT IFNULL(UNIX_TIMESTAMP(e.eventTime), 0), s.game_id, IFNULL(m.id, 0),
+INSERT INTO hlstats_Events_ChangeRole (timestamp_id, game_id, server_id, map, playerId, role)
+SELECT IFNULL(UNIX_TIMESTAMP(e.eventTime), 0), s.game_id, e.serverId, IFNULL(m.id, 0),
     e.playerId, IFNULL(r.roleId, 0)
 FROM hlstatsx_ce.hlstats_Events_ChangeRole e JOIN mig_srv s USING (serverId)
 LEFT JOIN hlstats_Maps m ON m.game = s.game AND m.map = e.map
 LEFT JOIN hlstats_Roles r ON r.game = s.game AND r.code = e.role;
 
-INSERT INTO hlstats_Events_ChangeName (timestamp_id, game_id, map, playerId, oldName, newName)
-SELECT IFNULL(UNIX_TIMESTAMP(e.eventTime), 0), s.game_id, IFNULL(m.id, 0),
+INSERT INTO hlstats_Events_ChangeName (timestamp_id, game_id, server_id, map, playerId, oldName, newName)
+SELECT IFNULL(UNIX_TIMESTAMP(e.eventTime), 0), s.game_id, e.serverId, IFNULL(m.id, 0),
     e.playerId, e.oldName, e.newName
 FROM hlstatsx_ce.hlstats_Events_ChangeName e JOIN mig_srv s USING (serverId)
 LEFT JOIN hlstats_Maps m ON m.game = s.game AND m.map = e.map;

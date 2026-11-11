@@ -211,6 +211,7 @@ What it does:
 | 25 | `secret-options` | table `hlstats_gamewe_secrets`, which `gamewe_web` cannot read: the Steam Web API key, the metrics token and the TeamSpeak passwords move there from `hlstats_Options`. The website reads them with `DB_ADMIN_USER`, so update the website together with the collector: an older website has no Steam key, metrics or TeamSpeak query until then |
 | 26 | `always-log-lines` | deletes the `hlstats_Options` row `gamewe_log_lines`: the collector always writes every received log line to its log |
 | 27 | `player-skill-index` | index `skill` (skill, playerId) on `hlstats_Players` and `hlstats_PlayersInactive`: the web's admin players list reads the best rows of each table along it instead of sorting every player |
+| 28 | `event-servers` | column `server_id` and index `server_id` (server_id, timestamp_id) on `hlstats_Events_Connects`, `_ChangeName` and `_ChangeRole`: the web's server page lists connects, name and model changes too. Older rows keep server 0 (the web shows `-`); `gamewe_web` may read `hlstats_Events_Connects.server_id` |
 
 The SQL files of older packages (`/opt/gamewe/collector/doc/schema/hlstatsx.sql`,
 `init/01_schema.sql`, `02_seed.sql`, `03_grants.sql` and the PostgreSQL

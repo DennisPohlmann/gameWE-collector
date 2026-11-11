@@ -145,6 +145,7 @@ CREATE UNIQUE INDEX hlstats_Definition_Ribbons_Classes_game ON hlstats_Definitio
 CREATE TABLE hlstats_Events_ChangeName (
   timestamp_id bigint NOT NULL DEFAULT 0,
   game_id smallint NOT NULL DEFAULT 0,
+  server_id integer NOT NULL DEFAULT 0,
   map integer NOT NULL DEFAULT 0,
   playerId integer NOT NULL DEFAULT 0,
   oldName varchar(255) NOT NULL DEFAULT '',
@@ -152,16 +153,19 @@ CREATE TABLE hlstats_Events_ChangeName (
 );
 CREATE INDEX hlstats_Events_ChangeName_playerId ON hlstats_Events_ChangeName (playerId);
 CREATE INDEX hlstats_Events_ChangeName_timestamp_id ON hlstats_Events_ChangeName (timestamp_id);
+CREATE INDEX hlstats_Events_ChangeName_server_id ON hlstats_Events_ChangeName (server_id, timestamp_id);
 CREATE INDEX hlstats_Events_ChangeName_game_time ON hlstats_Events_ChangeName (game_id, timestamp_id);
 CREATE TABLE hlstats_Events_ChangeRole (
   timestamp_id bigint NOT NULL DEFAULT 0,
   game_id smallint NOT NULL DEFAULT 0,
+  server_id integer NOT NULL DEFAULT 0,
   map integer NOT NULL DEFAULT 0,
   playerId integer NOT NULL DEFAULT 0,
   role smallint NOT NULL DEFAULT 0
 );
 CREATE INDEX hlstats_Events_ChangeRole_playerId ON hlstats_Events_ChangeRole (playerId);
 CREATE INDEX hlstats_Events_ChangeRole_timestamp_id ON hlstats_Events_ChangeRole (timestamp_id);
+CREATE INDEX hlstats_Events_ChangeRole_server_id ON hlstats_Events_ChangeRole (server_id, timestamp_id);
 CREATE INDEX hlstats_Events_ChangeRole_game_time ON hlstats_Events_ChangeRole (game_id, timestamp_id);
 CREATE TABLE hlstats_Events_ChangeTeam (
   timestamp_id bigint NOT NULL DEFAULT 0,
@@ -190,6 +194,7 @@ CREATE INDEX hlstats_Events_Chat_game_time ON hlstats_Events_Chat (game_id, time
 CREATE TABLE hlstats_Events_Connects (
   timestamp_id bigint NOT NULL DEFAULT 0,
   game_id smallint NOT NULL DEFAULT 0,
+  server_id integer NOT NULL DEFAULT 0,
   map integer NOT NULL DEFAULT 0,
   playerId integer NOT NULL DEFAULT 0,
   ipAddress bigint NOT NULL DEFAULT 0,
@@ -199,6 +204,7 @@ CREATE TABLE hlstats_Events_Connects (
 CREATE INDEX hlstats_Events_Connects_playerId ON hlstats_Events_Connects (playerId);
 CREATE INDEX hlstats_Events_Connects_ipAddress ON hlstats_Events_Connects (ipAddress);
 CREATE INDEX hlstats_Events_Connects_timestamp_id ON hlstats_Events_Connects (timestamp_id);
+CREATE INDEX hlstats_Events_Connects_server_id ON hlstats_Events_Connects (server_id, timestamp_id);
 CREATE INDEX hlstats_Events_Connects_game_time ON hlstats_Events_Connects (game_id, timestamp_id);
 CREATE TABLE hlstats_Events_Disconnects (
   timestamp_id bigint NOT NULL DEFAULT 0,

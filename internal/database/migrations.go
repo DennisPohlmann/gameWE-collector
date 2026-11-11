@@ -266,6 +266,13 @@ var Migrations = []Migration{
 			"the best rows of each table along it instead of sorting every player",
 		Sync: true,
 	},
+	{
+		Version: 28, Name: "event-servers",
+		Desc: "column server_id and index server_id (server_id, timestamp_id) on hlstats_Events_Connects, _ChangeName and " +
+			"_ChangeRole, so the web's server page lists connects, name and model changes too; older rows keep server 0; " +
+			"gamewe_web may read hlstats_Events_Connects.server_id",
+		Sync: true,
+	},
 }
 
 // Latest is the newest schema version this collector knows.

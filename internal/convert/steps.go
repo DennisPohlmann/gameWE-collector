@@ -520,7 +520,7 @@ FROM hlstats_Players_History WHERE eventTime IS NOT NULL`, "hlstats_Players_Hist
 
 		{name: "connects", from: "hlstats_Events_Connects", table: "hlstats_Events_Connects", count: "hlstats_Events_Connects",
 			note: "IPv4 -> integer, other addresses -> 0",
-			parts: []part{c.plainEvent("hlstats_Events_Connects", false, true,
+			parts: []part{c.plainEvent("hlstats_Events_Connects", true, true,
 				[]string{"e.playerId", `IFNULL(INET_ATON(IF(e.ipAddress REGEXP '^[0-9]+([.][0-9]+){3}$', e.ipAddress, NULL)), 0)`, "e.hostname", "e.hostgroup"},
 				[]string{"playerId", "ipAddress", "hostname", "hostgroup"}, flags("..tt"))}},
 
@@ -537,11 +537,11 @@ FROM hlstats_Players_History WHERE eventTime IS NOT NULL`, "hlstats_Players_Hist
 
 		{name: "role changes", from: "hlstats_Events_ChangeRole", table: "hlstats_Events_ChangeRole", count: "hlstats_Events_ChangeRole",
 			note: "role -> id",
-			parts: []part{c.codeEvent("hlstats_Events_ChangeRole", false, "role", "role", []string{"e.playerId"}, nil,
-				[]string{"timestamp_id", "game_id", "map", "playerId", "role"})}},
+			parts: []part{c.codeEvent("hlstats_Events_ChangeRole", true, "role", "role", []string{"e.playerId"}, nil,
+				[]string{"timestamp_id", "game_id", "server_id", "map", "playerId", "role"})}},
 
 		{name: "name changes", from: "hlstats_Events_ChangeName", table: "hlstats_Events_ChangeName", count: "hlstats_Events_ChangeName",
-			parts: []part{c.plainEvent("hlstats_Events_ChangeName", false, true, []string{"e.playerId", "e.oldName", "e.newName"},
+			parts: []part{c.plainEvent("hlstats_Events_ChangeName", true, true, []string{"e.playerId", "e.oldName", "e.newName"},
 				[]string{"playerId", "oldName", "newName"}, flags(".tt"))}},
 
 		{name: "chat", from: "hlstats_Events_Chat", table: "hlstats_Events_Chat", count: "hlstats_Events_Chat",

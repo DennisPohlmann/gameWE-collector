@@ -709,8 +709,8 @@ func (s *Store) Connect(ctx context.Context, ev Ev, p Live, ip netip.Addr) error
 		ipInt = uint32(b[0])<<24 | uint32(b[1])<<16 | uint32(b[2])<<8 | uint32(b[3])
 	}
 	return s.run(ctx,
-		step{`INSERT INTO hlstats_Events_Connects (timestamp_id, game_id, map, playerId, ipAddress, hostname, hostgroup) VALUES (?, ?, ?, ?, ?, '', '')`,
-			[]any{ev.ts(), ev.Srv.GameID, ev.MapID, p.ID, ipInt}},
+		s.ev(ctx, step{`INSERT INTO hlstats_Events_Connects (timestamp_id, game_id, server_id, map, playerId, ipAddress, hostname, hostgroup) VALUES (?, ?, ?, ?, ?, ?, '', '')`,
+			[]any{ev.ts(), ev.Srv.GameID, ev.Srv.ID, ev.MapID, p.ID, ipInt}}),
 		step{`UPDATE hlstats_Players_Data SET last_connect = ?, total_connects = total_connects + 1, lastName = ?,
 			first_connect = CASE WHEN first_connect = 0 THEN ? ELSE first_connect END WHERE playerId = ?`,
 			[]any{ev.ts(), clip(p.Name, 128), ev.ts(), p.ID}},
@@ -746,8 +746,8 @@ func (s *Store) Leave(ctx context.Context, ev Ev, p Live, seconds int, logged bo
 func (s *Store) Rename(ctx context.Context, ev Ev, p Live, newName string) error {
 	newName = clip(newName, 128)
 	return s.run(ctx,
-		step{`INSERT INTO hlstats_Events_ChangeName (timestamp_id, game_id, map, playerId, oldName, newName) VALUES (?, ?, ?, ?, ?, ?)`,
-			[]any{ev.ts(), ev.Srv.GameID, ev.MapID, p.ID, clip(p.Name, 255), newName}},
+		s.ev(ctx, step{`INSERT INTO hlstats_Events_ChangeName (timestamp_id, game_id, server_id, map, playerId, oldName, newName) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			[]any{ev.ts(), ev.Srv.GameID, ev.Srv.ID, ev.MapID, p.ID, clip(p.Name, 255), newName}}),
 		step{`UPDATE hlstats_Players_Data SET lastName = ? WHERE playerId = ?`, []any{newName, p.ID}},
 		step{s.nameUse(),
 			[]any{p.ID, newName, ev.Time.UTC()}},
@@ -780,8 +780,8 @@ func (s *Store) ChangeRole(ctx context.Context, ev Ev, p Live, role string) erro
 	if err != nil {
 		return err
 	}
-	return s.run(ctx, step{`INSERT INTO hlstats_Events_ChangeRole (timestamp_id, game_id, map, playerId, role) VALUES (?, ?, ?, ?, ?)`,
-		[]any{ev.ts(), ev.Srv.GameID, ev.MapID, p.ID, min(rid, 255)}})
+	return s.run(ctx, s.ev(ctx, step{`INSERT INTO hlstats_Events_ChangeRole (timestamp_id, game_id, server_id, map, playerId, role) VALUES (?, ?, ?, ?, ?, ?)`,
+		[]any{ev.ts(), ev.Srv.GameID, ev.Srv.ID, ev.MapID, p.ID, min(rid, 255)}}))
 }
 
 // AddPlayTime adds the seconds a player spent in a team and in a role to

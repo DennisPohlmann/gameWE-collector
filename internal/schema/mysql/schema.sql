@@ -140,22 +140,26 @@ CREATE TABLE `hlstats_Definition_Ribbons_Classes` (
 CREATE TABLE `hlstats_Events_ChangeName` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
   `game_id` tinyint(3) unsigned NOT NULL DEFAULT 0,
+  `server_id` smallint(5) unsigned NOT NULL DEFAULT 0,
   `map` smallint(5) unsigned NOT NULL DEFAULT 0,
   `playerId` mediumint(8) unsigned NOT NULL DEFAULT 0,
   `oldName` varchar(255) NOT NULL DEFAULT '',
   `newName` varchar(255) NOT NULL DEFAULT '',
   KEY `playerId` (`playerId`),
   KEY `timestamp_id` (`timestamp_id`),
+  KEY `server_id` (`server_id`,`timestamp_id`),
   KEY `game_time` (`game_id`,`timestamp_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Events_ChangeRole` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
   `game_id` tinyint(3) unsigned NOT NULL DEFAULT 0,
+  `server_id` smallint(5) unsigned NOT NULL DEFAULT 0,
   `map` smallint(5) unsigned NOT NULL DEFAULT 0,
   `playerId` mediumint(8) unsigned NOT NULL DEFAULT 0,
   `role` tinyint(3) unsigned NOT NULL DEFAULT 0,
   KEY `playerId` (`playerId`),
   KEY `timestamp_id` (`timestamp_id`),
+  KEY `server_id` (`server_id`,`timestamp_id`),
   KEY `game_time` (`game_id`,`timestamp_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Events_ChangeTeam` (
@@ -185,6 +189,7 @@ CREATE TABLE `hlstats_Events_Chat` (
 CREATE TABLE `hlstats_Events_Connects` (
   `timestamp_id` int(10) unsigned NOT NULL DEFAULT 0,
   `game_id` tinyint(3) unsigned NOT NULL DEFAULT 0,
+  `server_id` smallint(5) unsigned NOT NULL DEFAULT 0,
   `map` smallint(5) unsigned NOT NULL DEFAULT 0,
   `playerId` mediumint(8) unsigned NOT NULL DEFAULT 0,
   `ipAddress` int(10) unsigned NOT NULL DEFAULT 0,
@@ -193,6 +198,7 @@ CREATE TABLE `hlstats_Events_Connects` (
   KEY `playerId` (`playerId`),
   KEY `ipAddress` (`ipAddress`),
   KEY `timestamp_id` (`timestamp_id`),
+  KEY `server_id` (`server_id`,`timestamp_id`),
   KEY `game_time` (`game_id`,`timestamp_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Events_Disconnects` (

@@ -38,7 +38,7 @@ GRANT SELECT ON `hlstats_Definition_Ribbons_Classes` TO 'gamewe_web'@'%';
 GRANT SELECT ON `hlstats_Events_ChangeName` TO 'gamewe_web'@'%';
 GRANT SELECT ON `hlstats_Events_ChangeRole` TO 'gamewe_web'@'%';
 GRANT SELECT ON `hlstats_Events_ChangeTeam` TO 'gamewe_web'@'%';
-GRANT SELECT (`timestamp_id`, `game_id`, `map`, `playerId`) ON `hlstats_Events_Connects` TO 'gamewe_web'@'%';
+GRANT SELECT (`timestamp_id`, `game_id`, `server_id`, `map`, `playerId`) ON `hlstats_Events_Connects` TO 'gamewe_web'@'%';
 GRANT SELECT ON `hlstats_Events_Disconnects` TO 'gamewe_web'@'%';
 GRANT SELECT ON `hlstats_Events_Entries` TO 'gamewe_web'@'%';
 GRANT SELECT ON `hlstats_Events_Frags` TO 'gamewe_web'@'%';
