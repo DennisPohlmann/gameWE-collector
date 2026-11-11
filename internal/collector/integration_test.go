@@ -515,6 +515,9 @@ func TestIntegrationHLstatsXBehaviour(t *testing.T) {
 		// After the disconnect: stats only, no new visit and no live row.
 		`"Vic<3><STEAM_1:0:72><TERRORIST>" triggered "weaponstats" (weapon "glock") (shots "9") (hits "3") (kills "1") (headshots "0") (tks "0") (damage "120") (deaths "0")`,
 		`"Vic<3><STEAM_1:0:72><TERRORIST>" triggered "Dropped_The_Bomb"`,
+		// Only after his disconnect (collector started late): a new player
+		// without a visit, still with his name row for the web's search.
+		`"Zed<5><STEAM_1:0:74><CT>" triggered "weaponstats" (weapon "usp") (shots "4") (hits "1") (kills "0") (headshots "0") (tks "0") (damage "30") (deaths "0")`,
 		`Banid: "Wes<4><STEAM_1:0:73><>" was kicked and banned "permanently" by "Console"`,
 	)
 	// Wait until the lines are processed, then let Wes time out.
@@ -548,6 +551,7 @@ func TestIntegrationHLstatsXBehaviour(t *testing.T) {
 		{"permanent ban hidden", count(t, db, `SELECT hideranking FROM hlstats_Players WHERE playerId = `+player("0:73")), 2},
 		{"weaponstats after leaving", count(t, db, `SELECT shots FROM hlstats_Players WHERE playerId = `+player("0:72")), 9},
 		{"one visit of Vic", count(t, db, `SELECT numuses FROM hlstats_PlayerNames WHERE playerId = `+player("0:72")), 1},
+		{"name row of Zed, no visit", count(t, db, `SELECT COUNT(*) FROM hlstats_PlayerNames WHERE name = 'Zed' AND numuses = 0 AND playerId = `+player("0:74")), 1},
 		{"idle and banned players left", count(t, db, `SELECT COUNT(*) FROM hlstats_Livestats`), 0},
 		{"clan created", count(t, db, `SELECT COUNT(*) FROM hlstats_Clans WHERE tag = '[ZOOM]' AND name = 'ZOOM' AND game = 'css'`), 1},
 		{"clan of Kay", count(t, db, `SELECT COUNT(*) FROM hlstats_Players p JOIN hlstats_Clans c ON c.clanId = p.clan WHERE p.playerId = `+player("0:71")), 1},
@@ -564,8 +568,8 @@ func TestIntegrationHLstatsXBehaviour(t *testing.T) {
 	if err := NewHub(stats.NewStore(db, set), set, &recorder{}, strictLog(t)).Reload(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if n := count(t, db, `SELECT players FROM hlstats_Servers`); n != 1 {
-		t.Errorf("hlstats_Servers.players = %d, want 1 (Kay; Vic and Wes are banned)", n)
+	if n := count(t, db, `SELECT players FROM hlstats_Servers`); n != 2 {
+		t.Errorf("hlstats_Servers.players = %d, want 2 (Kay, Zed; Vic and Wes are banned)", n)
 	}
 }
 

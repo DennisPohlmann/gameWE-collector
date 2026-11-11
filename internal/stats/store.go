@@ -632,7 +632,11 @@ func (s *Store) newPlayer(ctx context.Context, ev Ev, uniqueID, name string) (in
 		return s.Player(ctx, ev, uniqueID, name)
 	}
 	err = s.run(ctx, step{s.ignore(`INSERT INTO hlstats_Players_Data (playerId, first_connect, last_connect, lastName) VALUES (?, ?, ?, ?)`),
-		[]any{id, ev.ts(), ev.ts(), clip(name, 128)}})
+		[]any{id, ev.ts(), ev.ts(), clip(name, 128)}},
+		// The name row also for a player created without a visit (absent): the
+		// web's search reads the names. Join counts the use (numuses 0 here).
+		step{s.ignore(`INSERT INTO hlstats_PlayerNames (playerId, name, lastuse, numuses) VALUES (?, ?, ?, 0)`),
+			[]any{id, clip(name, 128), ev.Time.UTC()}})
 	return id, s.set.Get().StartSkill, err
 }
 
