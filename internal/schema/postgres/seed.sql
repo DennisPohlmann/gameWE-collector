@@ -313,8 +313,17 @@ INSERT INTO hlstats_Teams (game, code, name, hidden) VALUES
   ('csgo', 'TERRORIST', 'Terrorist', '0'),
   ('csgo', 'CT', 'Counter-Terrorist', '0') ON CONFLICT DO NOTHING;
 
--- Roles (classes, models)
+-- Roles (classes, models): cstrike models as the AMX Mod X plugin logs them
 INSERT INTO hlstats_Roles (game, code, name, hidden) VALUES
+  ('cstrike', 'terror', 'Phoenix Connexion', '0'),
+  ('cstrike', 'leet', 'Elite Crew', '0'),
+  ('cstrike', 'arctic', 'Arctic Avengers', '0'),
+  ('cstrike', 'guerilla', 'Guerrilla Warfare', '0'),
+  ('cstrike', 'urban', 'SEAL Team 6', '0'),
+  ('cstrike', 'gsg9', 'GSG-9', '0'),
+  ('cstrike', 'sas', 'SAS', '0'),
+  ('cstrike', 'gign', 'GIGN', '0'),
+  ('cstrike', 'vip', 'VIP', '0'),
   ('dod', 'Random', 'Random', '0'),
   ('dod', '#class_allied_garand', 'American Rifleman', '0'),
   ('dod', '#class_allied_carbine', 'American Staff Sergeant', '0'),
@@ -2577,7 +2586,8 @@ INSERT INTO hlstats_Weapons (game, code, name, modifier) VALUES
 -- ---------------------------------------------------------------------------
 -- Counter-Strike: Condition Zero (czero, GoldSrc): the cstrike definitions
 -- above (teams, actions, weapons, awards, ranks, ribbons, ribbon classes) for
--- the game czero. Condition Zero multiplayer logs like Counter-Strike 1.6:
+-- the game czero, plus the Condition Zero models militia and spetsnaz as
+-- roles. Condition Zero multiplayer logs like Counter-Strike 1.6:
 -- the same teams, triggers and weapon names (the gameWE AMX Mod X plugin
 -- gamewe_cstrike runs on both). HLstatsX:CE has no Condition Zero data of
 -- its own; these rows are derived from the cstrike set.
@@ -2587,6 +2597,18 @@ INSERT INTO hlstats_Games (code, name, realgame, hidden) VALUES
 INSERT INTO hlstats_Teams (game, code, name, hidden) VALUES
   ('czero', 'TERRORIST', 'Terrorist', '0'),
   ('czero', 'CT', 'Counter-Terrorist', '0') ON CONFLICT DO NOTHING;
+INSERT INTO hlstats_Roles (game, code, name, hidden) VALUES
+  ('czero', 'terror', 'Phoenix Connexion', '0'),
+  ('czero', 'leet', 'Elite Crew', '0'),
+  ('czero', 'arctic', 'Arctic Avengers', '0'),
+  ('czero', 'guerilla', 'Guerrilla Warfare', '0'),
+  ('czero', 'militia', 'Midwest Militia', '0'),
+  ('czero', 'urban', 'SEAL Team 6', '0'),
+  ('czero', 'gsg9', 'GSG-9', '0'),
+  ('czero', 'sas', 'SAS', '0'),
+  ('czero', 'gign', 'GIGN', '0'),
+  ('czero', 'spetsnaz', 'Spetsnaz', '0'),
+  ('czero', 'vip', 'VIP', '0') ON CONFLICT DO NOTHING;
 INSERT INTO hlstats_Actions (game, code, reward_player, reward_team, team, description, for_PlayerActions, for_PlayerPlayerActions, for_TeamActions, for_WorldActions) VALUES
   ('czero', 'Begin_Bomb_Defuse_Without_Kit', 0, 0, 'CT', 'Start Defusing the Bomb Without a Defuse Kit', '1', '0', '0', '0'),
   ('czero', 'Begin_Bomb_Defuse_With_Kit', 0, 0, 'CT', 'Start Defusing the Bomb With a Defuse Kit', '1', '0', '0', '0'),

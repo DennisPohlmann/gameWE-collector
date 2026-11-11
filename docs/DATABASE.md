@@ -212,6 +212,7 @@ What it does:
 | 26 | `always-log-lines` | deletes the `hlstats_Options` row `gamewe_log_lines`: the collector always writes every received log line to its log |
 | 27 | `player-skill-index` | index `skill` (skill, playerId) on `hlstats_Players` and `hlstats_PlayersInactive`: the web's admin players list reads the best rows of each table along it instead of sorting every player |
 | 28 | `event-servers` | column `server_id` and index `server_id` (server_id, timestamp_id) on `hlstats_Events_Connects`, `_ChangeName` and `_ChangeRole`: the web's server page lists connects, name and model changes too. Older rows keep server 0 (the web shows `-`); `gamewe_web` may read `hlstats_Events_Connects.server_id` |
+| 29 | `cs-model-roles` | the player models of `cstrike` and `czero` as roles in `hlstats_Roles` (Phoenix Connexion, GIGN, ...; `czero` also Midwest Militia and Spetsnaz), which the AMX Mod X plugin logs as `changed role to`. Only missing rows are added; a ranking copied from cstrike or czero before keeps its roles, a model it logs gets a role named like its code |
 
 The SQL files of older packages (`/opt/gamewe/collector/doc/schema/hlstatsx.sql`,
 `init/01_schema.sql`, `02_seed.sql`, `03_grants.sql` and the PostgreSQL

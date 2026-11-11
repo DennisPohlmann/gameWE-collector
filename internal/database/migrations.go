@@ -272,6 +272,10 @@ var Migrations = []Migration{
 			"_ChangeRole, so the web's server page lists connects, name and model changes too; older rows keep server 0; " +
 			"gamewe_web may read hlstats_Events_Connects.server_id",
 		Sync: true,
+	},	{
+		Version: 29, Name: "cs-model-roles",
+		Desc: "the player models of cstrike and czero as roles (hlstats_Roles), logged by the AMX Mod X plugin as changed role to",
+		Seed: true,
 	},
 }
 

@@ -51,7 +51,8 @@ The gameWE plugin adds these lines:
 and, for CS:S and CS:GO, `triggered "headshot"` for every headshot kill (the
 collector rewards one `headshot` action per kill, not two), position lines
 (`located on "kill" (position "x y z") against ... (victim_position "x y z")`,
-stored in `hlstats_Events_Locations`), player models (`changed role to "gign"`),
+stored in `hlstats_Events_Locations`), player models (`changed role to "gign"`;
+the AMX Mod X plugin logs them on cstrike and czero too),
 `triggered "mvp"` / `"clantag"` and the queries of other plugins (see below).
 The CS2 (CounterStrikeSharp) plugin sends `weaponstats` (no `weaponstats2`),
 `headshot`, `mvp`, `domination`, `revenge`, roles, `setup` and `requested`
