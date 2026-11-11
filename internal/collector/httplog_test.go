@@ -28,8 +28,12 @@ func httpTestHub(t *testing.T) (*Hub, *memStore) {
 	hub := newTestHub(st, &recorder{}, []string{"192.0.2.10:27015", "192.0.2.10:27016"},
 		map[string]string{"192.0.2.10:27015": "cs2", "192.0.2.10:27016": "css"})
 	t.Cleanup(func() { hub.Close(context.Background()) })
+	hub.resolve(netip.MustParseAddrPort("192.0.2.10:27015")).srv.LogSecret = testToken
 	return hub, st
 }
+
+// testToken is the log token of the CS2 server of httpTestHub.
+const testToken = "abcdefghijklmnop1234" // gitleaks:allow (made-up test token)
 
 func httpCfg() HTTPConfig {
 	return HTTPConfig{MaxBody: 4096, ReadTimeout: time.Second, MaxConnections: 4, MaxConnectionsPerIP: 2}
@@ -52,22 +56,24 @@ func TestHTTPLogHandler(t *testing.T) {
 		name, remote, path, body string
 		want                     int
 	}{
-		{"cs2 ok", "192.0.2.10:51000", "/27015", body, 200},
-		{"other port", "192.0.2.10:51000", "/27017", body, 403},
-		{"stranger", "198.51.100.1:51000", "/27015", body, 403},
-		{"not source2", "192.0.2.10:51000", "/27016", body, 403},
+		{"cs2 ok", "192.0.2.10:51000", "/" + testToken, body, 200},
+		{"trailing slash", "192.0.2.10:51000", "/" + testToken + "/", body, 200},
+		{"wrong token", "192.0.2.10:51000", "/abcdefghijklmnop1235", body, 404},
+		{"stranger", "198.51.100.1:51000", "/" + testToken, body, 404},
+		{"old url", "192.0.2.10:51000", "/27015", body, 404},
+		{"old url with token", "192.0.2.10:51000", "/27015/" + testToken, body, 404},
 		{"no port", "192.0.2.10:51000", "/", body, 404},
 		{"bad port", "192.0.2.10:51000", "/70000", body, 404},
 		{"plus port", "192.0.2.10:51000", "/+27015", body, 404},
-		{"extra path", "192.0.2.10:51000", "/a/27015", body, 404},
-		{"too big", "192.0.2.10:51000", "/27015", strings.Repeat("x", 5000), 413},
+		{"extra path", "192.0.2.10:51000", "/a/" + testToken, body, 404},
+		{"too big", "192.0.2.10:51000", "/" + testToken, strings.Repeat("x", 5000), 413},
 	}
 	for _, c := range cases {
 		if got := post(h, c.remote, c.path, c.body); got != c.want {
 			t.Errorf("%s: got %d, want %d", c.name, got, c.want)
 		}
 	}
-	r := httptest.NewRequest(http.MethodGet, "/27015", nil)
+	r := httptest.NewRequest(http.MethodGet, "/"+testToken, nil)
 	r.RemoteAddr = "192.0.2.10:51000"
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
@@ -76,16 +82,44 @@ func TestHTTPLogHandler(t *testing.T) {
 	}
 }
 
-// The log token per server ends the path; the removed collector-wide token
-// before the game port is refused.
+// The token picks the CS2 server at the sender's IP; a token two servers
+// at one IP share is refused, and a CS2 server without a token has no URL.
 func TestHTTPLogToken(t *testing.T) {
 	hub, _ := httpTestHub(t)
-	hub.resolve(netip.MustParseAddrPort("192.0.2.10:27015")).srv.LogSecret = "abcdefghijklmnop1234" // gitleaks:allow (made-up test token)
-	h := newHTTPHandler(httpCfg(), hub, newRejectLog(quiet, "test"), quiet)
-	for path, want := range map[string]int{"/27015/abcdefghijklmnop1234": 200, "/27015": 404, "/27015/abcdefghijklmnop1235": 404, "/abcdefghijklmnop1234/27015": 404} {
-		if got := post(h, "192.0.2.10:1", path, "x\n"); got != want {
-			t.Errorf("%s: got %d, want %d", path, got, want)
+	ip := netip.MustParseAddr("192.0.2.10")
+	if p, err := hub.tokenPort(ip, testToken); err != nil || p != 27015 {
+		t.Errorf("token: %d %v", p, err)
+	}
+	css := hub.resolve(netip.MustParseAddrPort("192.0.2.10:27016"))
+	css.srv.LogSecret = testToken
+	if p, err := hub.tokenPort(ip, testToken); err != nil || p != 27015 {
+		t.Errorf("a non-CS2 server with the same token counts: %d %v", p, err)
+	}
+	css.srv.Engine = games.Source2
+	if _, err := hub.tokenPort(ip, testToken); err != errHTTPTokenTwice {
+		t.Errorf("shared token: %v", err)
+	}
+	css.srv.LogSecret = ""
+	if _, err := hub.tokenPort(ip, ""); err != errHTTPToken {
+		t.Errorf("empty token matched a server without one: %v", err)
+	}
+}
+
+// The old URL /<game port>[/<log token>] is refused, with one warning per
+// server in the log that says what to do.
+func TestHTTPLogOldURL(t *testing.T) {
+	hub, _ := httpTestHub(t)
+	log, buf := logBuf()
+	h := newHTTPHandler(httpCfg(), hub, newRejectLog(quiet, "test"), log)
+	for i := 0; i < 3; i++ {
+		if got := post(h, "192.0.2.10:1", "/27015/"+testToken, "x\n"); got != 404 {
+			t.Errorf("old url: %d", got)
 		}
+	}
+	post(h, "198.51.100.1:1", "/27015", "x\n") // no server: no warning
+	out := buf.String()
+	if strings.Count(out, "old URL") != 1 || !strings.Contains(out, "source=192.0.2.10:27015") || strings.Contains(out, testToken) {
+		t.Errorf("warning: %s", out)
 	}
 }
 
@@ -95,7 +129,7 @@ func TestHTTPLogProxy(t *testing.T) {
 	cfg.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
 	h := newHTTPHandler(cfg, hub, newRejectLog(quiet, "test"), quiet)
 	send := func(remote, xff string) int {
-		r := httptest.NewRequest(http.MethodPost, "/27015", strings.NewReader("x\n"))
+		r := httptest.NewRequest(http.MethodPost, "/"+testToken, strings.NewReader("x\n"))
 		r.RemoteAddr = remote
 		if xff != "" {
 			r.Header.Set("X-Forwarded-For", xff)
@@ -107,10 +141,10 @@ func TestHTTPLogProxy(t *testing.T) {
 	if c := send("10.0.0.2:1", "198.51.100.9, 192.0.2.10, 10.0.0.3"); c != 200 {
 		t.Errorf("via proxy: %d", c)
 	}
-	if c := send("10.0.0.2:1", "192.0.2.10, 198.51.100.9"); c != 403 {
+	if c := send("10.0.0.2:1", "192.0.2.10, 198.51.100.9"); c != 404 {
 		t.Errorf("spoofed left hop accepted: %d", c)
 	}
-	if c := send("198.51.100.9:1", "192.0.2.10"); c != 403 {
+	if c := send("198.51.100.9:1", "192.0.2.10"); c != 404 {
 		t.Errorf("X-Forwarded-For from an untrusted peer used: %d", c)
 	}
 	if c := send("10.0.0.2:1", "garbage"); c != 404 {
@@ -133,14 +167,16 @@ func TestHTTPLogPathReasons(t *testing.T) {
 		path string
 		want error
 	}{
-		{"/", errHTTPPort},
-		{"/70000", errHTTPPort},
-		{"/+27015", errHTTPPort},
+		{"/", errHTTPPath},
+		{"/70000", errHTTPPath},
+		{"/+27015", errHTTPPath},
 		{"/x/y/27015", errHTTPPath},
-		{"/" + token + "/27015", errHTTPExtraToken},
-		{"/" + token + "/27015/x", errHTTPExtraToken},
-		{"/" + token + "/", errHTTPPort},
-		{"/" + token + "/x/27015", errHTTPPath},
+		{"/short", errHTTPPath},
+		{"/" + token + "/27015", errHTTPPath},
+		{"/" + token + "/x", errHTTPPath},
+		{"/abcdefghijklmnop1235", errHTTPToken},
+		{"/27015/" + token, errHTTPOld},
+		{"/27015", errHTTPOld},
 	} {
 		log, buf := logBuf()
 		h := newHTTPHandler(httpCfg(), hub, newRejectLog(log, "rejected HTTP log post"), log)
@@ -153,22 +189,6 @@ func TestHTTPLogPathReasons(t *testing.T) {
 		}
 		if strings.Contains(out, "abcdefghijklmnop123") {
 			t.Errorf("%s: token in the log: %q", c.path, out)
-		}
-	}
-}
-
-// A 403 says which server is missing and which ports are configured.
-func TestHTTPLogRejectHint(t *testing.T) {
-	hub, _ := httpTestHub(t)
-	log, buf := logBuf()
-	h := newHTTPHandler(httpCfg(), hub, newRejectLog(log, "rejected HTTP log post"), log)
-	post(h, "192.0.2.10:1", "/26015", "x\n")
-	post(h, "198.51.100.1:1", "/27015", "x\n")
-	out := buf.String()
-	for _, want := range []string{"source=192.0.2.10:26015", "status=403", "configured_ports=\"[27015 27016]\"",
-		"no server 198.51.100.1:27015 in the web admin"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("log lacks %q:\n%s", want, out)
 		}
 	}
 }
@@ -213,11 +233,11 @@ func TestHTTPLogAccepted(t *testing.T) {
 	now := time.Date(2026, 10, 30, 20, 0, 0, 0, time.UTC)
 	h.now = func() time.Time { return now }
 	body := "10/30/2026 - 20:00:00.000 - World triggered \"Round_Start\"\n"
-	post(h, "192.0.2.10:1", "/27015", body)
+	post(h, "192.0.2.10:1", "/"+testToken, body)
 	now = now.Add(5 * time.Second)
-	post(h, "192.0.2.10:1", "/27015", body+body)
+	post(h, "192.0.2.10:1", "/"+testToken, body+body)
 	now = now.Add(HTTPQuiet)
-	post(h, "192.0.2.10:1", "/27015", body)
+	post(h, "192.0.2.10:1", "/"+testToken, body)
 	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
 	if len(lines) != 3 {
 		t.Fatalf("got %d lines:\n%s", len(lines), buf.String())
@@ -250,7 +270,7 @@ func TestHTTPLineLog(t *testing.T) {
 	cfg := httpCfg()
 	cfg.MaxBody = 4 * MaxHTTPLine
 	h := newHTTPHandler(cfg, hub, newRejectLog(quiet, "test"), quiet)
-	path := "/27015/" + token
+	path := "/" + token
 	const ts = "10/30/2026 - 20:00:00.000 - "
 	kill := ts + `"A<2><[U:1:11]><CT>" [1 2 3] killed "B<3><[U:1:22]><TERRORIST>" [4 5 6] with "ak47"`
 	long := kill + " " + strings.Repeat("y", MaxHTTPLine)
@@ -291,12 +311,12 @@ func TestHTTPLogServe(t *testing.T) {
 	go func() { done <- ServeHTTP(ctx, cfg, hub, quiet, func(a net.Addr) { addr <- a }) }()
 	a := <-addr
 	// 127.0.0.1 is no game server: rejected, but the server answers.
-	resp, err := http.Post("http://"+a.String()+"/27015", "text/plain", strings.NewReader("x\n"))
+	resp, err := http.Post("http://"+a.String()+"/"+testToken, "text/plain", strings.NewReader("x\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if resp.StatusCode != 403 {
+	if resp.StatusCode != 404 {
 		t.Errorf("got %d", resp.StatusCode)
 	}
 	cancel()

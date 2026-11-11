@@ -175,6 +175,14 @@ func TestAdmin(t *testing.T) {
 	if err := a.SetServer(ctx, "198.51.100.99:27015", ServerFields{LogSecret: &tok}); err == nil {
 		t.Error("log token accepted as sv_logsecret")
 	}
+	// The token picks the server of a log post: each server needs its own.
+	if err := a.SetServer(ctx, cs2Addr, ServerFields{LogSecret: &tok}); err != nil {
+		t.Errorf("same token again on its own server: %v", err)
+	}
+	if err := a.AddServer(ctx, "198.51.100.98:27016", ServerFields{Game: &cs2, LogSecret: &tok}); err == nil {
+		t.Error("a second server got the same log token")
+		a.RemoveServer(ctx, "198.51.100.98:27016")
+	}
 	if err := a.SetServer(ctx, cs2Addr, ServerFields{Game: &other}); err == nil {
 		t.Error("move to a Source game kept the log token")
 	}

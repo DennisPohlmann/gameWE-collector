@@ -1560,6 +1560,10 @@ func TestIntegrationCS2(t *testing.T) {
 	}
 	addr := "198.51.100.9:27015"
 	insertServer(t, db, addr, "cs2")
+	// A CS2 server without a log token has no log URL (and a warning).
+	if _, err := db.Exec(`UPDATE hlstats_Servers SET log_secret = 'dummy_row-token-1' WHERE port = 27015`); err != nil {
+		t.Fatal(err)
+	}
 	set := settings.NewLive(settings.Defaults())
 	hub := NewHub(stats.NewStore(db, set), set, &recorder{}, strictLog(t))
 	hub.Source2Hits = true
@@ -1615,6 +1619,10 @@ func TestIntegrationCS2Plugin(t *testing.T) {
 	}
 	addr := "198.51.100.9:27015"
 	insertServer(t, db, addr, "cs2")
+	// A CS2 server without a log token has no log URL (and a warning).
+	if _, err := db.Exec(`UPDATE hlstats_Servers SET log_secret = 'dummy_row-token-1' WHERE port = 27015`); err != nil {
+		t.Fatal(err)
+	}
 	set := settings.NewLive(settings.Defaults())
 	hub := NewHub(stats.NewStore(db, set), set, &recorder{}, strictLog(t))
 	hub.Source2Hits = true

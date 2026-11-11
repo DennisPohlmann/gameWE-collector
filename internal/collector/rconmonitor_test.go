@@ -397,14 +397,23 @@ func TestEnsureHTTPLogAddress(t *testing.T) {
 	if _, err := c.Exec("echo"); err != nil {
 		t.Fatal(err)
 	}
-	u, err := HTTPLogURL(c, "", 41338, 27015, "")
-	if err != nil || u != "http://127.0.0.1:41338/27015" {
+	const token = "dummy_row-token-1"
+	u, err := HTTPLogURL(c, "", 41338, token)
+	if err != nil || u != "http://127.0.0.1:41338/"+token {
 		t.Fatalf("auto url %q %v", u, err)
 	}
-	if u, _ := HTTPLogURL(c, "http://stats.example.org:8080/", 41338, 27016, ""); u != "http://stats.example.org:8080/27016" {
+	if u, _ := HTTPLogURL(c, "http://stats.example.org:8080/", 41338, token); u != "http://stats.example.org:8080/"+token {
 		t.Errorf("public url %q", u)
 	}
+	if _, err := HTTPLogURL(c, "", 41338, ""); err != ErrNoLogToken {
+		t.Errorf("no token: %v", err)
+	}
 	srv := stats.Server{ID: 3, AddrPort: netip.MustParseAddrPort("127.0.0.1:27015"), Engine: games.Source2}
+	n0 := len(gs.Commands())
+	if err := ensureLogAddress(c, srv, MonitorConfig{LogAddress: true, HTTP: true, HTTPPort: 41338}, &httpAddState{}, quiet); err != nil || len(gs.Commands()) != n0 {
+		t.Errorf("no token: sent %v (%v)", gs.Commands()[n0:], err)
+	}
+	srv.LogSecret = token
 	cfg := MonitorConfig{LogAddress: true, HTTP: true, HTTPPort: 41338, ListenPort: 41337}
 	var st httpAddState
 	for i := 0; i < 3; i++ {
@@ -429,7 +438,7 @@ func TestHTTPLogAddressUnconfirmed(t *testing.T) {
 	gs := rcontest.Start(t, "pw", func(cmd string) string { return "" })
 	c := &rcon.Client{Address: gs.Addr, Password: "pw", Timeout: 2 * time.Second}
 	defer c.Close()
-	srv := stats.Server{ID: 4, AddrPort: netip.MustParseAddrPort("127.0.0.1:27015"), Engine: games.Source2}
+	srv := stats.Server{ID: 4, AddrPort: netip.MustParseAddrPort("127.0.0.1:27015"), Engine: games.Source2, LogSecret: "dummy_row-token-1"}
 	cfg := MonitorConfig{LogAddress: true, HTTP: true, HTTPPort: 41338}
 	var st httpAddState
 	for i := 0; i < 3; i++ {

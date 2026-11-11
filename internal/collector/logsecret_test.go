@@ -141,8 +141,11 @@ func TestSecretNotChecked(t *testing.T) {
 	if msg, _ := SecretNote(SecretOn, stats.Server{ID: 4, Engine: games.GoldSrc}); msg != "" {
 		t.Errorf("GoldSrc without secret: note %q", msg)
 	}
-	if msg, info := SecretNote(SecretOn, stats.Server{ID: 6, Engine: games.Source2}); !info || !strings.Contains(msg, "no log token") {
-		t.Errorf("CS2 without token: note %q %v", msg, info)
+	// CS2 without a token has no log URL: a warning, also with the check off.
+	for _, mode := range []SecretMode{SecretOn, SecretOff} {
+		if msg, info := SecretNote(mode, stats.Server{ID: 6, Engine: games.Source2}); info || !strings.Contains(msg, "no log token") {
+			t.Errorf("CS2 without token (%v): note %q %v", mode, msg, info)
+		}
 	}
 	if msg, _ := SecretNote(SecretOn, stats.Server{ID: 5, Address: "192.0.2.5:27015", Engine: games.Source2, LogSecret: "111"}); msg != "" {
 		t.Errorf("CS2 with token: note %q", msg)

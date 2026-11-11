@@ -38,7 +38,7 @@ be on, and both can run at the same time.
   (`logaddress_add <ip> <port>`, space instead of colon). On
   by default.
 - `listen.http`: Counter-Strike 2 (Source 2), which logs only over HTTP
-  (`logaddress_add_http "http://<ip>:<port>/<game port>/<log token>"`). Off by default.
+  (`logaddress_add_http "http://<ip>:<port>/<log token>"`). Off by default.
   CS2 sends plain HTTP; HTTPS is not supported by the game.
 
 All keys are optional.
@@ -66,46 +66,45 @@ with exit code 2 when it is given.
 | `enabled` | `false` | receive the HTTP logs of Counter-Strike 2 |
 | `address` | `0.0.0.0` | IP to listen on |
 | `port` | `41338` | TCP port |
-| `public_url` | – | `http://host:port` (no path) the CS2 servers post to, registered with `logaddress_add_http` (`features.log_address.http`). The collector adds `/<game port>` and the server's log token. Default: `http://`, the collector's address of the RCON connection and `port`. |
+| `public_url` | – | `http://host:port` (no path) the CS2 servers post to, registered with `logaddress_add_http` (`features.log_address.http`). The collector adds `/` and the server's log token. Default: `http://`, the collector's address of the RCON connection and `port`. |
 | `max_body` | `128KiB` | largest post, `4KiB` to `16MiB` (`KiB`, `MiB`, `KB`, `MB` or bytes); a larger one gets 413 |
 | `read_timeout` | `10s` | time to read one post, `1s` to `2m` |
 | `max_connections` | `64` | open connections at most (1 to 4096); more are closed at once |
 | `max_connections_per_ip` | `8` | open connections from one IP at most (1 to `max_connections`) |
 | `trusted_proxies` | – | IPs or networks (CIDR) of reverse proxies in front of the collector. Only for a request from one of them the sender is taken from `X-Forwarded-For` (the right-most address that is not itself a trusted proxy). |
 
-**Log token per server:** the game port in the URL only selects a row at the
-sender's IP. Like `sv_logsecret` for UDP, each CS2 server can have a token
-of its own, 16 to 64 letters, digits, `-` or `_` (e.g. `openssl rand -hex 24`),
-stored in `hlstats_Servers.log_secret`, with the web admin ("Log token") or
-`gamewe server set <id> -logsecret <token>`. The URL must then end with it:
-`/<game port>/<log token>`. Everything else of that server gets 404. A server without a log token is
-not checked for one. The check does not depend on `features.log_secret`. The
-collector registers the new URL itself within about a minute
-(`features.log_address.http`), but does not remove the old one: it keeps being
-rejected until you run `logaddress_delall_http` on the game server. By hand, put
-the URL into `server.cfg`.
+**Log token per server:** the URL is `/<log token>`. Each CS2 server needs a
+token of its own, 16 to 64 letters, digits, `-` or `_` (e.g. `openssl rand -hex
+24`), stored in `hlstats_Servers.log_secret`, with the web admin ("Log token")
+or `gamewe server set <id> -logsecret <token>`; two servers cannot share one.
+The token picks the server, and the post must come from that server's IP (so
+several servers on one IP are told apart by their tokens). A CS2 server without
+a token has no URL: its logs are refused, and the collector warns about it at
+the start and when the servers are re-read. The check does not depend on
+`features.log_secret`. With an RCON password the collector registers the URL
+itself within about a minute (`features.log_address.http`), but does not remove
+old ones: run `logaddress_delall_http` on the game server. By hand, put the URL
+into `server.cfg`.
 
-The collector-wide `token` (a first path segment, `/<token>/<game port>`) was
-removed: the log token per server replaces it. A `token` still in the config is
-ignored with a warning (`gamewe config test`), and posts to the old URL get 404
-(`a segment before the game port`). Delete the line, give each CS2 server a log
-token in the web admin and run `logaddress_delall_http` on it; the collector
-registers the new URL.
+**Old URLs (collector 1.10 and older):** `/<game port>` and
+`/<game port>/<log token>` are refused with 404. The collector logs once per
+server that it still posts to the old URL. Give the server a log token in the
+web admin, then `logaddress_delall_http` and
+`logaddress_add_http "http://<collector>:<port>/<log token>"` in its
+`server.cfg` (or let the collector register it over RCON).
 
-A post is checked before its body is read. The sender's IP and the game port
-from the URL must be a server in `hlstats_Servers` whose game is a Source 2
-game (`cs2`); every other post gets 403. The port at the end of the URL is the
-game port exactly as in the web admin; the collector re-reads `hlstats_Servers`
-every minute, so a new server is accepted within about a minute. Only `POST` is accepted (405
-otherwise); a path that is not `/<game port>` (or `/<game port>/<log token>`)
-gets 404. A line longer than 8 KiB is not processed; its start still goes to the
+A post is checked before its body is read: the token must be the one of a CS2
+server (game `cs2`) at the sender's IP, otherwise 404. The collector re-reads
+`hlstats_Servers` every minute, so a new server or token is accepted within
+about a minute. Only `POST` is accepted (405 otherwise); a path that is not
+`/<log token>` gets 404. A line longer than 8 KiB is not processed; its start still goes to the
 log with `... [cut, N bytes, not processed]`. Rejected posts are logged
 (`rejected HTTP log post`) the first time per sender and reason, then every
 5 minutes while they keep coming, with `status` (the HTTP answer), `count`
 (all), `new` (since the last line) and a `hint`. A 404 says what is wrong
-with the path (no port, missing, wrong or unexpected token); the path and
-the token themselves are never logged. A 403 for an unknown port lists the
-`configured_ports` of that IP. The first accepted post of a server (and the
+with the path (not a token, the old URL, no CS2 server at the sender's IP
+with this token, or a token two servers share); the path and the token
+themselves are never logged. The first accepted post of a server (and the
 first after 10 minutes without posts) is logged as `receiving HTTP logs`
 with the server's id and name; every post at `-log-level debug`.
 

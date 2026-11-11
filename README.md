@@ -246,9 +246,9 @@ Counter-Strike 2 sends its logs over HTTP: add to the collector's config
 open TCP 41338 for the game servers, give the server a random log token in the
 web admin (e.g. `openssl rand -hex 24`; [Creating the log token for CS2](https://github.com/DennisPohlmann/gameWE-collector/blob/main/docs/INSTALLATION.md#creating-the-log-token-for-cs2)),
 start CS2 with `-usercon` and put `log on`, `logaddress_delall_http` and
-`logaddress_add_http "http://<docker host>:41338/<game port>/<log token>"`
-into `server.cfg` instead of `logaddress_add` (the game port as in the web
-admin); details in
+`logaddress_add_http "http://<docker host>:41338/<log token>"`
+into `server.cfg` instead of `logaddress_add` (the token picks the server,
+which must post from its IP in the web admin); details in
 [Counter-Strike 2](https://github.com/DennisPohlmann/gameWE-collector/blob/main/docs/GAMES.md#counter-strike-2).
 
 For production put a reverse proxy with TLS in front of the web (bind it
@@ -288,9 +288,9 @@ and the [web](https://github.com/DennisPohlmann/gameWE-web/blob/main/docs/INSTAL
    config, give the server a log token of its own in the web admin
    ([how to make one](docs/INSTALLATION.md#creating-the-log-token-for-cs2)) and use
    `logaddress_delall_http` and
-   `logaddress_add_http "http://203.0.113.5:41338/27015/<log token>"` (the
-   collector's IP and HTTP port, the game server's port as in the web admin,
-   its log token) instead of `logaddress_add`.
+   `logaddress_add_http "http://203.0.113.5:41338/<log token>"` (the
+   collector's IP and HTTP port, the server's log token) instead of
+   `logaddress_add`.
 
 Every step in detail: [docs/INSTALLATION.md](docs/INSTALLATION.md).
 

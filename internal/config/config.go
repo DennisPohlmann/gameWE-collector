@@ -157,7 +157,7 @@ type ListenUDP struct {
 }
 
 // ListenHTTP is listen.http: the HTTP input for the logs of Counter-Strike
-// 2 (logaddress_add_http "http://<ip>:<port>/<game server port>"). Off by
+// 2 (logaddress_add_http "http://<ip>:<port>/<log token>"). Off by
 // default.
 type ListenHTTP struct {
 	Enabled bool   `yaml:"enabled"`

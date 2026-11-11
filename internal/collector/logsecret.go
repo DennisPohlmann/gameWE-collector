@@ -111,18 +111,18 @@ func (h *Hub) admit(w *worker, line, secret string, has bool, now time.Time) err
 // secret ("" if nothing); info is true for a note, false for a warning.
 // GoldSrc servers send no log secret, so they only get a note if one is stored
 // for them anyway: it is ignored. On Source 2 (CS2) the column holds the
-// server's log token, the last segment of its HTTP log URL; only a missing
-// one gets a note.
+// server's log token, its HTTP log URL /<log token>; a missing one is a
+// warning, as the server's logs are refused.
 func SecretNote(mode SecretMode, s stats.Server) (msg string, info bool) {
 	switch {
+	case s.Engine == games.Source2 && s.LogSecret == "": // no log URL at all, whatever the mode
+		return fmt.Sprintf("log token: server %d %s is Source 2 (CS2) and has no log token, so it has no log URL and its logs are refused (set one in the web admin or with gamewe server set -logsecret; the URL is http://<collector>:<port>/<log token>)", s.ID, s.Address), false
 	case mode == SecretOff:
 		return "", false
 	case s.Engine == games.GoldSrc && s.LogSecret != "":
 		return fmt.Sprintf("log_secret: server %d %s is GoldSrc (no sv_logsecret), its stored log secret is ignored (remove it with gamewe server set -logsecret \"\" or in the web admin)", s.ID, s.Address), true
 	case s.Engine == games.Source2 && s.LogSecret != "":
 		return "", false // CS2 with its log token: protected, nothing to say
-	case s.Engine == games.Source2:
-		return fmt.Sprintf("log token: server %d %s is Source 2 (CS2) and has no log token, its HTTP logs are checked by sender IP and port only (set one with gamewe server set -logsecret or in the web admin)", s.ID, s.Address), true
 	case s.Engine == games.GoldSrc:
 		return "", false
 	case s.LogSecret == "":

@@ -1354,7 +1354,7 @@ func httpLogAddress(c rcon.Conn, cfg config.Config, s stats.Server, add, text bo
 	if !h.Enabled {
 		return errors.New("Counter-Strike 2 logs over HTTP only: switch on listen.http in the config")
 	}
-	url, err := collector.HTTPLogURL(c, h.PublicURL, h.Port, s.AddrPort.Port(), s.LogSecret)
+	url, err := collector.HTTPLogURL(c, h.PublicURL, h.Port, s.LogSecret)
 	if err != nil {
 		return err
 	}

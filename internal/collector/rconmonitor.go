@@ -454,9 +454,12 @@ func ensureLogAddress(c rcon.Conn, srv stats.Server, cfg MonitorConfig, st *http
 // HTTPLogURL returns the URL to register on a CS2 server with
 // logaddress_add_http: public (listen.http.public_url, http://host:port)
 // or http:// and the collector's address of the RCON connection with the
-// HTTP port, then the game server's port and the log
-// token stored for the server (hlstats_Servers.log_secret, if any).
-func HTTPLogURL(c rcon.Conn, public string, httpPort int, gamePort uint16, rowSecret string) (string, error) {
+// HTTP port, then the log token stored for the server
+// (hlstats_Servers.log_secret). Without a token there is no URL.
+func HTTPLogURL(c rcon.Conn, public string, httpPort int, rowSecret string) (string, error) {
+	if rowSecret == "" {
+		return "", ErrNoLogToken
+	}
 	base := strings.TrimRight(public, "/")
 	if base == "" {
 		ap, err := LogAddress(c, "", httpPort)
@@ -465,18 +468,22 @@ func HTTPLogURL(c rcon.Conn, public string, httpPort int, gamePort uint16, rowSe
 		}
 		base = "http://" + ap.String()
 	}
-	u := fmt.Sprintf("%s/%d", base, gamePort)
-	if rowSecret != "" {
-		u += "/" + rowSecret
-	}
-	return u, nil
+	return base + "/" + rowSecret, nil
 }
 
-var reURLRowSecret = regexp.MustCompile(`(/\d{1,5})/[^/]+$`)
+// ErrNoLogToken: a CS2 server needs a log token for its log URL.
+var ErrNoLogToken = errors.New("the CS2 server has no log token: set one in the web admin (or gamewe server set -logsecret), its log URL is http://<collector>:<port>/<log token>")
+
+// The last path segment of a log URL when it is no game port: the log token.
+var reURLRowSecret = regexp.MustCompile(`(//[^/]+(?:/.*)?)/([^/]+)$`)
 
 // RedactURL hides the row's log secret of a log URL for logs and output.
 func RedactURL(u string) string {
-	return reURLRowSecret.ReplaceAllString(u, "$1/<secret>")
+	m := reURLRowSecret.FindStringSubmatch(u)
+	if m == nil || validPort(m[2]) {
+		return u
+	}
+	return strings.TrimSuffix(u, m[2]) + "<secret>"
 }
 
 // httpAddState remembers a logaddress_add_http that logaddress_list_http
@@ -516,10 +523,13 @@ func EnsureHTTPLogAddress(c rcon.Conn, url string, add bool) (listed, added bool
 }
 
 func ensureHTTPLogAddress(c rcon.Conn, srv stats.Server, cfg MonitorConfig, st *httpAddState, log *slog.Logger) error {
+	if srv.LogSecret == "" {
+		return nil // no URL without a log token; SecretNote warns about it
+	}
 	if _, err := c.Exec("echo"); err != nil { // connect, for the local address
 		return err
 	}
-	url, err := HTTPLogURL(c, cfg.HTTPPublicURL, cfg.HTTPPort, srv.AddrPort.Port(), srv.LogSecret)
+	url, err := HTTPLogURL(c, cfg.HTTPPublicURL, cfg.HTTPPort, srv.LogSecret)
 	if err != nil {
 		return err
 	}

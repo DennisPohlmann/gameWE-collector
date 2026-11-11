@@ -656,8 +656,8 @@ func (a *Admin) Servers(ctx context.Context) ([]ServerRow, error) {
 
 // checkFields checks the given fields; game is the row's game after the change
 // and kept its stored log secret (a new row: ""), since what a log secret may
-// look like depends on the engine.
-func (a *Admin) checkFields(ctx context.Context, f ServerFields, game, kept string) error {
+// look like depends on the engine; id is the row (a new row: 0).
+func (a *Admin) checkFields(ctx context.Context, f ServerFields, game, kept string, id int64) error {
 	g, err := a.game(ctx, game)
 	if err != nil && (f.Game != nil || !errors.Is(err, ErrNotFound)) {
 		return err
@@ -673,6 +673,17 @@ func (a *Admin) checkFields(ctx context.Context, f ServerFields, game, kept stri
 	case f.LogSecret != nil && engine == games.Source2:
 		if err := logparse.CheckToken(*f.LogSecret); err != nil {
 			return err
+		}
+		// The token alone picks the server of a log post (URL /<log token>).
+		var n int
+		if *f.LogSecret == "" {
+			break
+		}
+		if err := a.row(ctx, `SELECT COUNT(*) FROM hlstats_Servers WHERE log_secret = ? AND serverId <> ?`, *f.LogSecret, id).Scan(&n); err != nil {
+			return err
+		}
+		if n > 0 {
+			return errors.New("log token: another server has this token already, give each server its own (e.g. openssl rand -hex 24)")
 		}
 	case f.LogSecret != nil:
 		if err := logparse.CheckSecret(*f.LogSecret); err != nil {
@@ -701,7 +712,7 @@ func (a *Admin) AddServer(ctx context.Context, addr string, f ServerFields) erro
 	if f.Game == nil {
 		return errors.New("-game is required")
 	}
-	if err := a.checkFields(ctx, f, *f.Game, ""); err != nil {
+	if err := a.checkFields(ctx, f, *f.Game, "", 0); err != nil {
 		return err
 	}
 	if s, err := a.server(ctx, ap.String()); err == nil {
@@ -741,7 +752,7 @@ func (a *Admin) SetServer(ctx context.Context, ref string, f ServerFields) error
 	if f.Game != nil {
 		game = *f.Game
 	}
-	if err := a.checkFields(ctx, f, game, s.secret); err != nil {
+	if err := a.checkFields(ctx, f, game, s.secret, s.id); err != nil {
 		return err
 	}
 	var sets []string

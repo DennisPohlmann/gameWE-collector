@@ -116,7 +116,7 @@ css adds 3 and 8, one cloned from dod 2 and 35.
 |--------|-----------|---------------|
 | Source | UDP to `listen.port` | `\xff\xff\xff\xffRL 10/23/2026 - 12:00:00: <event>` |
 | GoldSrc | UDP to `listen.port` | `\xff\xff\xff\xfflog L 10/23/2026 - 12:00:00: <event>` |
-| Source 2 | HTTP `POST` to `listen.http` `/<game port>` (or `/<game port>/<log token>`) | one or more lines per post: `10/23/2026 - 12:00:00.250 - <event>` |
+| Source 2 | HTTP `POST` to `listen.http` `/<log token>` | one or more lines per post: `10/23/2026 - 12:00:00.250 - <event>` |
 
 UDP packets are accepted only from servers in `hlstats_Servers` (exactly the
 source ip:port). An HTTP post is accepted only from a Source 2 server in
@@ -217,16 +217,16 @@ on it. Set up:
 3. Start CS2 with `-usercon` (RCON, needed for the collector's checks and
    the in-game replies). With `rcon_password` and `features.log_address.http`
    (default) the collector registers itself
-   (`logaddress_add_http "http://<collector>:41338/<game port>/<log token>"`
+   (`logaddress_add_http "http://<collector>:41338/<log token>"`
    and `log on`). By hand, in the server's `server.cfg`:
    `log on`, `logaddress_delall_http`,
-   `logaddress_add_http "http://203.0.113.5:41338/27015/<log token>"`.
-   `<log token>` is the server's own (left out with its `/` when none is
-   set); before it the game port exactly as in the web admin, the server is
-   found by the sender's IP and this port.
+   `logaddress_add_http "http://203.0.113.5:41338/<log token>"`.
+   `<log token>` is the server's own and required; it picks the server,
+   which must post from its IP in the web admin.
    404 in the collector's log (`rejected HTTP log post`): wrong path or
-   token; 403: the IP and port are not a CS2 server of the
-   web admin ([INSTALLATION.md](INSTALLATION.md#g-troubleshooting)).
+   token, the old URL `/<game port>`, or no CS2 server of the web admin at
+   the sender's IP has this token
+   ([INSTALLATION.md](INSTALLATION.md#g-troubleshooting)).
 
 The base data of `cs2` is the csgo data (see [CS:GO](#csgo)) without the VIP
 actions, the old weapon code `galil` (CS2 logs `galilar`) and the player-model

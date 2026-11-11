@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"gamewe-collector/internal/games"
+	"gamewe-collector/internal/logparse"
 )
 
 // ErrNotSource2: an HTTP log post for a server of hlstats_Servers that is
@@ -96,8 +97,8 @@ func (h *Hub) DispatchLines(src netip.AddrPort, lines []string, now time.Time) (
 }
 
 // ServeHTTP receives the HTTP logs of Counter-Strike 2 (logaddress_add_http
-// "http://<collector>/<game port>", with the server's log token as a last
-// segment when one is stored) on cfg.Addr and hands them to the hub until ctx
+// "http://<collector>/<log token>": the token picks the server at the
+// sender's IP) on cfg.Addr and hands them to the hub until ctx
 // is done. ready (if not nil) is called with the bound address once the
 // socket is open.
 func ServeHTTP(ctx context.Context, cfg HTTPConfig, hub *Hub, log *slog.Logger, ready func(net.Addr)) error {
@@ -147,13 +148,14 @@ type httpHandler struct {
 	log *slog.Logger
 	now func() time.Time
 
-	mu   sync.Mutex
-	last map[netip.AddrPort]time.Time // last accepted post per source
+	mu     sync.Mutex
+	last   map[netip.AddrPort]time.Time // last accepted post per source
+	oldURL map[netip.AddrPort]bool      // servers told that their old URL is refused
 }
 
 func newHTTPHandler(cfg HTTPConfig, hub *Hub, rl *rejectLog, log *slog.Logger) *httpHandler {
 	return &httpHandler{cfg: cfg, hub: hub, rl: rl, log: log, now: func() time.Time { return time.Now().UTC() },
-		last: map[netip.AddrPort]time.Time{}}
+		last: map[netip.AddrPort]time.Time{}, oldURL: map[netip.AddrPort]bool{}}
 }
 
 // HTTPQuiet is how long a server may post no logs before its next post is
@@ -164,13 +166,13 @@ const HTTPQuiet = 10 * time.Minute
 // may hold the server's log token, or one that is nearly right.
 var (
 	errHTTPMethod     = errors.New("HTTP method is not POST")
-	errHTTPPath       = errors.New("HTTP path is not /<game port> or /<game port>/<log token>")
-	errHTTPPort       = errors.New("HTTP path does not end with a game port (1-65535)")
-	errHTTPExtraToken = errors.New("HTTP path has a segment before the game port (the collector-wide listen.http.token was removed): register logaddress_add_http again without it, after logaddress_delall_http")
+	errHTTPPath       = errors.New("HTTP path is not /<log token>")
+	errHTTPOld        = errors.New("HTTP path is the old /<game port>[/<log token>], no longer accepted: use /<log token>")
+	errHTTPToken      = errors.New("HTTP path /<log token>: no CS2 server at the sender's IP has this log token")
+	errHTTPTokenTwice = errors.New("HTTP path /<log token>: several CS2 servers at the sender's IP have this log token; give each its own")
 	errHTTPSender     = errors.New("HTTP sender unknown: X-Forwarded-For of a trusted proxy is not an IP address")
 	errHTTPBody       = errors.New("HTTP body larger than listen.http.max_body")
 	errHTTPRead       = errors.New("HTTP body could not be read")
-	errHTTPRowSecret  = errors.New("HTTP path does not end with the log token stored for this server")
 )
 
 func (hh *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -181,9 +183,16 @@ func (hh *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	port, rowSecret, err := hh.port(r.URL.Path)
+	port, token, err := hh.port(r.URL.Path)
 	if err == nil && !ip.IsValid() {
 		err = errHTTPSender
+	}
+	if err == nil && port != 0 {
+		hh.warnOldURL(netip.AddrPortFrom(ip, port))
+		err = errHTTPOld
+	}
+	if err == nil {
+		port, err = hh.hub.tokenPort(ip, token)
 	}
 	if err != nil {
 		hh.rl.note(ip.String(), err, status(http.StatusNotFound))
@@ -193,13 +202,9 @@ func (hh *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	src := netip.AddrPortFrom(ip, port)
 	// Check the sender before reading the body: strangers cost no memory.
 	srv, err := hh.hub.CheckHTTP(src)
-	if err == nil && !hh.hub.httpSecretOK(src, rowSecret) {
-		hh.rl.note(src.String(), errHTTPRowSecret, status(http.StatusNotFound))
-		http.NotFound(w, r)
-		return
-	}
 	if err != nil {
-		hh.rl.note(src.String(), err, func() []any { return append(status(http.StatusForbidden)(), hh.hub.httpHint(src, err)...) })
+		// Only when the server was removed since tokenPort found it.
+		hh.rl.note(src.String(), err, status(http.StatusForbidden))
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -251,58 +256,61 @@ func status(code int) func() []any {
 	return func() []any { return []any{"status", code} }
 }
 
-// httpHint says how to fix the rejection of an HTTP log post for src.
-func (h *Hub) httpHint(src netip.AddrPort, err error) []any {
-	switch {
-	case errors.Is(err, ErrUnknownPort):
-		return []any{"configured_ports", h.PortsAt(src.Addr()),
-			"hint", "the port at the end of the logaddress_add_http URL must be the game port of the server in the web admin"}
-	case errors.Is(err, ErrUnknownSource):
-		return []any{"hint", "no server " + src.String() + " in the web admin: add it, or fix the port at the end of the logaddress_add_http URL"}
-	case errors.Is(err, ErrNotSource2):
-		return []any{"hint", "the ranking of this server must have the game cs2"}
-	}
-	return nil
-}
-
-// httpSecretOK checks the path's last segment against the log token stored
-// for the row (hlstats_Servers.log_secret), like sv_logsecret for UDP: the
-// port only selects a row, so this is what keeps parties that share an IP
-// apart. No stored token: not checked. Unlike UDP there is no grace
-// time for the old value: a server has both URLs until logaddress_delall_http,
-// and would be counted twice.
-func (h *Hub) httpSecretOK(src netip.AddrPort, secret string) bool {
+// tokenPort returns the game port of the one CS2 server at ip whose log
+// token (hlstats_Servers.log_secret) is token: the token picks the server,
+// the sender must have its IP. Every server at ip is compared in constant
+// time, so the answer time does not tell how close a guess was. Unlike
+// sv_logsecret for UDP there is no grace time for an old token.
+func (h *Hub) tokenPort(ip netip.Addr, token string) (uint16, error) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	w := h.resolve(src)
-	return w != nil && (w.srv.LogSecret == "" || subtle.ConstantTimeCompare([]byte(secret), []byte(w.srv.LogSecret)) == 1)
+	var port uint16
+	found := 0
+	for _, w := range h.byIP[ip.Unmap()] {
+		if w.srv.Engine == games.Source2 && w.srv.LogSecret != "" && subtle.ConstantTimeCompare([]byte(token), []byte(w.srv.LogSecret)) == 1 {
+			port = w.srv.AddrPort.Port()
+			found++
+		}
+	}
+	switch found {
+	case 0:
+		return 0, errHTTPToken
+	case 1:
+		return port, nil
+	}
+	return 0, errHTTPTokenTwice
 }
 
-// port reads the game port from the path: /<port>, with the row's log
-// secret as a last segment when one is stored. The error says what is wrong
-// with the path.
-func (hh *httpHandler) port(path string) (port uint16, rowSecret string, err error) {
+// warnOldURL says once per server that it still posts to the old URL
+// /<game port>[/<log token>], which is refused now.
+func (hh *httpHandler) warnOldURL(src netip.AddrPort) {
+	if !hh.hub.Known(src) {
+		return
+	}
+	hh.mu.Lock()
+	seen := hh.oldURL[src]
+	hh.oldURL[src] = true
+	hh.mu.Unlock()
+	if !seen {
+		hh.log.Warn("this CS2 server posts its log to the old URL /<game port>, which is no longer accepted: give it a log token in the web admin and put logaddress_delall_http and logaddress_add_http \"http://<collector>:<port>/<log token>\" into its server.cfg",
+			"source", src.String())
+	}
+}
+
+// port reads the path /<log token> and returns the token (port 0). For the
+// old /<game port>[/<log token>] it returns the port, which the caller
+// refuses. The error says what is wrong with the path.
+func (hh *httpHandler) port(path string) (port uint16, token string, err error) {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
-	// A segment after a port is the secret.
-	if n := len(parts); n >= 2 && validPort(parts[n-2]) {
-		rowSecret = parts[n-1]
-		parts = parts[:n-1]
+	if len(parts) == 1 && logparse.CheckToken(parts[0]) == nil && parts[0] != "" {
+		return 0, parts[0], nil // 16 or more characters: never a port
 	}
-	p, err := portOf(parts)
-	return p, rowSecret, err
-}
-
-func portOf(parts []string) (uint16, error) {
-	switch {
-	case len(parts) == 2 && validPort(parts[1]):
-		return 0, errHTTPExtraToken
-	case len(parts) != 1:
-		return 0, errHTTPPath
-	case !validPort(parts[0]):
-		return 0, errHTTPPort
+	// The old form: /<port>, or /<port>/<log token>.
+	if len(parts) <= 2 && validPort(parts[0]) {
+		n, _ := strconv.ParseUint(parts[0], 10, 16)
+		return uint16(n), "", nil
 	}
-	n, _ := strconv.ParseUint(parts[0], 10, 16)
-	return uint16(n), nil
+	return 0, "", errHTTPPath
 }
 
 // validPort reports whether s is a port 1-65535 in plain digits.
