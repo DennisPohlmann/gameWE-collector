@@ -19,6 +19,7 @@ type GoldSrcServer struct {
 
 	mu        sync.Mutex
 	challenge int
+	reject    string // answer to an old challenge
 	cmds      []string
 }
 
@@ -28,7 +29,7 @@ func StartGoldSrc(t *testing.T, password string, handle func(cmd string) string)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &GoldSrcServer{Addr: pc.LocalAddr().String(), Password: password, Handle: handle, challenge: 123456789}
+	s := &GoldSrcServer{Addr: pc.LocalAddr().String(), Password: password, Handle: handle, challenge: 123456789, reject: "Bad challenge.\n"}
 	t.Cleanup(func() { pc.Close() })
 	go func() {
 		buf := make([]byte, 4096)
@@ -49,6 +50,14 @@ func StartGoldSrc(t *testing.T, password string, handle func(cmd string) string)
 func (s *GoldSrcServer) NewChallenge() {
 	s.mu.Lock()
 	s.challenge++
+	s.mu.Unlock()
+}
+
+// RejectWith sets the answer to an old challenge (ReHLDS: "No challenge
+// for your address.").
+func (s *GoldSrcServer) RejectWith(text string) {
+	s.mu.Lock()
+	s.reject = text
 	s.mu.Unlock()
 }
 
@@ -76,7 +85,7 @@ func (s *GoldSrcServer) answer(in string) [][]byte {
 		return nil
 	}
 	if f[1] != strconv.Itoa(s.challenge) {
-		return [][]byte{pkt("Bad challenge.\n")}
+		return [][]byte{pkt(s.reject)}
 	}
 	rest := f[2]
 	pw, cmd := "", ""

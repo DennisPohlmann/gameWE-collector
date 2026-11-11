@@ -32,7 +32,8 @@ func New(goldsrc bool, address, password string, timeout time.Duration) Conn {
 var (
 	oob = []byte{0xff, 0xff, 0xff, 0xff}
 	// ErrBadChallenge: the server rejected the challenge (it changes when
-	// the server restarts); the next Exec asks for a new one.
+	// the server restarts; HLDS says "Bad challenge", ReHLDS "No challenge
+	// for your address."); the next Exec asks for a new one.
 	ErrBadChallenge = errors.New("rcon: bad challenge")
 )
 
@@ -98,7 +99,7 @@ func (g *GoldSrc) exec(cmd string) (string, error) {
 	switch t := strings.TrimSpace(out); {
 	case strings.HasPrefix(t, "Bad rcon_password"):
 		return "", ErrAuth
-	case strings.HasPrefix(t, "Bad challenge"):
+	case strings.HasPrefix(t, "Bad challenge"), strings.HasPrefix(t, "No challenge"):
 		return "", ErrBadChallenge
 	case strings.HasPrefix(t, "You have been banned"):
 		return "", fmt.Errorf("rcon %s: the server banned the collector's address (too many bad passwords?)", g.Address)

@@ -33,6 +33,11 @@ func TestGoldSrc(t *testing.T) {
 	if out, err := c.Exec("status"); err != nil || out != "echo: status\n" {
 		t.Errorf("after a new challenge: %q %v", out, err)
 	}
+	gs.RejectWith("No challenge for your address.\n") // ReHLDS
+	gs.NewChallenge()
+	if out, err := c.Exec("status"); err != nil || out != "echo: status\n" {
+		t.Errorf("after a new challenge (ReHLDS): %q %v", out, err)
+	}
 	if c.LocalAddr() == nil {
 		t.Error("no local address")
 	}
