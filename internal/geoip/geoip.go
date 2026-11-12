@@ -72,7 +72,7 @@ func (d *DB) reader(path string) *maxminddb.Reader {
 	if d.r != nil && (statErr != nil || fi.ModTime().Equal(d.mtime)) {
 		return d.r // unchanged (or gone: keep using the open copy)
 	}
-	r, err := maxminddb.Open(path)
+	r, err := open(path)
 	if err != nil {
 		if !d.warned[path] {
 			d.warned[path] = true

@@ -48,6 +48,9 @@ func stubInterfaces(t *testing.T) {
 
 func TestLint(t *testing.T) {
 	stubInterfaces(t)
+	old := modeBits
+	modeBits = true // Windows too: 0644 is shown as 0666 there
+	t.Cleanup(func() { modeBits = old })
 	dir := t.TempDir()
 	keyFile := filepath.Join(dir, "client.key")
 	certFile := filepath.Join(dir, "client.pem")
@@ -249,6 +252,9 @@ func TestLintFile(t *testing.T) {
 	}
 	if r := LintFile(p, LintOptions{}); len(r.Findings) != 0 {
 		t.Errorf("0640: %+v", r.Findings)
+	}
+	if !modeBits {
+		return // Windows: no mode bits to check
 	}
 	os.Chmod(p, 0o644)
 	if r := LintFile(p, LintOptions{}); !(wantFinding{SevWarning, "database.password", "chmod 640"}).in(r.Findings) {

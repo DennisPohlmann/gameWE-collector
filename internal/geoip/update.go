@@ -17,15 +17,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/oschwald/maxminddb-golang"
-
 	"gamewe-collector/internal/stats"
 )
 
 const (
-	// DefaultPath is the DB-IP City Lite database, shipped in the packages
-	// and updated monthly there (the service's state directory).
-	DefaultPath = "/var/lib/gamewe/collector/dbip-city-lite.mmdb"
 	// OldPath is where earlier development versions kept the update; copied to DefaultPath
 	// when it is newer (CopyOld), the old directory can be deleted then.
 	OldPath = "/var/lib/gamewe/geoip/dbip-city-lite.mmdb"
@@ -71,7 +66,7 @@ func BuildTime(path string) (time.Time, error) {
 
 // info is the build date and database type of a database file.
 func info(path string) (time.Time, string, error) {
-	r, err := maxminddb.Open(path)
+	r, err := open(path)
 	if err != nil {
 		return time.Time{}, "", err
 	}
@@ -271,7 +266,7 @@ func (u *Updater) Download(ctx context.Context, month string) error {
 
 // validate checks that path is a city database that finds a location.
 func validate(path string) error {
-	r, err := maxminddb.Open(path)
+	r, err := open(path)
 	if err != nil {
 		return err
 	}
