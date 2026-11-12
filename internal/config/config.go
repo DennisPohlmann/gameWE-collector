@@ -26,9 +26,6 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// DefaultPath is used when no -config flag is given.
-const DefaultPath = "/etc/gamewe/collector/config.yaml"
-
 // Database types. MariaDB and MySQL use the same driver and SQL.
 const (
 	MySQL    = "mysql"

@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"runtime"
 	"slices"
 	"sort"
 	"strconv"
@@ -79,7 +80,9 @@ func (r Report) count(s Severity) int {
 var (
 	interfaceAddrs = net.InterfaceAddrs
 	statFile       = os.Stat
-	openFile       = func(name string) error {
+	// Windows has no mode bits (os.Stat shows 0666), its ACLs are not checked.
+	modeBits = runtime.GOOS != "windows"
+	openFile = func(name string) error {
 		f, err := os.Open(name)
 		if err == nil {
 			f.Close()
@@ -97,7 +100,7 @@ func LintFile(path string, opt LintOptions) Report {
 		return Report{Findings: []Finding{{Severity: SevError, Msg: fmt.Sprintf("cannot read the file: %v", cause(err))}}}
 	}
 	r := Lint(data, opt)
-	if fi, err := statFile(path); err == nil && fi.Mode().Perm()&0o004 != 0 && r.Decoded && r.Config.Database.PasswordFile == "" &&
+	if fi, err := statFile(path); modeBits && err == nil && fi.Mode().Perm()&0o004 != 0 && r.Decoded && r.Config.Database.PasswordFile == "" &&
 		r.Config.Database.Password != "" {
 		r.Findings = append(r.Findings, Finding{Severity: SevWarning, Key: "database.password", Line: 0,
 			Msg: fmt.Sprintf("the file holds the database password and every user may read it (mode %04o); chown root:gamewe and chmod 640", fi.Mode().Perm())})
@@ -598,7 +601,7 @@ func cause(err error) error {
 
 // worldReadable warns when every user may read the secret file name.
 func (l *linter) worldReadable(key, name string) {
-	if fi, err := statFile(name); err == nil && fi.Mode().Perm()&0o004 != 0 {
+	if fi, err := statFile(name); modeBits && err == nil && fi.Mode().Perm()&0o004 != 0 {
 		l.warnf(key, "every user may read the file (mode %04o); chmod 640 (or 600)", fi.Mode().Perm())
 	}
 }

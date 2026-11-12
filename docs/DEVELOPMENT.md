@@ -11,6 +11,7 @@ You need Go (version in `go.mod`, currently 1.27), `make` and GNU tar.
 make test vet                 # tests and static checks
 make build                    # build/linux-amd64/gamewe
 make package                  # dist/gamewe-collector-<version>-linux-amd64.tar.gz (+ .sha256)
+make package-windows          # dist/gamewe-collector-<version>-windows-amd64.zip (+ .sha256), needs zip
 make schema                   # after editing internal/schema/mysql/*.sql: regenerate internal/schema/postgres/
 make licenses                 # after a dependency change: license texts and licenses/modules.json, then THIRD-PARTY-LICENSES.md
 make docker                   # container image gamewe-collector:<version>
@@ -21,11 +22,20 @@ binary is static (`CGO_ENABLED=0`). GitHub Actions (`.github/workflows/build.yml
 builds and tests every push (any branch) and every pull request the way a
 release is built: the unit tests, govulncheck, actionlint, the integration
 tests against MariaDB 11.4 + PostgreSQL 17 and MariaDB 12.3 + PostgreSQL 18
-service containers, the Helm chart (lint and `helm package`), the amd64
-package (kept as a workflow artifact for 7 days) and the container image
+service containers, the Helm chart (lint and `helm package`), go vet, the
+unit tests and one install/start/stop of the service on a Windows runner,
+the amd64 packages for Linux and Windows (kept as workflow artifacts for 7
+days) and the container image
 (Trivy scan). Only a push to `main` (and the weekly run) pushes the image to
 `ghcr.io/dennispohlmann/gamewe-collector` with the tag `edge`; nothing else is
 published without a release run.
+
+Windows-only code sits in `*_windows.go` files (Linux and the rest: `*_other.go`,
+`//go:build !windows`): the default paths under `%ProgramData%`, the GeoIP
+file read into memory (a mapped file cannot be replaced there), the service
+(`cmd/gamewe/service_windows.go`, golang.org/x/sys/windows/svc) and the check
+for a running service instead of `/proc` and systemd. `GOOS=windows go vet ./...`
+checks it on Linux.
 
 ## Integration tests
 

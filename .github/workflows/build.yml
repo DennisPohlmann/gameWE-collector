@@ -2,8 +2,9 @@ name: build
 
 # Every push (any branch) and every pull request runs the tests (unit,
 # integration against MariaDB and PostgreSQL), scans the image with Trivy and
-# builds everything a release ships: the package (workflow artifact for 7
-# days), the Helm chart (helm package) and the image. A push to main also
+# builds everything a release ships: the packages for Linux (tar.gz) and
+# Windows (zip, after the Windows tests; workflow artifacts for 7 days), the
+# Helm chart (helm package) and the image. A push to main also
 # publishes the image as ghcr.io/dennispohlmann/gamewe-collector:edge, and so
 # does the weekly run (schedule), to take in base image updates. Nothing else
 # is published then: no tag, no GitHub release, no semantic-release.
@@ -16,7 +17,7 @@ name: build
 # feat, fix or breaking change it bumps the version files, writes
 # CHANGELOG.md, commits that as "chore(release): vX.Y.Z [skip ci]", tags
 # vX.Y.Z and creates the GitHub release as a draft. package and docker then
-# build the tag: the archive goes into the release, the image gets the tags
+# build the tag: both archives go into the release, the image gets the tags
 # <version>, <major>.<minor> and latest, and the Helm chart
 # charts/gamewe-collector (its version set by semantic-release) goes to
 # oci://ghcr.io/<owner>/charts and into the release. publish makes the draft
@@ -76,6 +77,51 @@ jobs:
           helm lint charts/gamewe-collector --strict --set config=x
           helm template gamewe charts/gamewe-collector --set existingSecret=x --set hostNetwork=false --set service.http.enabled=true > /dev/null
           helm package charts/gamewe-collector --destination "$RUNNER_TEMP/chart"
+
+  # Windows: go vet and the unit tests on a real Windows, then the service
+  # once (install, start, its log, stop, uninstall) with the example config:
+  # it starts, reads the config as its virtual account, logs and stops
+  # again on the missing database. The zip is only built when this passed.
+  windows:
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # LF as in the repository: the schema, the chart and the unit are read
+      # by the tests (the zip is built on Linux anyway).
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+      - name: go vet
+        run: go vet ./...
+      - name: go test
+        run: go test ./...
+      - name: service
+        run: |
+          folder() { cygpath -u "$(powershell -NoProfile -Command "[Environment]::GetFolderPath('$1')" | tr -d '\r')"; }
+          # where the service account may run it, as in INSTALLATION.md
+          bin="$(folder ProgramFiles)/gameWE/collector"
+          mkdir -p "$bin"
+          go build -o "$bin/gamewe.exe" ./cmd/gamewe
+          g="$bin/gamewe.exe"
+          dir="$(folder CommonApplicationData)/gameWE/collector"
+          mkdir -p "$dir"
+          cp config.example.yaml "$dir/config.yaml"
+          "$g" service install -n
+          "$g" service install -f
+          "$g" service start -f
+          log="$dir/data/collector.log"
+          for _ in $(seq 30); do grep -q "gamewe run:" "$log" 2>/dev/null && break; sleep 1; done
+          cat "$log"
+          grep -q "gameWE collector starting" "$log"
+          grep -q "not reachable" "$log"
+          sc.exe qc gamewe-collector
+          icacls "$(cygpath -w "$dir/config.yaml")"
+          "$g" service stop -f || true # stopped already when it failed
+          "$g" service uninstall -f
 
   # Both databases, created from scratch with the init scripts and
   # gamewe db migrate: gamewe for the collector tests (they delete all
@@ -235,7 +281,7 @@ jobs:
           --severity HIGH,CRITICAL --exit-code 1 gamewe-collector:scan
 
   release:
-    needs: [test, integration, image-scan]
+    needs: [test, windows, integration, image-scan]
     if: github.event_name == 'workflow_dispatch' && inputs.release
     runs-on: ubuntu-26.04
     permissions:
@@ -278,8 +324,8 @@ jobs:
   # Runs after the release job (or without it when there is no release) and
   # builds the new tag if there was a release, otherwise the pushed commit.
   package:
-    needs: [test, integration, image-scan, release]
-    if: ${{ !cancelled() && needs.test.result == 'success' && needs.integration.result == 'success' && needs.image-scan.result == 'success' && needs.release.result != 'failure' }}
+    needs: [test, windows, integration, image-scan, release]
+    if: ${{ !cancelled() && needs.test.result == 'success' && needs.windows.result == 'success' && needs.integration.result == 'success' && needs.image-scan.result == 'success' && needs.release.result != 'failure' }}
     runs-on: ubuntu-26.04
     permissions:
       contents: write
@@ -293,8 +339,8 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
-      - name: make package
-        run: make package
+      - name: make package package-windows
+        run: make package package-windows
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: gamewe-collector-linux-amd64
@@ -303,11 +349,19 @@ jobs:
             dist/*.tar.gz.sha256
           if-no-files-found: error
           retention-days: 7
-      - name: add the archive to the release
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: gamewe-collector-windows-amd64
+          path: |
+            dist/*.zip
+            dist/*.zip.sha256
+          if-no-files-found: error
+          retention-days: 7
+      - name: add the archives to the release
         if: env.RELEASE != ''
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "v$RELEASE" dist/*.tar.gz dist/*.tar.gz.sha256 --clobber --repo "$GITHUB_REPOSITORY"
+        run: gh release upload "v$RELEASE" dist/*.tar.gz dist/*.tar.gz.sha256 dist/*.zip dist/*.zip.sha256 --clobber --repo "$GITHUB_REPOSITORY"
 
   # A release also publishes the Helm chart (charts/gamewe-collector, its
   # version set to the release by semantic-release): as an OCI artifact

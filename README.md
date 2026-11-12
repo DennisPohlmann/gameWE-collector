@@ -40,7 +40,8 @@ Current version: see `VERSION` and [CHANGELOG.md](CHANGELOG.md).
 
 ## Requirements
 
-- Linux x86_64 (static binary), a container runtime (Docker / Podman) or
+- Linux x86_64 (static binary), Windows x86_64 (zip with a Windows service,
+  [INSTALLATION](docs/INSTALLATION.md#b2-windows-zip-native)), a container runtime (Docker / Podman) or
   Kubernetes with Helm (`charts/gamewe-collector`,
   [INSTALLATION](docs/INSTALLATION.md#on-kubernetes-helm))
 - MariaDB 11.4 or 12.3, or PostgreSQL 17 or 18 (tested in CI)

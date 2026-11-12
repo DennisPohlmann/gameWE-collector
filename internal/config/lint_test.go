@@ -48,6 +48,9 @@ func stubInterfaces(t *testing.T) {
 
 func TestLint(t *testing.T) {
 	stubInterfaces(t)
+	old := modeBits
+	modeBits = true // Windows too: 0644 is shown as 0666 there
+	t.Cleanup(func() { modeBits = old })
 	dir := t.TempDir()
 	keyFile := filepath.Join(dir, "client.key")
 	certFile := filepath.Join(dir, "client.pem")
@@ -123,7 +126,7 @@ func TestLint(t *testing.T) {
 		{name: "password and password_file", in: lintBase + "  password_file: " + pwFile + "\n",
 			want: []wantFinding{{SevError, "database.password_file", "not both"}}},
 		{name: "password_file missing", in: "database:\n  host: 127.0.0.1\n  user: u\n  name: n\n  password_file: /nonexistent/pw\n",
-			want: []wantFinding{{SevError, "database.password_file", "no such file"}}},
+			want: []wantFinding{{SevError, "database.password_file", "/nonexistent/pw"}}}, // the reason is worded by the OS
 		{name: "password_file readable by everyone", in: "database:\n  host: 127.0.0.1\n  user: u\n  name: n\n  password_file: " + pwFile + "\n",
 			want: []wantFinding{{SevWarning, "database.password_file", "every user may read"}}},
 
@@ -249,6 +252,9 @@ func TestLintFile(t *testing.T) {
 	}
 	if r := LintFile(p, LintOptions{}); len(r.Findings) != 0 {
 		t.Errorf("0640: %+v", r.Findings)
+	}
+	if !modeBits {
+		return // Windows: no mode bits to check
 	}
 	os.Chmod(p, 0o644)
 	if r := LintFile(p, LintOptions{}); !(wantFinding{SevWarning, "database.password", "chmod 640"}).in(r.Findings) {
