@@ -186,9 +186,9 @@ order the plugin (gameWE and gameME) reads:
 
 | Request | Answer |
 |---------|--------|
-| `playerinfo` | `gamewe_raw_message 101 <query_id> <userid>` and 45 values: rank, players, skill, kills, deaths, kpd, suicides, headshots, hpk, accuracy, connection time (s), kill assists, kills assisted, points healed, flags captured, custom wins, best kill streak, best death streak; then the same for this visit (rank change since the start of the visit, skill change, ..., time in s, favourite weapon of the visit or `-`); then rank, players, skill, kills, deaths, kpd, headshots, hpk once more as the "global" values (gameWE has no network-wide ranking, so they are the game's); then the country code (`""` if unknown) |
+| `playerinfo` | `gamewe_raw_message 101 <query_id> <userid>` and 45 values: rank (the place as on the website: points, then kills, then fewer deaths, then the lower player id; 0 for a player without a kill and a death, who has no place), players (with a place), skill, kills, deaths, kpd, suicides, headshots, hpk, accuracy, connection time (s), kill assists, kills assisted, points healed, flags captured, custom wins, best kill streak, best death streak; then the same for this visit (rank change since the start of the visit, skill change, ..., time in s, favourite weapon of the visit or `-`); then rank, players, skill, kills, deaths, kpd, headshots, hpk once more as the "global" values (gameWE has no network-wide ranking, so they are the game's); then the country code (`""` if unknown) |
 | `top10` | `gamewe_raw_message 102 <query_id> -1` and per player skill, "name", kpd, hpk (best first; nothing if nobody is ranked) |
-| `next` | `gamewe_raw_message 103 <query_id> <userid>` and per player rank, skill, "name", kpd, hpk: the 5 players ranked directly above, best first |
+| `next` | `gamewe_raw_message 103 <query_id> <userid>` and per player rank, skill, "name", kpd, hpk: the 5 players ranked directly above in the order of the ranking (for a player without a place the last 5 with one), best first |
 | `spectatorinfo` | `gamewe_raw_message 1001 <query_id> <userids of all players> <userid> "<text>"`: the text shown to who spectates the player |
 | `hideranking` | `gamewe_hidestate <userid> <hideranking>` (no query id): asked by the plugin's settings menu |
 

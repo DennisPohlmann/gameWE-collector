@@ -11,6 +11,7 @@ package collector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/netip"
@@ -72,9 +73,9 @@ type Store interface {
 	HideRanking(ctx context.Context, playerID int64) (int, error)
 	SetHideRanking(ctx context.Context, playerID int64, from, to int) (int, error)
 	PlayerStats(ctx context.Context, playerID int64) (stats.Player, error)
-	Rank(ctx context.Context, game string, skill int) (rank, total int, err error)
-	Next(ctx context.Context, game string, skill int) (stats.Player, error)
-	Above(ctx context.Context, game string, skill, n int) ([]stats.Player, error)
+	Rank(ctx context.Context, game string, p stats.Player) (rank, total int, err error)
+	Next(ctx context.Context, game string, p stats.Player) (stats.Player, error)
+	Above(ctx context.Context, game string, p stats.Player, n int) ([]stats.Player, error)
 	Top(ctx context.Context, game string, n int) ([]stats.Player, error)
 	WeaponCode(ctx context.Context, game, code string) (string, error)
 	ActionID(ctx context.Context, game, code string) (int, error)
@@ -1112,7 +1113,13 @@ func (p *Processor) join(ctx context.Context, ev stats.Ev, ref logparse.Player, 
 		roleSince:   ev.Time,
 		weaponKills: map[string]int{},
 	}
-	if st.startRank, _, err = p.store.Rank(ctx, ev.Srv.Game, skill); err != nil {
+	// The place in the ranking needs the kills and deaths too (stats.Before).
+	pl, err := p.store.PlayerStats(ctx, id)
+	if err != nil && !errors.Is(err, stats.ErrNotFound) {
+		return nil, err
+	}
+	pl.ID, pl.Skill = id, skill
+	if st.startRank, _, err = p.store.Rank(ctx, ev.Srv.Game, pl); err != nil {
 		return nil, err
 	}
 	if err := p.store.Join(ctx, ev, st.live); err != nil {

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/netip"
 	"regexp"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -255,8 +257,8 @@ func TestCommandsToAll(t *testing.T) {
 	}
 	now := time.Now()
 	got := say(now, "!place")
-	want := []string{`gamewe_psay 2 0 "[gameWE] Alice is ranked #1 of 3 with 1005 points."`,
-		`gamewe_psay 3 0 "[gameWE] Alice ist auf Platz 1 von 3 mit 1005 Punkten."`}
+	want := []string{`gamewe_psay 2 0 "[gameWE] Alice is ranked #1 of 2 with 1005 points."`,
+		`gamewe_psay 3 0 "[gameWE] Alice ist auf Platz 1 von 2 mit 1005 Punkten."`}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Errorf("!place: %q", got)
 	}
@@ -272,7 +274,7 @@ func TestCommandsToAll(t *testing.T) {
 		t.Errorf("session_data: %q", got)
 	}
 	for _, c := range []string{"!skill", "!points", "rank"} {
-		if got := say(now, c); len(got) != 1 || got[0] != `gamewe_psay 2 0 "[gameWE] You are ranked #1 of 3 with 1005 points."` {
+		if got := say(now, c); len(got) != 1 || got[0] != `gamewe_psay 2 0 "[gameWE] You are ranked #1 of 2 with 1005 points."` {
 			t.Errorf("%s: %q", c, got)
 		}
 	}
@@ -461,12 +463,12 @@ func TestCommandLanguage(t *testing.T) {
 		}
 	}
 	setup("cl_language", "german")
-	if got := say(now, "!rank"); len(got) != 1 || !strings.Contains(got[0], "Du bist auf Platz 1 von 3") {
+	if got := say(now, "!rank"); len(got) != 1 || !strings.Contains(got[0], "Du bist auf Platz 1 von 2") {
 		t.Errorf("cl_language german: %q", got)
 	}
 	setup("gamewe_lang", "pl")
 	setup("cl_language", "russian") // the player's choice wins
-	if got := say(now, "!rank"); len(got) != 1 || !strings.Contains(got[0], "Jesteś na miejscu 1 z 3") {
+	if got := say(now, "!rank"); len(got) != 1 || !strings.Contains(got[0], "Jesteś na miejscu 1 z 2") {
 		t.Errorf("gamewe_lang pl: %q", got)
 	}
 	setup("gamewe_lang", "xx") // unknown: unchanged
@@ -624,5 +626,53 @@ func TestSource2PluginReplies(t *testing.T) {
 				t.Errorf("no reply to !rank: %q", got)
 			}
 		})
+	}
+}
+
+// A player without a kill and a death has no place yet and is not counted;
+// the next player is the last one with a place.
+func TestCommandsNoPlace(t *testing.T) {
+	_, p, ms := gamemeTestServer(t, nil)
+	rec := p.cmds.reply.(*recorder)
+	ctx, now := context.Background(), time.Now()
+	say := func(text string) []string {
+		t.Helper()
+		n := len(rec.get("192.0.2.1:27015"))
+		if err := p.Handle(ctx, `"Carol<5><STEAM_1:0:5><CT>" say "`+text+`"`, now); err != nil {
+			t.Fatal(err)
+		}
+		return rec.get("192.0.2.1:27015")[n:]
+	}
+	if got := say("!rank"); len(got) != 1 || !strings.Contains(got[0], "Carol has no place in the ranking yet (no kill or death), 1000 points.") {
+		t.Errorf("!rank without a place: %q", got)
+	}
+	_, total, _ := ms.Rank(ctx, "css", stats.Player{Skill: 1000})
+	if total != 2 {
+		t.Errorf("players with a place: %d, want 2 (Carol not counted)", total)
+	}
+	last := ms.placed("css")[1]
+	if got := say("!next"); len(got) != 1 || !strings.Contains(got[0], last.Name) {
+		t.Errorf("!next without a place: %q, want %s", got, last.Name)
+	}
+}
+
+// Equal points: more kills first, then fewer deaths, then the lower id.
+func TestRankOrder(t *testing.T) {
+	a := stats.Player{ID: 5, Skill: 1200, Kills: 10, Deaths: 4}
+	b := stats.Player{ID: 3, Skill: 1200, Kills: 10, Deaths: 4}
+	c := stats.Player{ID: 9, Skill: 1200, Kills: 10, Deaths: 2}
+	d := stats.Player{ID: 1, Skill: 1200, Kills: 12, Deaths: 9}
+	e := stats.Player{ID: 2, Skill: 1300, Kills: 1, Deaths: 1}
+	all := []stats.Player{a, b, c, d, e}
+	sort.Slice(all, func(i, j int) bool { return stats.Before(all[i], all[j]) })
+	var ids []int64
+	for _, p := range all {
+		ids = append(ids, p.ID)
+	}
+	if !slices.Equal(ids, []int64{2, 1, 9, 3, 5}) {
+		t.Errorf("order %v, want [2 1 9 3 5]", ids)
+	}
+	if stats.HasPlace(stats.Player{Skill: 1000}) {
+		t.Error("0 kills and 0 deaths has a place")
 	}
 }

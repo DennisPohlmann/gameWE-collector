@@ -6,6 +6,7 @@ package collector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -274,5 +275,45 @@ func TestIntegrationHallTopTieOrder(t *testing.T) {
 	exec(t, db, `UPDATE hlstats_Players SET kills = 6 WHERE playerId = ?`, lo)
 	if got := ids(); !slices.Equal(got, []int64{lo, hi}) {
 		t.Fatalf("more kills: %v, want %d first", got, lo)
+	}
+}
+
+// The in-game place follows the same order: places run on, a player without
+// a kill and a death has none and is not counted; the next player of one
+// without a place is the last one with a place.
+func TestIntegrationRankTieOrder(t *testing.T) {
+	db := testDB(t)
+	hub, store, _ := resetFixture(t, db)
+	flush(t, hub)
+	ctx := context.Background()
+	lo := int64(q(t, db, `SELECT MIN(playerId) FROM hlstats_Players WHERE game = 'css'`))
+	hi := int64(q(t, db, `SELECT MAX(playerId) FROM hlstats_Players WHERE game = 'css'`))
+	exec(t, db, `UPDATE hlstats_Players SET skill = 1200, kills = 5, deaths = 3 WHERE game = 'css'`)
+	pl := func(id int64) stats.Player {
+		t.Helper()
+		p, err := store.PlayerStats(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	if r, n, err := store.Rank(ctx, "css", pl(hi)); err != nil || r != 2 || n != 2 {
+		t.Fatalf("equal players: rank %d of %d (%v), want 2 of 2", r, n, err)
+	}
+	if r, _, _ := store.Rank(ctx, "css", pl(lo)); r != 1 {
+		t.Fatalf("lower id: rank %d, want 1", r)
+	}
+	if a, err := store.Above(ctx, "css", pl(hi), 5); err != nil || len(a) != 1 || a[0].ID != lo {
+		t.Fatalf("above: %+v, %v", a, err)
+	}
+	if _, err := store.Next(ctx, "css", pl(lo)); !errors.Is(err, stats.ErrNotFound) {
+		t.Fatalf("next of number one: %v", err)
+	}
+	exec(t, db, `UPDATE hlstats_Players SET kills = 0, deaths = 0 WHERE playerId = ?`, hi)
+	if r, n, err := store.Rank(ctx, "css", pl(hi)); err != nil || r != 0 || n != 1 {
+		t.Fatalf("without a place: rank %d of %d (%v), want 0 of 1", r, n, err)
+	}
+	if nx, err := store.Next(ctx, "css", pl(hi)); err != nil || nx.ID != lo {
+		t.Fatalf("next without a place: %+v, %v", nx, err)
 	}
 }
