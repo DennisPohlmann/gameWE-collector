@@ -1,11 +1,12 @@
 # Installing gameWE - collector
 
-Two ways to run the collector:
+Three ways to run the collector:
 
 - [A. Container](#a-container-docker--podman) (Docker / Podman, optional database in the same Compose project)
 - [B. Release archive](#b-release-archive-targz) (tar.gz with systemd)
+- [B2. Windows](#b2-windows-zip-native) (zip with a Windows service)
 
-Both need a database ([C](#c-database)) and game servers that send their logs
+All need a database ([C](#c-database)) and game servers that send their logs
 to the collector ([D](#d-game-servers)). [E](#e-update) and
 [F](#f-uninstall) cover updates and removal, [G](#g-troubleshooting) the
 usual problems.
@@ -355,6 +356,95 @@ command itself fails (`Job for gamewe-collector.service failed ...`) and the
 reason is in `journalctl -u gamewe-collector`. A config error (exit code
 78) leaves the unit `failed` until you fix it and start it again; a database
 that is not reachable yet is retried every 5 seconds.
+
+## B2. Windows (zip, native)
+
+> **Not yet tested on a real Windows machine by hand.** CI builds the zip
+> and runs the unit tests on a Windows Server 2025 runner, and installs,
+> starts, stops and removes the service there once (without a database). A
+> collector with a real database and game servers on Windows has not been
+> run yet. Docker Desktop or WSL2 with the container ([A](#a-container-docker--podman))
+> is the tried way on Windows.
+
+The archive `gamewe-collector-<version>-windows-amd64.zip` (Windows x86_64,
+Windows 10 / Server 2016 or newer) holds one folder:
+
+```
+gamewe.exe                  the collector (the same commands as on Linux)
+config.example.yaml         the config to copy to config.yaml
+data\dbip-city-lite.mmdb    GeoIP database (DB-IP City Lite, CC BY 4.0), updated monthly where it is copied to
+doc\                        README, CHANGELOG, INSTALLATION, CONFIG, USAGE, ..., licenses, GEOIP-NOTICE,
+                            schema\init and schema\postgres\init (00_create_database.sql; init-db.sh is for Linux)
+```
+
+| What | Windows |
+|------|---------|
+| Binary, docs | `C:\Program Files\gameWE\collector\` (any folder) |
+| Config file (default of `-config`) | `%ProgramData%\gameWE\collector\config.yaml` (normally `C:\ProgramData\...`) |
+| Data directory (GeoIP database, service log) | `%ProgramData%\gameWE\collector\data\` |
+| Service log | `data\collector.log`, at 50 MiB renamed to `collector.log.1` (the older one is replaced) |
+| Service | `gamewe-collector` ("gameWE collector"), virtual account `NT SERVICE\gamewe-collector`, automatic (delayed) start, restarted after a failure (5 s, 30 s, then every minute) |
+
+In PowerShell **as administrator**, from the unpacked folder:
+
+```powershell
+(Get-FileHash .\gamewe-collector-0.1.0-windows-amd64.zip -Algorithm SHA256).Hash   # compare with the .sha256 file
+Expand-Archive .\gamewe-collector-0.1.0-windows-amd64.zip -DestinationPath .
+cd .\gamewe-collector-0.1.0-windows-amd64
+$bin  = "C:\Program Files\gameWE\collector"
+$conf = "$env:ProgramData\gameWE\collector"
+New-Item -ItemType Directory -Force $bin, "$conf\data" | Out-Null
+Copy-Item gamewe.exe, doc -Destination $bin -Recurse -Force
+if (-not (Test-Path "$conf\data\dbip-city-lite.mmdb")) { Copy-Item data\dbip-city-lite.mmdb "$conf\data\" }
+if (-not (Test-Path "$conf\config.yaml")) { Copy-Item config.example.yaml "$conf\config.yaml" }
+notepad "$conf\config.yaml"                    # database.*, listen.* as on Linux (CONFIG.md)
+& "$bin\gamewe.exe" config test                # the config file only, nothing started
+& "$bin\gamewe.exe" check                      # config, database, TLS, schema, servers, settings
+& "$bin\gamewe.exe" service install            # shows what it does, asks [y/N]
+& "$bin\gamewe.exe" service start
+Get-Content "$conf\data\collector.log" -Wait -Tail 50
+```
+
+`gamewe service install` creates the service with the command line
+`"C:\Program Files\gameWE\collector\gamewe.exe" run -config "<config>"`
+(the config given with `-config`, default the one above) and sets the
+rights: `%ProgramData%\gameWE\collector` no longer inherits from
+`ProgramData` (where every user may read), only Administrators and SYSTEM
+(full) and the service (read) have access; the service may also write
+`data\` (GeoIP update, log). A config outside that folder gets a read right
+for the service. Check with `icacls "$conf\config.yaml"`.
+
+- **Firewall:** the UDP port of the game-server logs (default 41337) and, for
+  Counter-Strike 2 over HTTP, TCP 41338 must be open for the game servers:
+  `New-NetFirewallRule -DisplayName "gameWE collector UDP" -Direction Inbound -Protocol UDP -LocalPort 41337 -Program "$bin\gamewe.exe" -Action Allow`.
+- **Start and failure:** the service reports "running" as soon as it is
+  started; whether the collector got as far as listening is in
+  `collector.log`. After a failure it is restarted after 5 seconds, then 30
+  seconds, then every minute; also after a config error (exit code 78):
+  Windows has no "do not restart on exit code 78" like the systemd unit, so
+  fix the config or stop the service. The exit code is in
+  `sc.exe query gamewe-collector` (`SERVICE_EXIT_CODE`).
+- **Stop:** `gamewe service stop` (or `sc.exe stop gamewe-collector`, the
+  Services console) stops it cleanly, as `systemctl stop` on Linux. In a
+  console, Ctrl+C stops a `gamewe run` cleanly.
+- **Commands that refuse while a collector runs** (`db migrate`, `reset`,
+  ...) name the service and `sc.exe stop gamewe-collector` / `sc.exe start
+  gamewe-collector`. A `gamewe run` started by hand in a console is found by
+  the collector lock of the database, as on Linux.
+- **Update:** `gamewe service stop`, replace `gamewe.exe` (and `doc`), then
+  `gamewe db migrate` if the release notes say so (or `database.auto_migrate`),
+  `gamewe service start`. The config and `data\` stay.
+- **Uninstall:** `gamewe service uninstall` (stops it first), then delete
+  `C:\Program Files\gameWE\collector` and, with the config and the GeoIP
+  database, `%ProgramData%\gameWE`.
+- **Database:** MariaDB or PostgreSQL may run on Windows or elsewhere; create
+  the database and the users with the SQL of `doc\schema\init\00_create_database.sql`
+  (MariaDB) or `doc\schema\postgres\init\00_create_database.sql` (PostgreSQL)
+  by hand, the passwords set in place of the placeholders (C), then
+  `gamewe db init`.
+- Not on Windows: `sd_notify` (systemd), the check of the file modes of the
+  config (`gamewe config test` warns about readable files on Linux only;
+  Windows has ACLs, see `icacls` above).
 
 ## C. Database
 

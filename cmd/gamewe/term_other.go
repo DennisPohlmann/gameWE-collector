@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//go:build !linux
+//go:build !linux && !windows
 
 package main
 
@@ -9,8 +9,8 @@ import (
 	"os"
 )
 
-// lineTerminal changes nothing outside Linux (the collector is built for
-// Linux only; this keeps go vet and the tests working elsewhere).
+// lineTerminal changes nothing outside Linux and Windows (the collector is
+// built for those only; this keeps go vet and the tests working elsewhere).
 func lineTerminal(*os.File, io.Writer) func() { return func() {} }
 
 // isTerminal: a character device counts as a terminal outside Linux.

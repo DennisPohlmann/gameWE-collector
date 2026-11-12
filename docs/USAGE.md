@@ -223,6 +223,7 @@ is the service and never asks; its automatic migration is
 | `gamewe bans` | read the bans of all known players now (Steam Web API for every due account, the whole SourceBans list) into `hlstats_Bans`, as `features.bans_sync` does, also when it is off; `--dry-run` only counts the due accounts |
 | `gamewe jobs [-queue]` | the jobs queued for the collector (resets, scheduled resets, inactive players, daily awards), their state and result ([below](#collector-jobs-by-hand-and-from-cron)) |
 | `gamewe geoip-update` | download the DB-IP database now |
+| `gamewe service install\|uninstall\|start\|stop` | Windows only, as administrator: the Windows service `gamewe-collector` ([INSTALLATION](INSTALLATION.md#b2-windows-zip-native)) |
 | `gamewe check-update` | ask GitHub for the latest release now and report on stderr whether it is newer (with `-o json` also the document on stdout); exit code 1 when GitHub cannot be reached. Nothing is installed ([`features.update_check`](CONFIG.md#features)) |
 | `gamewe simulate` | replay a sample game into the database or to a running collector |
 

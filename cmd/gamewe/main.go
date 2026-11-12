@@ -43,7 +43,7 @@ import (
 	_ "time/tzdata" // time zones also where the system has none (distroless image)
 )
 
-const usage = `gameWE - collector %s
+var usage = `gameWE - collector %s
 
 Usage:
   gamewe run      [-config FILE] [-log-level LEVEL] [-reload DURATION]
@@ -157,6 +157,9 @@ re-read every -reload interval (default 60s).
 `
 
 func main() {
+	if code, ok := serviceMain(); ok { // started by the Windows service manager
+		os.Exit(code)
+	}
 	all, err := globalFlags(os.Args[1:])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "gamewe: %v\n", err)
@@ -221,6 +224,10 @@ func main() {
 	case "help", "-h", "-help", "--help":
 		fmt.Printf(usage, version.Version)
 	default:
+		if ok, e := osCommand(cmd, args); ok {
+			err = e
+			break
+		}
 		fmt.Fprintf(os.Stderr, "unknown command %q\n\n"+usage, cmd, version.Version)
 		os.Exit(2)
 	}
@@ -279,11 +286,17 @@ func loadConfig(name string, args []string, extra func(*flag.FlagSet)) (config.C
 	return cfg, nil
 }
 
+// Where run logs and what stops it; the Windows service sets them.
+var (
+	logOut     io.Writer = os.Stderr
+	runContext           = context.Background()
+)
+
 func newLogger(level string) *slog.Logger {
 	var l slog.Level
 	l.UnmarshalText([]byte(level))
 	// systemd's journal adds timestamps itself.
-	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+	return slog.New(slog.NewTextHandler(logOut, &slog.HandlerOptions{
 		Level: l,
 		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 			if a.Key == slog.TimeKey && len(groups) == 0 && os.Getenv("JOURNAL_STREAM") != "" {
@@ -344,7 +357,7 @@ func runCmd(args []string) error {
 	}
 	log.Info("gameWE collector starting", "version", version.Version)
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(runContext, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if cfg.Features.UpdateCheck.Enabled && !updateCheckOff() {
 		go watchUpdates(ctx, log)
@@ -416,7 +429,7 @@ func runCmd(args []string) error {
 	store.HistoryZone, _ = cfg.Features.DailyAwards.Location(cfg.Timezone) // checked by config.Validate
 	replier := collector.NewRconReplier(ctx, set, log)
 	hub := collector.NewHub(store, set, replier, log)
-	hub.LineLog = os.Stderr // every received log line in the journal
+	hub.LineLog = logOut // every received log line in the journal
 	auto := &geoip.Auto{DB: geoip.New(log), Explicit: func() string {
 		if cfg.GeoIP.Path != "" {
 			return cfg.GeoIP.Path // config.yaml wins
