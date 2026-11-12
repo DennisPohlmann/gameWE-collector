@@ -6,6 +6,7 @@ import (
 	"context"
 	"net"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -50,6 +51,9 @@ func TestBadSocket(t *testing.T) {
 }
 
 func TestReady(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no unixgram sockets on Windows (and no systemd)")
+	}
 	for _, name := range []string{filepath.Join(t.TempDir(), "notify"), "@gamewe-sdnotify-test"} {
 		conn := listen(t, name)
 		if err := Ready("listening on udp 0.0.0.0:41337\nREADY=0"); err != nil {
@@ -68,6 +72,9 @@ func TestReady(t *testing.T) {
 }
 
 func TestExtendStart(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no unixgram sockets on Windows (and no systemd)")
+	}
 	conn := listen(t, filepath.Join(t.TempDir(), "notify"))
 	stop := ExtendStart(context.Background(), 10*time.Millisecond)
 	for range 2 {

@@ -126,7 +126,7 @@ func TestLint(t *testing.T) {
 		{name: "password and password_file", in: lintBase + "  password_file: " + pwFile + "\n",
 			want: []wantFinding{{SevError, "database.password_file", "not both"}}},
 		{name: "password_file missing", in: "database:\n  host: 127.0.0.1\n  user: u\n  name: n\n  password_file: /nonexistent/pw\n",
-			want: []wantFinding{{SevError, "database.password_file", "no such file"}}},
+			want: []wantFinding{{SevError, "database.password_file", "/nonexistent/pw"}}}, // the reason is worded by the OS
 		{name: "password_file readable by everyone", in: "database:\n  host: 127.0.0.1\n  user: u\n  name: n\n  password_file: " + pwFile + "\n",
 			want: []wantFinding{{SevWarning, "database.password_file", "every user may read"}}},
 
