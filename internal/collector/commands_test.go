@@ -630,7 +630,7 @@ func TestSource2PluginReplies(t *testing.T) {
 }
 
 // A player without a kill and a death has no place yet and is not counted;
-// the next player is the last one with a place.
+// !next says so too instead of points ahead (they could be negative).
 func TestCommandsNoPlace(t *testing.T) {
 	_, p, ms := gamemeTestServer(t, nil)
 	rec := p.cmds.reply.(*recorder)
@@ -650,9 +650,8 @@ func TestCommandsNoPlace(t *testing.T) {
 	if total != 2 {
 		t.Errorf("players with a place: %d, want 2 (Carol not counted)", total)
 	}
-	last := ms.placed("css")[1]
-	if got := say("!next"); len(got) != 1 || !strings.Contains(got[0], last.Name) {
-		t.Errorf("!next without a place: %q, want %s", got, last.Name)
+	if got := say("!next"); len(got) != 1 || !strings.Contains(got[0], "Carol has no place in the ranking yet") {
+		t.Errorf("!next without a place: %q", got)
 	}
 }
 

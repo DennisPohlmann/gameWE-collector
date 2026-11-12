@@ -268,6 +268,11 @@ func (c Commands) stats(ctx context.Context, srv *serverState, st *playerState, 
 	if err != nil {
 		return err
 	}
+	if name == "next" && !stats.HasPlace(pl) {
+		// No place yet: no "next" player and no points ahead (they could be negative).
+		c.tell(srv, st, "no_place", pl.Name, pl.Skill)
+		return nil
+	}
 	if name == "next" {
 		nx, err := c.store.Next(ctx, game, pl)
 		if errors.Is(err, stats.ErrNotFound) {
