@@ -269,7 +269,7 @@ func (c Commands) stats(ctx context.Context, srv *serverState, st *playerState, 
 		return err
 	}
 	if name == "next" {
-		nx, err := c.store.Next(ctx, game, pl.Skill)
+		nx, err := c.store.Next(ctx, game, pl)
 		if errors.Is(err, stats.ErrNotFound) {
 			c.tell(srv, st, "number_one")
 			return nil
@@ -277,7 +277,7 @@ func (c Commands) stats(ctx context.Context, srv *serverState, st *playerState, 
 		if err != nil {
 			return err
 		}
-		rank, _, err := c.store.Rank(ctx, game, nx.Skill)
+		rank, _, err := c.store.Rank(ctx, game, nx)
 		if err != nil {
 			return err
 		}
@@ -286,14 +286,14 @@ func (c Commands) stats(ctx context.Context, srv *serverState, st *playerState, 
 			[]string{chatTag + " " + tr(lang, "next", rank, nx.Name, nx.Skill, nx.Skill-pl.Skill)})
 		return nil
 	}
-	rank, total, err := c.store.Rank(ctx, game, pl.Skill)
+	rank, total, err := c.store.Rank(ctx, game, pl)
 	if err != nil {
 		return err
 	}
 	mins := int(now.Sub(st.since).Minutes())
 	switch name {
 	case "rank":
-		c.show(srv, uid, statsPanel(lang, pl, rank, total, st, now), []string{chatTag + " " + tr(lang, "rank", rank, total, pl.Skill)})
+		c.show(srv, uid, statsPanel(lang, pl, rank, total, st, now), []string{chatTag + " " + rankText(lang, "rank", pl, rank, total)})
 	case "session":
 		c.show(srv, uid, statsPanel(lang, pl, rank, total, st, now), []string{chatTag + " " + tr(lang, "session",
 			st.kills, st.deaths, kd(st.kills, st.deaths), st.headshots, st.skillDelta, mins)})
@@ -301,7 +301,7 @@ func (c Commands) stats(ctx context.Context, srv *serverState, st *playerState, 
 		c.show(srv, uid, statsPanel(lang, pl, rank, total, st, now), kpdLines(lang, pl, rank, total))
 	case "rank_all":
 		c.psayAll(srv, func(l string) []string {
-			return []string{chatTag + " " + tr(l, "rank_all", pl.Name, rank, total, pl.Skill)}
+			return []string{chatTag + " " + rankText(l, "rank_all", pl, rank, total)}
 		})
 	case "session_all":
 		c.psayAll(srv, func(l string) []string {
@@ -313,14 +313,38 @@ func (c Commands) stats(ctx context.Context, srv *serverState, st *playerState, 
 	return nil
 }
 
+// rankText is the chat line of !rank (key "rank") or !place ("rank_all"),
+// or no_place for a player without a place (no kill, no death yet).
+func rankText(lang, key string, pl stats.Player, rank, total int) string {
+	switch {
+	case rank == 0:
+		return tr(lang, "no_place", pl.Name, pl.Skill)
+	case key == "rank":
+		return tr(lang, key, rank, total, pl.Skill)
+	}
+	return tr(lang, key, pl.Name, rank, total, pl.Skill)
+}
+
+// positionLine is the position row of the stats panel.
+func positionLine(lang string, rank, total int) string {
+	if rank == 0 {
+		return tr(lang, "p_no_position")
+	}
+	return tr(lang, "p_position", rank, total)
+}
+
 // kpdLines are the chat lines of !kpd: the player's totals.
 func kpdLines(lang string, pl stats.Player, rank, total int) []string {
 	hs := 0
 	if pl.Kills > 0 {
 		hs = 100 * pl.Headshots / pl.Kills
 	}
+	first := tr(lang, "kpd", pl.Name, pl.Skill, rank, total, pl.ConnectionTime/3600)
+	if rank == 0 {
+		first = tr(lang, "no_place", pl.Name, pl.Skill)
+	}
 	return []string{
-		chatTag + " " + tr(lang, "kpd", pl.Name, pl.Skill, rank, total, pl.ConnectionTime/3600),
+		chatTag + " " + first,
 		chatTag + " " + tr(lang, "kpd_detail", pl.Kills, pl.Deaths, kd(pl.Kills, pl.Deaths), pl.Headshots, hs, pl.Suicides, pl.TK),
 	}
 }
@@ -359,12 +383,12 @@ func topText(lang string, n int, top []stats.Player) string {
 // as the gameME message plugin showed it: the totals and this visit.
 func statsPanel(lang string, pl stats.Player, rank, total int, st *playerState, now time.Time) []string {
 	posChange := 0
-	if st.startRank > 0 {
+	if st.startRank > 0 && rank > 0 {
 		posChange = st.startRank - rank
 	}
 	return []string{
 		tr(lang, "p_total"),
-		"   " + tr(lang, "p_position", rank, total),
+		"   " + positionLine(lang, rank, total),
 		"   " + tr(lang, "p_points", pl.Skill),
 		"   " + tr(lang, "p_frags", pl.Kills, pl.Deaths, kd(pl.Kills, pl.Deaths)),
 		"   " + tr(lang, "p_hs", pl.Headshots, 100*hpk(pl.Headshots, pl.Kills)),

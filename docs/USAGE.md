@@ -29,13 +29,13 @@ most every 15 seconds (more are ignored).
 
 | Command | Answer |
 |---------|--------|
-| `!rank`, `!skill`, `!points` | panel *1 - Total*: position, points, frags (K:D), headshots, accuracy, time played; *2 - Session*: positions and points won or lost, frags, headshots, accuracy, favourite weapon, time of this visit. In chat: *You are ranked #3 of 50 with 1012 points.* |
+| `!rank`, `!skill`, `!points` | panel *1 - Total*: position, points, frags (K:D), headshots, accuracy, time played; *2 - Session*: positions and points won or lost, frags, headshots, accuracy, favourite weapon, time of this visit. In chat: *You are ranked #3 of 50 with 1012 points.* The place is the same as on the website: most points, then most kills, then fewest deaths, then the lower player id; no two players share one, and only players with a kill or a death have a place and are counted (without: *Alice has no place in the ranking yet (no kill or death), 1000 points.*) |
 | `!place` | *to all*: *Alice is ranked #3 of 50 with 1012 points.* |
 | `!kpd`, `!kdratio` | the panel and your totals in chat: points, rank, hours played, kills, deaths, K:D, headshots, suicides, teamkills (what `!status` answered up to collector 0.8) |
 | `!kdeath` | *to all*: the totals of `!kpd` |
 | `!session`, `!sdata` | the panel and this visit in chat: kills, deaths, K:D, headshots, points, minutes |
 | `!session_data` | *to all*: this visit of `!session` |
-| `!next` | the player ranked just above you and how many points you are behind |
+| `!next` | the player ranked just above you (in the order of `!rank`; without a place yet the last player with one) and how many points you are behind |
 | `!top5`, `!top10` (`!top`), `!top20` | menu with the 5, 10 or 20 best players (`gamewe_msay`; long names are shortened so the menu fits) |
 | `!help`, `!cmd`, `!cmds`, `!commands` | the list of commands, three chat lines |
 
@@ -735,7 +735,9 @@ gamewe halloffame                                   # all entries, newest period
   or `timezone` keeps the period now running as well: the collector writes
   its start again with the new time of day (log "reset time or time zone
   changed, the running period stays") and resets at its end, not at once.
-- **The best five** have the most points (skill), then the most kills. Only
+- **The best five** in the order of the ranking, as on the website: most
+  points (skill), then the most kills, then the fewest deaths, then the lower
+  player id (index `game_rank`, migration 31). Only
   players with a kill or a death count; hidden players (`hideranking`, also
   hidden by an admin) and bots do not. A row keeps the values of the player
   at the end of the period: name, flag, points, kills, deaths, headshots,

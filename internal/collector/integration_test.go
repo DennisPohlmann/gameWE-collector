@@ -1269,7 +1269,7 @@ func TestIntegrationHideRanking(t *testing.T) {
 		t.Errorf("hideranking after !hideranking 1 and a reconnect: %d, want 3", h)
 	}
 	store := stats.NewStore(db, settings.NewLive(settings.Defaults()))
-	if _, total, err := store.Rank(context.Background(), "css", 1000); err != nil || total != 1 {
+	if _, total, err := store.Rank(context.Background(), "css", stats.Player{Skill: 1000}); err != nil || total != 1 {
 		t.Errorf("ranked players %d (%v), want 1: the hidden player is not counted", total, err)
 	}
 	addr2 := "198.51.100.43:27015" // another server of the same game

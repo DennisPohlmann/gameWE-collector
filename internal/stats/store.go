@@ -1680,26 +1680,79 @@ func (s *Store) PlayerStats(ctx context.Context, playerID int64) (Player, error)
 	return scanPlayer(s.queryRow(ctx, `SELECT `+playerCols+playerFrom+`WHERE p.playerId = ?`, playerID))
 }
 
-// Rank returns the 1-based rank for skill among the game's ranked players
-// (hideranking = 0), and their number.
-func (s *Store) Rank(ctx context.Context, game string, skill int) (rank, total int, err error) {
-	err = s.queryRow(ctx,
-		`SELECT COALESCE(SUM(CASE WHEN skill > ? THEN 1 ELSE 0 END), 0), COUNT(*) FROM hlstats_Players WHERE game = ? AND hideranking = 0`,
-		skill, game).Scan(&rank, &total)
+// HasPlace reports whether p has a place in the ranking: a player without a
+// kill and without a death has none (as on the website).
+func HasPlace(p Player) bool { return p.Kills > 0 || p.Deaths > 0 }
+
+// Before reports whether a stands before b in the order of the ranking, the
+// same as the website's: most points, then most kills, then fewest deaths,
+// then the lower id.
+func Before(a, b Player) bool {
+	if a.Skill != b.Skill {
+		return a.Skill > b.Skill
+	}
+	if a.Kills != b.Kills {
+		return a.Kills > b.Kills
+	}
+	if a.Deaths != b.Deaths {
+		return a.Deaths < b.Deaths
+	}
+	return a.ID < b.ID
+}
+
+// placedIn are the game's players with a place: shown in the ranking
+// (hideranking = 0) with a kill or a death; columns of the index game_rank.
+const placedIn = ` FROM hlstats_Players WHERE game = ? AND hideranking = 0 AND (kills > 0 OR deaths > 0)`
+
+// Rank returns p's place in the order of the ranking (Before; no two
+// players share one) among the game's players with a place, and their
+// number. rank is 0 when p has no place (HasPlace). Two counts, each a
+// range of the index game_rank.
+func (s *Store) Rank(ctx context.Context, game string, p Player) (rank, total int, err error) {
+	if !HasPlace(p) {
+		err = s.queryRow(ctx, `SELECT COUNT(*)`+placedIn, game).Scan(&total)
+		return 0, total, err
+	}
+	err = s.queryRow(ctx, `SELECT (SELECT COUNT(*)`+placedIn+` AND skill > ?)
+		+ (SELECT COUNT(*)`+placedIn+` AND skill = ? AND (kills > ? OR kills = ? AND (deaths < ? OR deaths = ? AND playerId < ?))),
+		(SELECT COUNT(*)`+placedIn+`)`,
+		game, p.Skill, game, p.Skill, p.Kills, p.Kills, p.Deaths, p.Deaths, p.ID, game).Scan(&rank, &total)
 	return rank + 1, total, err
 }
 
-// Next returns the ranked player with the lowest skill above skill.
-func (s *Store) Next(ctx context.Context, game string, skill int) (Player, error) {
-	return scanPlayer(s.queryRow(ctx, `SELECT `+playerCols+playerFrom+
-		`WHERE p.game = ? AND p.hideranking = 0 AND p.skill > ? ORDER BY p.skill, p.playerId LIMIT 1`, game, skill))
+// aboveOrder is the order of the ranking (Top) reversed: the nearest player
+// above first; index game_rank read backwards.
+const aboveOrder = `ORDER BY p.skill, p.kills, p.deaths DESC, p.playerId DESC`
+
+// Next returns the player directly before p in the ranking (Above), or
+// ErrNotFound for number one.
+func (s *Store) Next(ctx context.Context, game string, p Player) (Player, error) {
+	above, err := s.Above(ctx, game, p, 1)
+	if err != nil {
+		return Player{}, err
+	}
+	if len(above) == 0 {
+		return Player{}, ErrNotFound
+	}
+	return above[0], nil
 }
 
-// Above returns up to n ranked players with more skill than skill, the
-// nearest first.
-func (s *Store) Above(ctx context.Context, game string, skill, n int) ([]Player, error) {
-	return s.players(ctx, `SELECT `+playerCols+playerFrom+
-		`WHERE p.game = ? AND p.hideranking = 0 AND p.skill > ? ORDER BY p.skill, p.playerId LIMIT ?`, game, skill, n)
+// Above returns up to n players with a place before p in the ranking, the
+// nearest first; for a player without a place the last placed ones. The
+// players with p's points and those with more are read apart, so each is a
+// range of the index game_rank.
+func (s *Store) Above(ctx context.Context, game string, p Player, n int) ([]Player, error) {
+	sel := `SELECT ` + playerCols + playerFrom + `WHERE p.game = ? AND p.hideranking = 0 AND (p.kills > 0 OR p.deaths > 0) `
+	if !HasPlace(p) {
+		return s.players(ctx, sel+aboveOrder+` LIMIT ?`, game, n)
+	}
+	out, err := s.players(ctx, sel+`AND p.skill = ? AND (p.kills > ? OR p.kills = ? AND (p.deaths < ? OR p.deaths = ? AND p.playerId < ?)) `+
+		aboveOrder+` LIMIT ?`, game, p.Skill, p.Kills, p.Kills, p.Deaths, p.Deaths, p.ID, n)
+	if err != nil || len(out) == n {
+		return out, err
+	}
+	more, err := s.players(ctx, sel+`AND p.skill > ? `+aboveOrder+` LIMIT ?`, game, p.Skill, n-len(out))
+	return append(out, more...), err
 }
 
 // WeaponCode returns the code of the game's weapon named code, ignoring
@@ -1726,10 +1779,11 @@ func (s *Store) ActionID(ctx context.Context, game, code string) (int, error) {
 	return id, err
 }
 
-// Top returns the n best ranked players of the game.
+// Top returns the n best ranked players of the game, in the order of the
+// ranking (as HallTop and the website).
 func (s *Store) Top(ctx context.Context, game string, n int) ([]Player, error) {
 	return s.players(ctx, `SELECT `+playerCols+playerFrom+
-		`WHERE p.game = ? AND p.hideranking = 0 ORDER BY p.skill DESC, p.kills DESC, p.playerId LIMIT ?`, game, n)
+		`WHERE p.game = ? AND p.hideranking = 0 ORDER BY p.skill DESC, p.kills DESC, p.deaths, p.playerId LIMIT ?`, game, n)
 }
 
 func (s *Store) players(ctx context.Context, q string, args ...any) ([]Player, error) {

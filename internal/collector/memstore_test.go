@@ -265,18 +265,28 @@ func (m *memStore) RecordLocation(_ context.Context, _ stats.Ev, id int64, typ, 
 	return nil
 }
 
-func (m *memStore) Above(_ context.Context, game string, skill, n int) ([]stats.Player, error) {
+// placed are the game's players with a place, in the order of the ranking.
+func (m *memStore) placed(game string) []stats.Player {
+	var out []stats.Player
+	for _, p := range m.byID {
+		pl := stats.Player{ID: p.id, Name: p.name, Skill: p.skill, Kills: p.kills, Deaths: p.deaths}
+		if p.game == game && p.hide == 0 && stats.HasPlace(pl) {
+			out = append(out, pl)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return stats.Before(out[i], out[j]) })
+	return out
+}
+
+func (m *memStore) Above(_ context.Context, game string, pl stats.Player, n int) ([]stats.Player, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var out []stats.Player
-	for _, p := range m.byID {
-		if p.game == game && p.skill > skill {
-			out = append(out, stats.Player{ID: p.id, Name: p.name, Skill: p.skill, Kills: p.kills, Deaths: p.deaths})
+	for _, p := range m.placed(game) {
+		if !stats.HasPlace(pl) || stats.Before(p, pl) {
+			out = append([]stats.Player{p}, out...) // nearest first
 		}
 	}
-	sort.Slice(out, func(i, j int) bool {
-		return out[i].Skill < out[j].Skill || out[i].Skill == out[j].Skill && out[i].ID < out[j].ID
-	})
 	if len(out) > n {
 		out = out[:n]
 	}
@@ -467,23 +477,28 @@ func (m *memStore) PlayerStats(_ context.Context, id int64) (stats.Player, error
 	return stats.Player{ID: p.id, Name: p.name, Skill: p.skill, Kills: p.kills, Deaths: p.deaths}, nil
 }
 
-func (m *memStore) Rank(_ context.Context, game string, skill int) (int, int, error) {
+func (m *memStore) Rank(_ context.Context, game string, pl stats.Player) (int, int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	rank, total := 1, 0
-	for _, p := range m.byID {
-		if p.game == game {
-			total++
-			if p.skill > skill {
-				rank++
-			}
+	all := m.placed(game)
+	if !stats.HasPlace(pl) {
+		return 0, len(all), nil
+	}
+	rank := 1
+	for _, p := range all {
+		if stats.Before(p, pl) {
+			rank++
 		}
 	}
-	return rank, total, nil
+	return rank, len(all), nil
 }
 
-func (m *memStore) Next(_ context.Context, game string, skill int) (stats.Player, error) {
-	return stats.Player{}, stats.ErrNotFound
+func (m *memStore) Next(ctx context.Context, game string, pl stats.Player) (stats.Player, error) {
+	above, _ := m.Above(ctx, game, pl, 1)
+	if len(above) == 0 {
+		return stats.Player{}, stats.ErrNotFound
+	}
+	return above[0], nil
 }
 
 func (m *memStore) Top(_ context.Context, game string, n int) ([]stats.Player, error) {

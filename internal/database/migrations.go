@@ -272,7 +272,7 @@ var Migrations = []Migration{
 			"_ChangeRole, so the web's server page lists connects, name and model changes too; older rows keep server 0; " +
 			"gamewe_web may read hlstats_Events_Connects.server_id",
 		Sync: true,
-	},	{
+	}, {
 		Version: 29, Name: "cs-model-roles",
 		Desc: "the player models of cstrike and czero as roles (hlstats_Roles), logged by the AMX Mod X plugin as changed role to",
 		Seed: true,
@@ -282,6 +282,14 @@ var Migrations = []Migration{
 		Desc: "index lastName (lastName, playerId) on hlstats_Players_Data: the web's player lists sorted by name read the " +
 			"names in order instead of sorting every player",
 		Sync: true,
+	},
+	{
+		Version: 31, Name: "rank-order-index",
+		Desc: "index game_rank (game, hideranking, skill DESC, kills DESC, deaths, playerId) on hlstats_Players replaces game_skill: " +
+			"the order of the ranking (points, then kills, then fewer deaths, then the lower id) for the web's ranking, places " +
+			"and maps, the hall of fame and the in-game top lists, read along the index",
+		Sync: true,
+		Drop: []DropIndex{{Table: "hlstats_Players", Index: "game_skill", ReplacedBy: "game_rank"}},
 	},
 }
 

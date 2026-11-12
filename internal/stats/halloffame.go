@@ -541,8 +541,9 @@ type HallEntry struct {
 const hallPlayers = `p.game = ? AND p.hideranking = 0 AND (p.kills > 0 OR p.deaths > 0)
 	AND NOT EXISTS (SELECT 1 FROM hlstats_PlayerUniqueIds u WHERE u.playerId = p.playerId AND u.uniqueId LIKE 'BOT%')`
 
-// HallTop returns the best HallPlaces players of game now: most points, then
-// most kills, then the lower id.
+// HallTop returns the best HallPlaces players of game now in the order of the
+// ranking, the same as on the website: most points, then most kills, then
+// fewest deaths, then the lower id (index game_rank).
 func (s *Store) HallTop(ctx context.Context, game string) ([]HallEntry, error) {
 	rows, err := s.query(ctx, `SELECT p.playerId, COALESCE(d.lastName, ''), COALESCE(l.flag, ''), COALESCE(l.country, ''),
 			p.skill, p.kills, p.deaths, p.headshots, p.shots, p.hits, p.kill_streak, p.connection_time
@@ -550,7 +551,7 @@ func (s *Store) HallTop(ctx context.Context, game string) ([]HallEntry, error) {
 		LEFT JOIN hlstats_Players_Data d ON d.playerId = p.playerId
 		LEFT JOIN hlstats_Players_Locations l ON l.id = d.location_id
 		WHERE `+hallPlayers+`
-		ORDER BY p.skill DESC, p.kills DESC, p.playerId
+		ORDER BY p.skill DESC, p.kills DESC, p.deaths, p.playerId
 		LIMIT `+strconv.Itoa(HallPlaces), game)
 	if err != nil {
 		return nil, err

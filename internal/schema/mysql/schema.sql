@@ -484,7 +484,7 @@ CREATE TABLE `hlstats_Players` (
   KEY `game` (`game`),
   KEY `game_id` (`game_id`,`rank`),
   KEY `kills` (`kills`),
-  KEY `game_skill` (`game`,`hideranking`,`skill`,`playerId`),
+  KEY `game_rank` (`game`,`hideranking`,`skill` DESC,`kills` DESC,`deaths`,`playerId`),
   KEY `game_activity` (`game`,`hideranking`,`last_event`,`playerId`),
   KEY `skill` (`skill`,`playerId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

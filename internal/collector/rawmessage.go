@@ -135,7 +135,7 @@ func playerValues(pl stats.Player, rank, total int, st *playerState, now time.Ti
 		i(pl.CustomWins), i(pl.KillStreak), i(pl.DeathStreak),
 	}
 	posChange := 0
-	if st.startRank > 0 {
+	if st.startRank > 0 && rank > 0 {
 		posChange = st.startRank - rank
 	}
 	v = append(v,
@@ -161,7 +161,7 @@ func (c Commands) rawPlayer(ctx context.Context, srv *serverState, st *playerSta
 	if err != nil {
 		return err
 	}
-	rank, total, err := c.store.Rank(ctx, srv.info.Game, pl.Skill)
+	rank, total, err := c.store.Rank(ctx, srv.info.Game, pl)
 	if err != nil {
 		return err
 	}
@@ -212,14 +212,14 @@ func (c Commands) rawNext(ctx context.Context, srv *serverState, st *playerState
 	if err != nil {
 		return err
 	}
-	above, err := c.store.Above(ctx, srv.info.Game, pl.Skill, nextCount)
+	above, err := c.store.Above(ctx, srv.info.Game, pl, nextCount)
 	if err != nil {
 		return err
 	}
 	slices.Reverse(above)
 	ranks := make([]int, len(above))
 	for i, a := range above {
-		if ranks[i], _, err = c.store.Rank(ctx, srv.info.Game, a.Skill); err != nil {
+		if ranks[i], _, err = c.store.Rank(ctx, srv.info.Game, a); err != nil {
 			return err
 		}
 	}
@@ -229,6 +229,14 @@ func (c Commands) rawNext(ctx context.Context, srv *serverState, st *playerState
 	})
 	c.raw(srv, typ, queryID, st.userID, vals)
 	return nil
+}
+
+// spectatorRank is the rank line of the spectator text (English, as the rest of it).
+func spectatorRank(rank, total, skill int) string {
+	if rank == 0 {
+		return fmt.Sprintf("No rank yet, %d points", skill)
+	}
+	return fmt.Sprintf("Rank %d of %d, %d points", rank, total, skill)
 }
 
 // rawSpectator sends the text shown to players who spectate st (type 1001)
@@ -241,7 +249,7 @@ func (c Commands) rawSpectator(ctx context.Context, srv *serverState, st *player
 	if err != nil {
 		return err
 	}
-	rank, total, err := c.store.Rank(ctx, srv.info.Game, pl.Skill)
+	rank, total, err := c.store.Rank(ctx, srv.info.Game, pl)
 	if err != nil {
 		return err
 	}
@@ -256,7 +264,7 @@ func (c Commands) rawSpectator(ctx context.Context, srv *serverState, st *player
 	}
 	text := menuText([]string{
 		st.live.Name,
-		fmt.Sprintf("Rank %d of %d, %d points", rank, total, pl.Skill),
+		spectatorRank(rank, total, pl.Skill),
 		fmt.Sprintf("Kills %d:%d (%s), headshots %d", pl.Kills, pl.Deaths, kd(pl.Kills, pl.Deaths), pl.Headshots),
 	})
 	c.send(srv, fmt.Sprintf(`%s_raw_message %d %d %s %d "%s"`, c.set.Get().CommandPrefix, rawCallbackSpectator, queryID,

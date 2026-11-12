@@ -105,7 +105,7 @@ var (
 	reCol    = regexp.MustCompile("^  `([^`]+)` (\\w+)(\\(([^)]*)\\))?( unsigned)?(.*?),?$")
 	reKey    = regexp.MustCompile("^  (PRIMARY KEY|UNIQUE KEY `([^`]+)`|KEY `([^`]+)`) \\((.*?)\\)( USING \\w+)?,?$")
 	reEnd    = regexp.MustCompile("^\\) ENGINE=(\\w+)")
-	reKeyCol = regexp.MustCompile("`([^`]+)`(\\(\\d+\\))?")
+	reKeyCol = regexp.MustCompile("`([^`]+)`(\\(\\d+\\))?( DESC)?")
 )
 
 // ConvertTables converts the CREATE TABLE statements of a mariadb-dump.
@@ -136,7 +136,7 @@ func ConvertTables(mysql string) (string, error) {
 		if m := reKey.FindStringSubmatch(line); m != nil {
 			var names []string
 			for _, k := range reKeyCol.FindAllStringSubmatch(m[4], -1) {
-				names = append(names, k[1]) // prefix lengths are dropped
+				names = append(names, k[1]+k[3]) // prefix lengths are dropped, descending columns stay
 			}
 			list := strings.Join(names, ", ")
 			switch {
