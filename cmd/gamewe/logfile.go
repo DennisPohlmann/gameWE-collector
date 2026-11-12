@@ -42,9 +42,12 @@ func (l *rotatingLog) Write(p []byte) (int, error) {
 	defer l.mu.Unlock()
 	if l.size > 0 && l.size+int64(len(p)) > l.max {
 		l.f.Close()
-		os.Rename(l.path, l.path+".1") // failed: go on in the same file
+		renamed := os.Rename(l.path, l.path+".1") == nil
 		if err := l.open(); err != nil {
 			return 0, err // tried again with the next write
+		}
+		if !renamed { // e.g. open in a viewer on Windows: try again after max more bytes
+			l.size = 0
 		}
 	}
 	n, err := l.f.Write(p)
