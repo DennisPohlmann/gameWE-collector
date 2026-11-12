@@ -1,7 +1,8 @@
 # gameWE - collector
-#   make build | test | vet | package | schema | clean
+#   make build | test | vet | package | package-windows | schema | clean
 #
-# Builds for Linux x86_64 (amd64) only.
+# Builds for Linux x86_64 (amd64); package-windows builds the zip for
+# Windows x86_64 (amd64).
 #
 # The version comes from the git tag on HEAD (v1.2.3 -> 1.2.3), otherwise
 # from the VERSION file. Override with: make package VERSION=1.2.3-rc1
@@ -20,13 +21,19 @@ STAGE     := build/stage-amd64
 PKG       := gamewe-collector-$(VERSION)-linux-amd64
 OPT       := opt/gamewe/collector
 DIST      := dist
+WIN_BIN   := build/windows-amd64/gamewe.exe
+WIN_STAGE := build/stage-windows-amd64
+WIN_PKG   := gamewe-collector-$(VERSION)-windows-amd64
 
-.PHONY: all build test vet package clean schema docker version geoip licenses
+.PHONY: all build build-windows test vet package package-windows clean schema docker version geoip licenses
 
 all: vet test build
 
 build:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(BUILD_FLAGS) -ldflags '$(LDFLAGS)' -o $(BIN) ./cmd/gamewe
+
+build-windows:
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) build $(BUILD_FLAGS) -ldflags '$(LDFLAGS)' -o $(WIN_BIN) ./cmd/gamewe
 
 test:
 	$(GO) test ./...
@@ -70,6 +77,25 @@ package: build geoip
 	tar --sort=name --owner=0 --group=0 --numeric-owner -C $(STAGE) -czf $(DIST)/$(PKG).tar.gz etc opt var
 	cd $(DIST) && sha256sum $(PKG).tar.gz > $(PKG).tar.gz.sha256
 	@echo "built $(DIST)/$(PKG).tar.gz"
+
+# The zip for Windows (docs/INSTALLATION.md, Windows): gamewe.exe, the docs
+# and the config example in one folder, the GeoIP database in its data\
+# (copied to %ProgramData%\gameWE\collector\data).
+package-windows: build-windows geoip
+	rm -rf $(WIN_STAGE)
+	install -d $(WIN_STAGE)/$(WIN_PKG)/data $(WIN_STAGE)/$(WIN_PKG)/doc/schema
+	install -m 0755 $(WIN_BIN) $(WIN_STAGE)/$(WIN_PKG)/
+	install -m 0644 config.example.yaml $(WIN_STAGE)/$(WIN_PKG)/
+	install -m 0644 $(GEOIP_DB) $(WIN_STAGE)/$(WIN_PKG)/data/
+	install -m 0644 geoip-data/NOTICE $(WIN_STAGE)/$(WIN_PKG)/doc/GEOIP-NOTICE
+	install -m 0644 README.md CHANGELOG.md LICENSE THIRD-PARTY-LICENSES.md docs/*.md $(WIN_STAGE)/$(WIN_PKG)/doc/
+	cp -r licenses $(WIN_STAGE)/$(WIN_PKG)/doc/licenses
+	cp -r schema/init schema/postgres $(WIN_STAGE)/$(WIN_PKG)/doc/schema/
+	install -d $(DIST)
+	rm -f $(DIST)/$(WIN_PKG).zip
+	cd $(WIN_STAGE) && zip -qrX ../../$(DIST)/$(WIN_PKG).zip $(WIN_PKG)
+	cd $(DIST) && sha256sum $(WIN_PKG).zip > $(WIN_PKG).zip.sha256
+	@echo "built $(DIST)/$(WIN_PKG).zip"
 
 version:
 	@echo $(VERSION)
