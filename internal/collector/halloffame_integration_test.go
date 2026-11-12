@@ -241,3 +241,38 @@ func exec(t *testing.T, db *database.DB, q string, args ...any) {
 		t.Fatal(err)
 	}
 }
+
+// HallTop uses the order of the ranking, as the website: equal points go to
+// more kills, then fewer deaths, then the lower player id.
+func TestIntegrationHallTopTieOrder(t *testing.T) {
+	db := testDB(t)
+	hub, store, _ := resetFixture(t, db)
+	flush(t, hub)
+	ctx := context.Background()
+	ids := func() []int64 {
+		t.Helper()
+		top, err := store.HallTop(ctx, "css")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []int64
+		for _, e := range top {
+			out = append(out, e.PlayerID)
+		}
+		return out
+	}
+	lo := int64(q(t, db, `SELECT MIN(playerId) FROM hlstats_Players WHERE game = 'css'`))
+	hi := int64(q(t, db, `SELECT MAX(playerId) FROM hlstats_Players WHERE game = 'css'`))
+	exec(t, db, `UPDATE hlstats_Players SET skill = 1200, kills = 5, deaths = 3 WHERE game = 'css'`)
+	if got := ids(); !slices.Equal(got, []int64{lo, hi}) {
+		t.Fatalf("all equal: %v, want the lower id first", got)
+	}
+	exec(t, db, `UPDATE hlstats_Players SET deaths = 2 WHERE playerId = ?`, hi)
+	if got := ids(); !slices.Equal(got, []int64{hi, lo}) {
+		t.Fatalf("fewer deaths: %v, want %d first", got, hi)
+	}
+	exec(t, db, `UPDATE hlstats_Players SET kills = 6 WHERE playerId = ?`, lo)
+	if got := ids(); !slices.Equal(got, []int64{lo, hi}) {
+		t.Fatalf("more kills: %v, want %d first", got, lo)
+	}
+}

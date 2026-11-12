@@ -735,7 +735,9 @@ gamewe halloffame                                   # all entries, newest period
   or `timezone` keeps the period now running as well: the collector writes
   its start again with the new time of day (log "reset time or time zone
   changed, the running period stays") and resets at its end, not at once.
-- **The best five** have the most points (skill), then the most kills. Only
+- **The best five** in the order of the ranking, as on the website: most
+  points (skill), then the most kills, then the fewest deaths, then the lower
+  player id (index `game_rank`, migration 31). Only
   players with a kill or a death count; hidden players (`hideranking`, also
   hidden by an admin) and bots do not. A row keeps the values of the player
   at the end of the period: name, flag, points, kills, deaths, headshots,

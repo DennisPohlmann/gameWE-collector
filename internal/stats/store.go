@@ -1689,17 +1689,21 @@ func (s *Store) Rank(ctx context.Context, game string, skill int) (rank, total i
 	return rank + 1, total, err
 }
 
+// aboveOrder is the order of the ranking (Top) reversed: the nearest player
+// above first; index game_rank read backwards.
+const aboveOrder = `ORDER BY p.skill, p.kills, p.deaths DESC, p.playerId DESC`
+
 // Next returns the ranked player with the lowest skill above skill.
 func (s *Store) Next(ctx context.Context, game string, skill int) (Player, error) {
 	return scanPlayer(s.queryRow(ctx, `SELECT `+playerCols+playerFrom+
-		`WHERE p.game = ? AND p.hideranking = 0 AND p.skill > ? ORDER BY p.skill, p.playerId LIMIT 1`, game, skill))
+		`WHERE p.game = ? AND p.hideranking = 0 AND p.skill > ? `+aboveOrder+` LIMIT 1`, game, skill))
 }
 
 // Above returns up to n ranked players with more skill than skill, the
 // nearest first.
 func (s *Store) Above(ctx context.Context, game string, skill, n int) ([]Player, error) {
 	return s.players(ctx, `SELECT `+playerCols+playerFrom+
-		`WHERE p.game = ? AND p.hideranking = 0 AND p.skill > ? ORDER BY p.skill, p.playerId LIMIT ?`, game, skill, n)
+		`WHERE p.game = ? AND p.hideranking = 0 AND p.skill > ? `+aboveOrder+` LIMIT ?`, game, skill, n)
 }
 
 // WeaponCode returns the code of the game's weapon named code, ignoring
@@ -1726,10 +1730,11 @@ func (s *Store) ActionID(ctx context.Context, game, code string) (int, error) {
 	return id, err
 }
 
-// Top returns the n best ranked players of the game.
+// Top returns the n best ranked players of the game, in the order of the
+// ranking (as HallTop and the website).
 func (s *Store) Top(ctx context.Context, game string, n int) ([]Player, error) {
 	return s.players(ctx, `SELECT `+playerCols+playerFrom+
-		`WHERE p.game = ? AND p.hideranking = 0 ORDER BY p.skill DESC, p.kills DESC, p.playerId LIMIT ?`, game, n)
+		`WHERE p.game = ? AND p.hideranking = 0 ORDER BY p.skill DESC, p.kills DESC, p.deaths, p.playerId LIMIT ?`, game, n)
 }
 
 func (s *Store) players(ctx context.Context, q string, args ...any) ([]Player, error) {

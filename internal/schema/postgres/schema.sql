@@ -490,7 +490,7 @@ CREATE INDEX hlstats_Players_clan ON hlstats_Players (clan);
 CREATE INDEX hlstats_Players_game ON hlstats_Players (game);
 CREATE INDEX hlstats_Players_game_id ON hlstats_Players (game_id, rank);
 CREATE INDEX hlstats_Players_kills ON hlstats_Players (kills);
-CREATE INDEX hlstats_Players_game_skill ON hlstats_Players (game, hideranking, skill, playerId);
+CREATE INDEX hlstats_Players_game_rank ON hlstats_Players (game, hideranking, skill DESC, kills DESC, deaths, playerId);
 CREATE INDEX hlstats_Players_game_activity ON hlstats_Players (game, hideranking, last_event, playerId);
 CREATE INDEX hlstats_Players_skill ON hlstats_Players (skill, playerId);
 CREATE TABLE hlstats_PlayersInactive (
