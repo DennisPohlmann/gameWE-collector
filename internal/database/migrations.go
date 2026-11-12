@@ -277,6 +277,12 @@ var Migrations = []Migration{
 		Desc: "the player models of cstrike and czero as roles (hlstats_Roles), logged by the AMX Mod X plugin as changed role to",
 		Seed: true,
 	},
+	{
+		Version: 30, Name: "player-name-index",
+		Desc: "index lastName (lastName, playerId) on hlstats_Players_Data: the web's player lists sorted by name read the " +
+			"names in order instead of sorting every player",
+		Sync: true,
+	},
 }
 
 // Latest is the newest schema version this collector knows.

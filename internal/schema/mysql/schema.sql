@@ -598,7 +598,8 @@ CREATE TABLE `hlstats_Players_Data` (
   PRIMARY KEY (`playerId`),
   KEY `first_connect` (`first_connect`),
   KEY `location_id` (`location_id`),
-  KEY `connect_type` (`connect_type`)
+  KEY `connect_type` (`connect_type`),
+  KEY `lastName` (`lastName`,`playerId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_Players_History` (
   `playerId` mediumint(8) unsigned NOT NULL DEFAULT 0,

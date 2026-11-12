@@ -605,6 +605,7 @@ CREATE TABLE hlstats_Players_Data (
 CREATE INDEX hlstats_Players_Data_first_connect ON hlstats_Players_Data (first_connect);
 CREATE INDEX hlstats_Players_Data_location_id ON hlstats_Players_Data (location_id);
 CREATE INDEX hlstats_Players_Data_connect_type ON hlstats_Players_Data (connect_type);
+CREATE INDEX hlstats_Players_Data_lastName ON hlstats_Players_Data (lastName, playerId);
 CREATE TABLE hlstats_Players_History (
   playerId integer NOT NULL DEFAULT 0,
   eventTime date NOT NULL DEFAULT '1970-01-01',
