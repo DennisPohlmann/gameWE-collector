@@ -35,7 +35,7 @@ most every 15 seconds (more are ignored).
 | `!kdeath` | *to all*: the totals of `!kpd` |
 | `!session`, `!sdata` | the panel and this visit in chat: kills, deaths, K:D, headshots, points, minutes |
 | `!session_data` | *to all*: this visit of `!session` |
-| `!next` | the player ranked just above you (in the order of `!rank`; without a place yet the last player with one) and how many points you are behind |
+| `!next` | the player ranked just above you (in the order of `!rank`) and how many points you are behind; without a place yet the same answer as `!rank` (no place in the ranking yet) |
 | `!top5`, `!top10` (`!top`), `!top20` | menu with the 5, 10 or 20 best players (`gamewe_msay`; long names are shortened so the menu fits) |
 | `!help`, `!cmd`, `!cmds`, `!commands` | the list of commands, three chat lines |
 
