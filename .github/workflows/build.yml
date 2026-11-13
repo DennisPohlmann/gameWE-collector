@@ -1,7 +1,7 @@
 name: build
 
 # Every push (any branch) and every pull request runs the tests (unit,
-# integration against MariaDB and PostgreSQL), scans the image with Trivy and
+# integration against MariaDB, PostgreSQL and SQL Server), scans the image with Trivy and
 # builds everything a release ships: the packages for Linux (tar.gz) and
 # Windows (zip, after the Windows tests; workflow artifacts for 7 days), the
 # Helm chart (helm package) and the image. A push to main also
@@ -127,7 +127,9 @@ jobs:
   # gamewe db migrate: gamewe for the collector tests (they delete all
   # rows), gamewe_init stays as created. The migration tests create and drop
   # their own databases mig_* (new, HLstatsX, older gameWE, lock, rights).
-  # Two LTS lines of MariaDB and the two newest PostgreSQL versions.
+  # Two LTS lines of MariaDB, the two newest PostgreSQL versions and SQL
+  # Server 2022 (the Developer edition of Microsoft's image; ACCEPT_EULA
+  # accepts its license for these test runs).
   integration:
     needs: test
     runs-on: ubuntu-26.04
@@ -135,9 +137,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {mariadb: '11.4', postgres: '17'}
-          - {mariadb: '12.3', postgres: '18'}
-    name: integration (MariaDB ${{ matrix.mariadb }}, PostgreSQL ${{ matrix.postgres }})
+          - {mariadb: '11.4', postgres: '17', mssql: '2022-latest'}
+          - {mariadb: '12.3', postgres: '18', mssql: '2022-latest'}
+    name: integration (MariaDB ${{ matrix.mariadb }}, PostgreSQL ${{ matrix.postgres }}, SQL Server ${{ matrix.mssql }})
     services:
       mariadb:
         image: mariadb:${{ matrix.mariadb }}
@@ -155,6 +157,15 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U postgres"
           --health-interval 5s --health-timeout 5s --health-retries 20
+      mssql:
+        image: mcr.microsoft.com/mssql/server:${{ matrix.mssql }}
+        env:
+          ACCEPT_EULA: 'Y'
+          MSSQL_SA_PASSWORD: Gamewe_Test1
+        ports: ['1433:1433']
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P Gamewe_Test1 -Q 'SELECT 1'"
+          --health-interval 5s --health-timeout 5s --health-retries 30
     env:
       COLLECTOR_PASSWORD: colpw
       WEB_PASSWORD: webpw
@@ -173,16 +184,19 @@ jobs:
         env: # the job context is not available in the job-level env
           MYSQL: docker exec -i ${{ job.services.mariadb.id }} mariadb -uroot -proot
           PSQL: docker exec -i ${{ job.services.postgres.id }} psql -U postgres
+          SQLCMD: docker exec -i -e SQLCMDPASSWORD -e db -e collector_pw -e web_pw -e admin_pw ${{ job.services.mssql.id }} /opt/mssql-tools18/bin/sqlcmd
+          SQLCMDPASSWORD: Gamewe_Test1
         run: |
           for db in gamewe gamewe_init; do
             DB_NAME=$db schema/init/init-db.sh
             DB_NAME=$db schema/postgres/init/init-db.sh
+            DB_NAME=$db schema/mssql/init/init-db.sh -S localhost -U sa -C
           done
       - name: create the tables (gamewe db migrate)
         run: |
           go build -o "$RUNNER_TEMP/gamewe" ./cmd/gamewe
           for db in gamewe gamewe_init; do
-            for t in mariadb:3306 postgres:5432; do
+            for t in mariadb:3306 postgres:5432 mssql:1433; do
               cfg="$RUNNER_TEMP/$db-${t%%:*}.yaml"
               printf 'database:\n  type: %s\n  host: 127.0.0.1\n  port: %s\n  user: gamewe\n  password: %s\n  name: %s\n' \
                 "${t%%:*}" "${t##*:}" "$COLLECTOR_PASSWORD" "$db" > "$cfg"
@@ -206,10 +220,19 @@ jobs:
           GAMEWE_TEST_MIGRATE_ADMIN_USER: postgres
           GAMEWE_TEST_MIGRATE_ADMIN_PASSWORD: postgres
         run: go test -count=1 -p 1 -tags integration -run Migrate -v ./internal/database/ ./cmd/gamewe/
+      - name: migrations (SQL Server)
+        env:
+          GAMEWE_TEST_MIGRATE_TYPE: mssql
+          GAMEWE_TEST_MIGRATE_HOST: 127.0.0.1
+          GAMEWE_TEST_MIGRATE_PORT: 1433
+          GAMEWE_TEST_MIGRATE_ADMIN_USER: sa
+          GAMEWE_TEST_MIGRATE_ADMIN_PASSWORD: Gamewe_Test1
+        run: go test -count=1 -p 1 -tags integration -run Migrate -v ./internal/database/ ./cmd/gamewe/
       - name: init scripts, grants, schema parity
         env:
           GAMEWE_TEST_INIT_MYSQL: 127.0.0.1:3306/gamewe_init
           GAMEWE_TEST_INIT_PG: 127.0.0.1:5432/gamewe_init
+          GAMEWE_TEST_INIT_MSSQL: 127.0.0.1:1433/gamewe_init
           GAMEWE_TEST_WEB_PASSWORD: webpw
           GAMEWE_TEST_WEB_ADMIN_PASSWORD: admpw
         run: go test -count=1 -tags integration -run Init -v ./internal/database/
@@ -223,28 +246,34 @@ jobs:
           GAMEWE_TEST_DB_TYPE: postgres
           GAMEWE_TEST_DB_PORT: 5432
         run: go test -count=1 -race -p 1 -tags integration ./internal/collector/ ./internal/admin/
+      - name: collector (SQL Server)
+        env:
+          GAMEWE_TEST_DB_TYPE: mssql
+          GAMEWE_TEST_DB_PORT: 1433
+        run: go test -count=1 -race -p 1 -tags integration ./internal/collector/ ./internal/admin/
       # database.table_prefix: the gw_ tables beside the hlstats_ ones of the
       # same databases; the rows of the hlstats_ tables must stay as they are.
-      - name: table prefix gw (MariaDB and PostgreSQL)
+      - name: table prefix gw (MariaDB, PostgreSQL and SQL Server)
         env:
           GAMEWE_TEST_DB_PREFIX: gw
           GAMEWE_TEST_INIT_MYSQL: 127.0.0.1:3306/gamewe_init
           GAMEWE_TEST_INIT_PG: 127.0.0.1:5432/gamewe_init
+          GAMEWE_TEST_INIT_MSSQL: 127.0.0.1:1433/gamewe_init
           GAMEWE_TEST_WEB_PASSWORD: webpw
           GAMEWE_TEST_WEB_ADMIN_PASSWORD: admpw
           GAMEWE_TEST_MIGRATE_HOST: 127.0.0.1
         run: |
-          rows() { for t in mariadb postgres; do "$RUNNER_TEMP/gamewe" db reset -n -o json -config "$RUNNER_TEMP/gamewe-$t.yaml"; done; }
+          rows() { for t in mariadb postgres mssql; do "$RUNNER_TEMP/gamewe" db reset -n -o json -config "$RUNNER_TEMP/gamewe-$t.yaml"; done; }
           before=$(rows)
           for db in gamewe gamewe_init; do
-            for t in mariadb postgres; do
+            for t in mariadb postgres mssql; do
               sed 's/^database:$/database:\n  table_prefix: gw/' "$RUNNER_TEMP/$db-$t.yaml" > "$RUNNER_TEMP/gw-$db-$t.yaml"
               "$RUNNER_TEMP/gamewe" db migrate -f -config "$RUNNER_TEMP/gw-$db-$t.yaml"
               "$RUNNER_TEMP/gamewe" db migrate -n -config "$RUNNER_TEMP/gw-$db-$t.yaml"
             done
           done
           go test -count=1 -tags integration -run Init ./internal/database/
-          for t in mysql:3306:root:root postgres:5432:postgres:postgres; do
+          for t in mysql:3306:root:root postgres:5432:postgres:postgres mssql:1433:sa:Gamewe_Test1; do
             IFS=: read -r typ port admin pw <<< "$t"
             GAMEWE_TEST_DB_TYPE=$typ GAMEWE_TEST_DB_PORT=$port go test -count=1 -p 1 -tags integration ./internal/collector/ ./internal/admin/
             GAMEWE_TEST_MIGRATE_TYPE=$typ GAMEWE_TEST_MIGRATE_PORT=$port GAMEWE_TEST_MIGRATE_ADMIN_USER=$admin GAMEWE_TEST_MIGRATE_ADMIN_PASSWORD=$pw \
