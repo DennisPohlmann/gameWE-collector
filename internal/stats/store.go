@@ -234,9 +234,9 @@ func (s *Store) query(ctx context.Context, q string, args ...any) (*sql.Rows, er
 
 func (s *Store) exec(ctx context.Context, q string, args ...any) (sql.Result, error) {
 	res, err := s.db.ExecContext(ctx, s.db.Q(q), args...)
-	// SQL Server: a statement chosen as deadlock victim runs again (it is
-	// one statement outside a transaction, rolled back as a whole).
-	for try := 0; try < 3 && s.db.MSSQL() && database.MSSQLDeadlock(err); try++ {
+	// SQL Server: a statement that lost a race for a key or a deadlock runs
+	// again (database.MSSQLRetry).
+	for try := 0; try < 3 && s.db.MSSQL() && database.MSSQLRetry(err); try++ {
 		time.Sleep(time.Duration(10*(try+1)) * time.Millisecond)
 		res, err = s.db.ExecContext(ctx, s.db.Q(q), args...)
 	}

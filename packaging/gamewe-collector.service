@@ -2,7 +2,7 @@
 Description=gameWE - collector (game server statistics)
 Documentation=file:///opt/gamewe/collector/doc/README.md
 Wants=network-online.target
-After=network-online.target mariadb.service mysql.service
+After=network-online.target mariadb.service mysql.service postgresql.service mssql-server.service
 
 [Service]
 # notify: gamewe tells systemd "ready" only once the config, the database

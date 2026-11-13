@@ -367,9 +367,9 @@ func msSource(kind, rest, cols string) string {
 
 // MSSQLIgnore turns "INSERT INTO t (cols) VALUES (...)" or "... SELECT ..."
 // into an insert that skips the rows whose primary or unique key exists, as
-// MariaDB's INSERT IGNORE (SQL Server has none). The key test holds the key
-// range until the statement ends, so two sessions cannot both insert. A
-// statement of another form is returned as it is.
+// MariaDB's INSERT IGNORE (SQL Server has none). Two sessions inserting the
+// same key at once: one fails with a duplicate key and runs again
+// (MSSQLRetry). A statement of another form is returned as it is.
 func MSSQLIgnore(insert string) string {
 	m := reInsert.FindStringSubmatch(insert)
 	if m == nil {
@@ -388,7 +388,7 @@ func MSSQLIgnore(insert string) string {
 		return insert // no key among the columns: nothing can collide
 	}
 	return "INSERT INTO " + m[1] + " (" + m[2] + ") SELECT * FROM " + msSource(m[3], m[4], m[2]) +
-		" WHERE NOT EXISTS (SELECT 1 FROM " + m[1] + " gw_t WITH (UPDLOCK, HOLDLOCK) WHERE " + strings.Join(or, " OR ") + ")"
+		" WHERE NOT EXISTS (SELECT 1 FROM " + m[1] + " gw_t WHERE " + strings.Join(or, " OR ") + ")"
 }
 
 // MSSQLUpsert turns an "INSERT INTO t (cols) VALUES ..." into a MERGE on
@@ -407,17 +407,20 @@ func MSSQLUpsert(insert, key string, sets []string) string {
 	for _, c := range splitCols(m[2]) {
 		vals = append(vals, "v."+c)
 	}
-	return "MERGE INTO " + t + " WITH (HOLDLOCK) USING " + msSource(m[3], m[4], m[2]) + " ON " + strings.Join(on, " AND ") +
+	return "MERGE INTO " + t + " USING " + msSource(m[3], m[4], m[2]) + " ON " + strings.Join(on, " AND ") +
 		" WHEN MATCHED THEN UPDATE SET " + strings.Join(sets, ", ") +
 		" WHEN NOT MATCHED THEN INSERT (" + m[2] + ") VALUES (" + strings.Join(vals, ", ") + ");"
 }
 
-// MSSQLDeadlock reports SQL Server's deadlock error (1205): the statement
-// was rolled back and may run again. Two MERGE ... WITH (HOLDLOCK) on the
-// same key range can deadlock where MariaDB and PostgreSQL wait.
-func MSSQLDeadlock(err error) bool {
+// MSSQLRetry reports the errors after which a single statement outside a
+// transaction (rolled back as a whole) runs again: a duplicate key (2601,
+// 2627: another session inserted the row between the key test and the
+// insert of MSSQLIgnore or MSSQLUpsert; the next run finds it) and a
+// deadlock (1205). Range locks (HOLDLOCK) would avoid the first but
+// deadlock, and SQL Server finds a deadlock only every 5 seconds.
+func MSSQLRetry(err error) bool {
 	var se mssql.Error
-	return errors.As(err, &se) && se.Number == 1205
+	return errors.As(err, &se) && (se.Number == 2601 || se.Number == 2627 || se.Number == 1205)
 }
 
 // MSSQLIdentityInsert lets q (an insert that gives the identity column of

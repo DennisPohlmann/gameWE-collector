@@ -30,10 +30,10 @@ func TestMSSQLIgnoreUpsert(t *testing.T) {
 	for _, c := range []struct{ in, want string }{
 		{"INSERT INTO hlstats_PlayerNames (playerId, name, lastuse, numuses) VALUES (?, ?, ?, 0)",
 			"INSERT INTO hlstats_PlayerNames (playerId, name, lastuse, numuses) SELECT * FROM (VALUES (?, ?, ?, 0)) AS v (playerId, name, lastuse, numuses)" +
-				" WHERE NOT EXISTS (SELECT 1 FROM hlstats_PlayerNames gw_t WITH (UPDLOCK, HOLDLOCK) WHERE (gw_t.playerId = v.playerId AND gw_t.name = v.name))"},
+				" WHERE NOT EXISTS (SELECT 1 FROM hlstats_PlayerNames gw_t WHERE (gw_t.playerId = v.playerId AND gw_t.name = v.name))"},
 		{"INSERT INTO hlstats_Players_Locations (id, lat, lng) VALUES (?, ?, ?)",
 			"INSERT INTO hlstats_Players_Locations (id, lat, lng) SELECT * FROM (VALUES (?, ?, ?)) AS v (id, lat, lng)" +
-				" WHERE NOT EXISTS (SELECT 1 FROM hlstats_Players_Locations gw_t WITH (UPDLOCK, HOLDLOCK) WHERE (gw_t.id = v.id) OR (gw_t.lat = v.lat AND gw_t.lng = v.lng))"},
+				" WHERE NOT EXISTS (SELECT 1 FROM hlstats_Players_Locations gw_t WHERE (gw_t.id = v.id) OR (gw_t.lat = v.lat AND gw_t.lng = v.lng))"},
 		{"INSERT INTO hlstats_Players_Locations (city) VALUES (?)", "INSERT INTO hlstats_Players_Locations (city) VALUES (?)"},
 	} {
 		if got := MSSQLIgnore(c.in); got != c.want {
@@ -41,7 +41,7 @@ func TestMSSQLIgnoreUpsert(t *testing.T) {
 		}
 	}
 	got := MSSQLUpsert("INSERT INTO hlstats_Options (keyname, value) VALUES (?, ?)", "keyname", []string{"value = v.value"})
-	want := "MERGE INTO hlstats_Options WITH (HOLDLOCK) USING (VALUES (?, ?)) AS v (keyname, value) ON hlstats_Options.keyname = v.keyname" +
+	want := "MERGE INTO hlstats_Options USING (VALUES (?, ?)) AS v (keyname, value) ON hlstats_Options.keyname = v.keyname" +
 		" WHEN MATCHED THEN UPDATE SET value = v.value WHEN NOT MATCHED THEN INSERT (keyname, value) VALUES (v.keyname, v.value);"
 	if got != want {
 		t.Errorf("MSSQLUpsert\n got %q\nwant %q", got, want)

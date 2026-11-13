@@ -422,11 +422,13 @@ The collector's statements are written once for all databases; on SQL Server
 the connection translates them (`internal/database/mssql.go`): `?` becomes
 `@p1, @p2, ...`, `LIMIT` becomes `OFFSET ... FETCH`, an insert that skips
 existing keys (MariaDB `INSERT IGNORE`) becomes `INSERT ... SELECT ... WHERE NOT
-EXISTS` with a key-range lock, an upsert (`ON DUPLICATE KEY UPDATE`) a `MERGE
-... WITH (HOLDLOCK)`, and the locks of the collector and the jobs are
-application locks (`sp_getapplock`). Two concurrent upserts of the same row
-can end in a deadlock on SQL Server where MariaDB waits; the collector runs
-such a statement again (up to three times).
+EXISTS`, an upsert (`ON DUPLICATE KEY UPDATE`) a `MERGE`, and the locks of
+the collector and the jobs are application locks (`sp_getapplock`). When two
+sessions insert the same key at the same moment, one gets a duplicate-key
+error (or, rarely, a deadlock) and the collector runs that statement again
+(up to three times): it then finds the row. Range locks (`HOLDLOCK`) are not
+used on purpose: they deadlock under several game servers, and SQL Server
+detects a deadlock only every 5 seconds.
 
 `hlstats_Livestats` is a normal table (no MEMORY engine). `gamewe db optimize`
 runs `ALTER INDEX ALL ... REORGANIZE` and `UPDATE STATISTICS`, `gamewe db reset`
