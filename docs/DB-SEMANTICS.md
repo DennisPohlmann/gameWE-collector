@@ -406,7 +406,7 @@ The PostgreSQL schema is generated from the MariaDB one: the same tables and
 columns with the same names, NOT NULLs and defaults, the same primary keys
 (`hlstats_Options.keyname`, `hlstats_Users.username`, ...) and unique keys, and
 the same reference data. The collector writes the same values into both (the
-CI tests run the same game against both databases and compare the schemas).
+CI tests run the same game against every database and compare the schemas).
 What a reader has to know:
 
 | Topic | MariaDB / MySQL | PostgreSQL |
@@ -431,7 +431,7 @@ What a reader has to know:
 | Rights | `gamewe_web` cannot read `hlstats_Servers.rcon_password` | the same (column rights); `gamewe_web_admin` also has USAGE on the sequences, so its inserts get ids |
 
 `yearweek_id` is computed by the collector (MySQL `YEARWEEK` mode 0, weeks
-start on Sunday) and has the same values on both databases.
+start on Sunday) and has the same values on every database.
 
 ## SQL Server
 

@@ -50,7 +50,7 @@ changes are in [CLAUDE.md](CLAUDE.md). Before you propose a change, run:
 make test vet
 ```
 
-Integration tests against MariaDB/MySQL and PostgreSQL are described in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md); CI runs them on every push.
+Integration tests against MariaDB/MySQL, PostgreSQL and SQL Server are described in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md); CI runs them on every push.
 
 Please also:
 

@@ -31,7 +31,7 @@ passwords.
 | MariaDB | 11.4 (LTS), 12.3 (LTS) | recommended; `schema/init/` |
 | PostgreSQL | 17, 18 | `schema/postgres/init/` |
 | Microsoft SQL Server | 2022 | `schema/mssql/init/`; also Express (free, 10 GB per database). Older versions lack `GREATEST`, `LEAST` and `IS DISTINCT FROM`. Notes: [DATABASE.md](DATABASE.md#sql-server) |
-| MySQL 8.x | not supported | the collector speaks the MySQL protocol, but the schema (`USING HASH`) and the web users' rights (`BEGIN NOT ATOMIC`) use MariaDB syntax. Use MariaDB or PostgreSQL. |
+| MySQL 8.x | not supported | the collector speaks the MySQL protocol, but the schema (`USING HASH`) and the web users' rights (`BEGIN NOT ATOMIC`) use MariaDB syntax. Use MariaDB, PostgreSQL or SQL Server. |
 
 **Folder layout** (release archive; the container has the same paths inside):
 
@@ -84,9 +84,11 @@ docker compose up -d && docker compose logs -f collector
 | `./config/db-ca.pem` (optional) | `/etc/gamewe/collector/db-ca.pem` | CA for `tls.mode: verify-ca` / `verify-full` |
 
 A database in the same Compose project is optional: the profiles `mariadb`
-(MariaDB 12.3) and `postgres` (PostgreSQL 18) start one that listens on
-`127.0.0.1` only and keeps its data in its own named volume (`mariadb` →
-`/var/lib/mysql`, `postgres` → `/var/lib/postgresql`), separate from the
+(MariaDB 12.3), `postgres` (PostgreSQL 18) and `mssql` (SQL Server 2022
+Express; set `MSSQL_ACCEPT_EULA=Y` in `.env` if you accept Microsoft's
+license) start one that listens on `127.0.0.1` only and keeps its data in
+its own named volume (`mariadb` → `/var/lib/mysql`, `postgres` →
+`/var/lib/postgresql`, `mssql` → `/var/opt/mssql`), separate from the
 collector's `gamewe-data`. A database elsewhere works the same way; then
 leave the profiles out.
 
@@ -95,7 +97,7 @@ reads `DB_ROOT_PASSWORD`; the other three are for the init script below:
 
 ```bash
 # .env - gameWE collector with Docker Compose (placeholders: set your own)
-DB_ROOT_PASSWORD=change-me-root          # root of the MariaDB / postgres of the PostgreSQL container
+DB_ROOT_PASSWORD=change-me-root          # root of MariaDB / postgres of PostgreSQL / sa of SQL Server (8+ characters of three kinds)
 COLLECTOR_PASSWORD=change-me-collector   # database user gamewe (also in config/config.yaml)
 WEB_PASSWORD=change-me-web               # database user gamewe_web (web frontend, public pages)
 WEB_ADMIN_PASSWORD=change-me-web-admin   # database user gamewe_web_admin (web frontend, admin pages)
@@ -118,11 +120,17 @@ docker compose --profile postgres up -d
 (cd schema/postgres/init && PSQL='docker compose -f ../../../docker-compose.yml exec -T postgres psql' \
   ./init-db.sh -U postgres)
 
+# or SQL Server 2022 (MSSQL_ACCEPT_EULA=Y in .env)
+docker compose --profile mssql up -d
+(cd schema/mssql/init && SQLCMDPASSWORD="$DB_ROOT_PASSWORD" \
+  SQLCMD='docker compose -f ../../../docker-compose.yml exec -T -e SQLCMDPASSWORD -e db -e collector_pw -e web_pw -e admin_pw mssql /opt/mssql-tools18/bin/sqlcmd' \
+  ./init-db.sh -S localhost -U sa -C)
+
 docker compose up -d collector               # creates the tables at the first start (database.auto_migrate)
 docker compose run --rm collector check     # config, database, schema, servers
 ```
 
-In `config/config.yaml` then: `database.type` (`mariadb` or `postgres`),
+In `config/config.yaml` then: `database.type` (`mariadb`, `postgres` or `mssql`),
 `host: 127.0.0.1`, `user: gamewe`, `password:` the `COLLECTOR_PASSWORD`
 (the collector reads no environment variables; a password file can be mounted
 read-only and named in `password_file`).
@@ -439,9 +447,11 @@ for the service. Check with `icacls "$conf\config.yaml"`.
 - **Uninstall:** `gamewe service uninstall` (stops it first), then delete
   `C:\Program Files\gameWE\collector` and, with the config and the GeoIP
   database, `%ProgramData%\gameWE`.
-- **Database:** MariaDB or PostgreSQL may run on Windows or elsewhere; create
+- **Database:** MariaDB, PostgreSQL or SQL Server may run on Windows or elsewhere; create
   the database and the users with the SQL of `doc\schema\init\00_create_database.sql`
-  (MariaDB) or `doc\schema\postgres\init\00_create_database.sql` (PostgreSQL)
+  (MariaDB), `doc\schema\postgres\init\00_create_database.sql` (PostgreSQL) or
+  `doc\schema\mssql\init\00_create_database.sql` (SQL Server, run with
+  `sqlcmd -v db=gamewe collector_pw=... web_pw=... admin_pw=... -i ...`)
   by hand, the passwords set in place of the placeholders (C), then
   `gamewe db init`.
 - Not on Windows: `sd_notify` (systemd), the check of the file modes of the
@@ -698,9 +708,10 @@ refuses to start until then). To see the plan first: `gamewe db migrate -n`
 before the start.
 
 ```bash
-# backup first (MariaDB / PostgreSQL)
+# backup first (MariaDB / PostgreSQL / SQL Server)
 mariadb-dump -u root -p --single-transaction --routines gamewe > gamewe-before-update.sql
 # pg_dump -U postgres -Fc gamewe > gamewe-before-update.dump
+# sqlcmd -S localhost -U sa -C -Q "BACKUP DATABASE [gamewe] TO DISK = N'gamewe-before-update.bak'"
 
 # archive
 systemctl stop gamewe-collector

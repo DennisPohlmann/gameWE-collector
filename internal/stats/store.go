@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Package stats writes game events into the HLstatsX (gameME style)
-// database, MariaDB / MySQL or PostgreSQL, and answers the queries behind
-// the in-game commands. The schemas are internal/schema/mysql/schema.sql
-// and internal/schema/postgres/schema.sql.
+// database, MariaDB / MySQL, PostgreSQL or SQL Server, and answers the
+// queries behind the in-game commands. The schemas are in internal/schema
+// (mysql/, postgres/, mssql/).
 //
 // SQL is written once with ? placeholders; the few dialect differences go
 // through ignore, upsert, insertID and skillSet. The store uses no

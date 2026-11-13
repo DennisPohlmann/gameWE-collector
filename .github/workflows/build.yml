@@ -123,7 +123,7 @@ jobs:
           "$g" service stop -f || true # stopped already when it failed
           "$g" service uninstall -f
 
-  # Both databases, created from scratch with the init scripts and
+  # All three databases, created from scratch with the init scripts and
   # gamewe db migrate: gamewe for the collector tests (they delete all
   # rows), gamewe_init stays as created. The migration tests create and drop
   # their own databases mig_* (new, HLstatsX, older gameWE, lock, rights).

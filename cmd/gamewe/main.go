@@ -2,7 +2,7 @@
 
 // Command gamewe is the gameWE collector: it receives Source-engine game
 // server logs over UDP, writes player statistics into an HLstatsX database
-// (MariaDB / MySQL or PostgreSQL) and answers in-game commands over RCON.
+// (MariaDB / MySQL, PostgreSQL or SQL Server) and answers in-game commands over RCON.
 package main
 
 import (

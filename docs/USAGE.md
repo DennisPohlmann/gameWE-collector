@@ -341,7 +341,7 @@ gamewe db grants -print | mariadb -u root -p gamewe   # the same SQL, run as a d
 gamewe db seed                   # add missing reference data; existing rows stay as they are
 gamewe db init                   # a new, empty database: tables, reference data, rights
 gamewe db purge -older-than 90d  # delete the events older than 90 days (--dry-run: count only; asks [y/N], --force)
-gamewe db optimize               # give the space of deleted rows back (OPTIMIZE TABLE / VACUUM ANALYZE)
+gamewe db optimize               # give the space of deleted rows back (OPTIMIZE TABLE / VACUUM ANALYZE / index REORGANIZE)
 gamewe db reset                  # empty every table, reference data again: as new (asks for the database name, --force)
 gamewe db drop                   # drop all gameWE tables (-print: the SQL for a database admin; MariaDB needs DROP)
 gamewe db cleanup -n             # list the old tables gameWE no longer uses, with rows and why

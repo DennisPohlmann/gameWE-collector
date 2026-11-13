@@ -140,7 +140,7 @@ another host or in a container; a `gamewe run` process on this host (also up
 to 0.7.1, without the lock) or the active systemd unit `gamewe-collector`
 counts too. The refusal lists the commands to stop it, migrate and start it
 again ([USAGE.md](USAGE.md)). Each step waits at most 30 seconds for a table another
-session holds (`lock_wait_timeout`, PostgreSQL `lock_timeout`), Ctrl-C stops
+session holds (`lock_wait_timeout`, PostgreSQL `lock_timeout`, SQL Server `LOCK_TIMEOUT`), Ctrl-C stops
 the migration (the waiting statement too) and says which steps are done.
 
 What it does:
@@ -277,9 +277,9 @@ from an old HLstatsX, are listed and left alone.
 |---------|--------------|--------|
 | `gamewe db init` | creates the tables, the reference data and the web users' rights of a **new, empty** database (what the first start does with `auto_migrate`); refuses a database that has tables | the collector user |
 | `gamewe db purge -older-than 90d` | deletes the **events** (`hlstats_Events_*`: frags, connects, chat, actions, ...) older than that many days (at least 7, plain `90` works too). Players, their totals, rankings, awards, the history per day and the server statistics stay; the event lists of the web pages get shorter. Asks `[y/N]`; on MariaDB in chunks of 20,000 rows, so a table is locked only shortly and the collector can keep running | the collector user |
-| `gamewe db optimize` | gives the space of deleted rows back to the disk and renews the table statistics (MariaDB `OPTIMIZE TABLE`, PostgreSQL `VACUUM ANALYZE`), e.g. after `purge`. MyISAM tables are locked while they are rebuilt: run it at a quiet time | the collector user |
-| `gamewe db reset` | **empties every table** and loads the reference data again, the AUTO_INCREMENT / identity counters start at 1: the database is as new. Everything goes, also the game servers, the settings (`hlstats_Options`), the admin logins (`hlstats_Users`) and own games or changed definitions; the tables and schema versions stay. Asks to type the database name. For one ranking only: `gamewe reset GAME -mode all` | the collector user (PostgreSQL: owner of the tables, for `TRUNCATE`) |
-| `gamewe db convert -from CE` | copies an **HLstatsX:CE** database into this gameWE database, which must be new (no tables) or have no data yet (no players, servers, clans, frags): creates the schema, converts every table (event times to UTC, names and codes to ids, character sets to utf8mb4) and compares the rows of both at the end. The CE database is only read (a read-only session). Shows the plan and asks `[y/N]`; `--dry-run`, `--force`, `-source-timezone`, `-mojibake`. MariaDB / MySQL only. [MIGRATION-HLSTATSX.md](MIGRATION-HLSTATSX.md) | the collector user; SELECT on the CE database |
+| `gamewe db optimize` | gives the space of deleted rows back to the disk and renews the table statistics (MariaDB `OPTIMIZE TABLE`, PostgreSQL `VACUUM ANALYZE`, SQL Server `ALTER INDEX ... REORGANIZE` and `UPDATE STATISTICS`), e.g. after `purge`. MyISAM tables are locked while they are rebuilt: run it at a quiet time | the collector user |
+| `gamewe db reset` | **empties every table** and loads the reference data again, the AUTO_INCREMENT / identity counters start at 1: the database is as new. Everything goes, also the game servers, the settings (`hlstats_Options`), the admin logins (`hlstats_Users`) and own games or changed definitions; the tables and schema versions stay. Asks to type the database name. For one ranking only: `gamewe reset GAME -mode all` | the collector user (PostgreSQL: owner of the tables, for `TRUNCATE`; SQL Server: `db_owner`) |
+| `gamewe db convert -from CE` | copies an **HLstatsX:CE** database into this gameWE database, which must be new (no tables) or have no data yet (no players, servers, clans, frags): creates the schema, converts every table (event times to UTC, names and codes to ids, character sets to utf8mb4) and compares the rows of both at the end. The CE database is only read (a read-only session). Shows the plan and asks `[y/N]`; `--dry-run`, `--force`, `-source-timezone`, `-mojibake`. MariaDB / MySQL only (not PostgreSQL, not SQL Server). [MIGRATION-HLSTATSX.md](MIGRATION-HLSTATSX.md) | the collector user; SELECT on the CE database |
 | `gamewe db cleanup` | **drops the tables gameWE no longer uses**: the HLstatsX tables nothing wrote or read (`hlstats_Players_Roles*`, `hlstats_Players_Teams*`, `hlstats_Trend`, `hlstats_Events_Admin`, `hlstats_Events_Rcon`, `hlstats_Style`, `hlstats_HostGroups`; part of the schema up to collector 1.4), tables left over from HLstatsX:CE (`hlstats_Ranks`, `hlstats_Ribbons`, `hlstats_Players_Awards`, ...) and the version table of its old name `gamewe_schema_migrations` (its versions are in `hlstats_gamewe_schema_migrations` since collector 1.5). It lists the tables it finds with their rows and why, then asks to type the database name; there is **no `--force`**, without a terminal it drops nothing. Other tables (not gameWE's and not known as old) are listed and left alone. Only names compiled into the collector are dropped, never one read from the database. The schema must be up to date (`gamewe db migrate` first). `gamewe db status` and `migrate` name the old tables they find. `--dry-run` only lists | DROP: on MariaDB a database admin, `gamewe db cleanup -print \| mariadb -u root -p gamewe` (`-print` prints the `DROP TABLE IF EXISTS ...` of every old table with a comment per table; run `--dry-run` first to see what is there); on PostgreSQL the collector (owner) |
 | `gamewe db drop` | **drops all tables** of the gameWE schema. Afterwards `gamewe db init` (or the next start) creates them again. Asks to type the database name | DROP: on MariaDB a database admin, `gamewe db drop -print \| mariadb -u root -p gamewe` (`-print` only prints the `DROP TABLE IF EXISTS ...`); on PostgreSQL the collector (owner) |
 
@@ -447,6 +447,8 @@ Manager (Windows).
 
 ## Moving to PostgreSQL or back
 
+(MariaDB and PostgreSQL only; there is no move script for SQL Server.)
+
 gameWE has no command of its own for this: `gamewe db convert` only takes
 over an HLstatsX:CE database on MariaDB. Because both databases have the same
 tables and columns (compiled into the collector), the script
@@ -579,7 +581,7 @@ needs `key_buffer_size` at least the size of its indexes and
 
 ## TLS on the server
 
-For PostgreSQL see [PostgreSQL](#postgresql). For MariaDB / MySQL, in `my.cnf` / `mariadb.conf.d`:
+For PostgreSQL see [PostgreSQL](#postgresql), for SQL Server [SQL Server](#sql-server). For MariaDB / MySQL, in `my.cnf` / `mariadb.conf.d`:
 
 ```
 [mysqld]

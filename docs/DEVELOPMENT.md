@@ -169,8 +169,8 @@ Example, a new column `hlstats_Servers.log_secret`:
 4. Never change a migration that was released: its checksum is recorded,
    `gamewe db status` warns about a difference. Write a new one.
 5. Tests: `go test ./internal/schema/ ./internal/database/ ./tools/...` (schema
-   parsing, both dialects equal, plan steps), then the integration tests
-   against throwaway MariaDB and PostgreSQL containers (above,
+   parsing, all dialects equal, plan steps), then the integration tests
+   against throwaway MariaDB, PostgreSQL and SQL Server containers (above,
    `-run Migrate`): a new database and every upgrade path must end up to
    date, a second run must be a no-op. Add a case to
    `internal/database/migrate_integration_test.go` if the migration does more

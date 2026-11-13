@@ -38,8 +38,8 @@ What this means for the import:
 
 - The gameME ZIP, and a copy of it you keep unchanged.
 - The database server for gameWE: MariaDB 11.4 or newer (MySQL 8 is not
-  supported by the gameWE scripts). This guide does not cover PostgreSQL as
-  the target.
+  supported by the gameWE scripts). This guide does not cover PostgreSQL or SQL Server
+  as the target.
 - Docker or Podman for the temporary MariaDB (any MariaDB 10.6+ that you can
   copy files into works too).
 - Free disk space: about three times the unpacked size of the ZIP.

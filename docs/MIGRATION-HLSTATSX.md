@@ -40,7 +40,7 @@ The full mapping per table is in [Table mapping](#table-mapping).
   the backup.
 - The database server for gameWE: MariaDB 11.4 or newer. The CE database
   can be on the same server or on another one. `gamewe db convert` does not
-  write into PostgreSQL.
+  write into PostgreSQL or SQL Server.
 - The gameWE collector (the `gamewe` binary, `schema/init/`), see
   [INSTALLATION.md](INSTALLATION.md).
 
