@@ -1,14 +1,15 @@
 # gameWE - collector: database
 
 gameWE writes into an **HLstatsX database** (the gameME-style HLstatsX
-variant) on **MariaDB / MySQL** or **PostgreSQL**. Choose with `database.type`
-in the config (`mariadb`, the default, or `postgres`; see [CONFIG.md](CONFIG.md)).
+variant) on **MariaDB / MySQL**, **PostgreSQL** or **Microsoft SQL Server**.
+Choose with `database.type` in the config (`mariadb`, the default, `postgres`
+or `mssql`; see [CONFIG.md](CONFIG.md)).
 The HLstatsX web pages and any other tool reading that database keep working.
 The table structure, the reference data and the rights of the web users are
 **compiled into the collector** (`internal/schema/` in the source:
-`mysql/schema.sql`, `seed.sql`, `grants.sql` and the PostgreSQL files generated
-from them with `make schema`, so both always have the same tables, columns,
-defaults and reference data). The collector never reads SQL files from the
+`mysql/schema.sql`, `seed.sql`, `grants.sql` and the PostgreSQL and SQL Server
+files generated from them with `make schema`, so all have the same tables,
+columns, defaults and reference data). The collector never reads SQL files from the
 disk: at its start (`database.auto_migrate`, the default) or with `gamewe db
 migrate` it creates the tables of a new database and brings an older one to
 the current version ([Schema versions and
@@ -22,10 +23,10 @@ What the collector writes into which table and column is described in
 `hlstats_*`; with another [table prefix](#table-prefix) read your prefix
 instead.
 
-Tested with every release: MariaDB 11.4 and 12.3, PostgreSQL 17 and 18. MySQL
-8 is not supported (the schema and the rights use MariaDB syntax). How the
-PostgreSQL schema differs (types, names, zero dates) is listed in
-[DB-SEMANTICS.md](DB-SEMANTICS.md#postgresql).
+Tested with every release: MariaDB 11.4 and 12.3, PostgreSQL 17 and 18, SQL
+Server 2022. MySQL 8 is not supported (the schema and the rights use MariaDB
+syntax). How the PostgreSQL and SQL Server schemas differ (types, names, zero
+dates) is listed in [DB-SEMANTICS.md](DB-SEMANTICS.md#postgresql).
 
 ## A new database (MariaDB / MySQL)
 
@@ -385,6 +386,64 @@ ssl_cert_file = '/etc/postgresql/server.crt'
 ssl_key_file  = '/etc/postgresql/server.key'
 ssl_ca_file   = '/etc/postgresql/ca.crt'     # for client certificates
 ```
+
+## SQL Server
+
+Microsoft SQL Server 2022 or newer (any edition; Express is free up to 10 GB
+per database): older versions lack `GREATEST`, `LEAST` and `IS DISTINCT FROM`,
+which the collector uses. The same two steps: `schema/mssql/init/`
+(`/opt/gamewe/collector/doc/schema/mssql/init/` in the package) has
+`00_create_database.sql` and `init-db.sh`, run with `sqlcmd` as a sysadmin:
+
+```bash
+cd /opt/gamewe/collector/doc/schema/mssql/init
+SQLCMDPASSWORD='<sa password>' COLLECTOR_PASSWORD='...' WEB_PASSWORD='...' WEB_ADMIN_PASSWORD='...' \
+  ./init-db.sh -S db.example.org -U sa        # add -C to trust a self-signed server certificate
+# in a container: SQLCMD='docker exec -i -e SQLCMDPASSWORD -e db -e collector_pw -e web_pw -e admin_pw mssql /opt/mssql-tools18/bin/sqlcmd' ./init-db.sh -S localhost -U sa -C
+sudo -u gamewe /opt/gamewe/collector/bin/gamewe db init   # or: start the collector
+```
+
+`init-db.sh` creates the database (collation `Latin1_General_100_CI_AS_SC`:
+case-insensitive like MariaDB's), the logins and database users `gamewe`,
+`gamewe_web` and `gamewe_web_admin` (or sets the passwords of existing logins;
+`CHECK_POLICY = OFF`), and makes `gamewe` a member of `db_owner`. The passwords
+reach sqlcmd as environment variables, not on the command line. Like the other
+scripts it stops if the database already has tables. Without the script:
+create the database with a case-insensitive collation, the three logins and
+users, and `ALTER ROLE db_owner ADD MEMBER gamewe`.
+
+| User | Rights |
+|------|--------|
+| `gamewe` | `db_owner` of the database (creates and alters the tables, grants the web users their rights) |
+| `gamewe_web` | the same table and column rights as on MariaDB. SQL Server checks column rights strictly: a query on `hlstats_Servers` or `hlstats_Events_Connects` must name readable columns; `SELECT *`, `COUNT(*)`, `SELECT 1` and `EXISTS (SELECT 1 ...)` on these two tables are refused (count a column: `COUNT(serverId)`) |
+| `gamewe_web_admin` | SELECT on the schema `dbo`; INSERT, UPDATE, DELETE on the same tables as on MariaDB; on `hlstats_Players` only UPDATE of `skill`, `hideranking`, `clan` |
+
+The collector's statements are written once for all databases; on SQL Server
+the connection translates them (`internal/database/mssql.go`): `?` becomes
+`@p1, @p2, ...`, `LIMIT` becomes `OFFSET ... FETCH`, an insert that skips
+existing keys (MariaDB `INSERT IGNORE`) becomes `INSERT ... SELECT ... WHERE NOT
+EXISTS` with a key-range lock, an upsert (`ON DUPLICATE KEY UPDATE`) a `MERGE
+... WITH (HOLDLOCK)`, and the locks of the collector and the jobs are
+application locks (`sp_getapplock`). Two concurrent upserts of the same row
+can end in a deadlock on SQL Server where MariaDB waits; the collector runs
+such a statement again (up to three times).
+
+`hlstats_Livestats` is a normal table (no MEMORY engine). `gamewe db optimize`
+runs `ALTER INDEX ALL ... REORGANIZE` and `UPDATE STATISTICS`, `gamewe db reset`
+empties the tables with `TRUNCATE TABLE` (identities start at 1 again).
+`gamewe db convert` (HLstatsX:CE) and `schema/move/move-db.sh` work with
+MariaDB and PostgreSQL only: start a SQL Server installation with a new
+database. Backups: `BACKUP DATABASE [gamewe] TO DISK = N'...'` (or your
+backup tool).
+
+TLS: with `database.tls.mode` other than `disable` every packet is encrypted
+and the certificate is checked as configured (`require`, `verify-ca`,
+`verify-full`), never with a fallback to plaintext. With `disable` the
+collector encrypts only the login (the driver's default for SQL Server; the
+certificate is not checked then), which is fine for a database on localhost.
+On the server: `sudo /opt/mssql/bin/mssql-conf set network.tlscert` / `tlskey`
+and `network.forceencryption 1` (Linux), or the SQL Server Configuration
+Manager (Windows).
 
 ## Moving to PostgreSQL or back
 

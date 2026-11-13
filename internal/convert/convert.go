@@ -154,7 +154,7 @@ type Options struct {
 // Inspect checks the source and the gameWE database and makes the plan.
 // It only reads both.
 func Inspect(ctx context.Context, src, dst *database.DB, opt Options) (*Plan, error) {
-	if src.Postgres() || dst.Postgres() {
+	if src.Postgres() || dst.Postgres() || src.MSSQL() || dst.MSSQL() {
 		return nil, ErrNotMySQL
 	}
 	if opt.Mojibake == "" {

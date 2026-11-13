@@ -7,7 +7,7 @@
 // DELETES ALL ROWS of the database, so it only runs with
 // GAMEWE_TEST_DB_WIPE=yes:
 //
-//	GAMEWE_TEST_DB_TYPE=mysql|postgres GAMEWE_TEST_DB_HOST=127.0.0.1 GAMEWE_TEST_DB_PORT=33306 \
+//	GAMEWE_TEST_DB_TYPE=mysql|postgres|mssql GAMEWE_TEST_DB_HOST=127.0.0.1 GAMEWE_TEST_DB_PORT=33306 \
 //	GAMEWE_TEST_DB_USER=gamewe GAMEWE_TEST_DB_PASSWORD=... GAMEWE_TEST_DB_NAME=gamewe GAMEWE_TEST_DB_WIPE=yes \
 //	go test -race -tags integration ./internal/collector/
 package collector
@@ -23,6 +23,7 @@ import (
 	"net/netip"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -44,8 +45,8 @@ func testDB(t *testing.T) *database.DB {
 	cfg := config.Defaults().Database
 	cfg.Host, cfg.Port = os.Getenv("GAMEWE_TEST_DB_HOST"), port
 	cfg.Type = config.MySQL
-	if os.Getenv("GAMEWE_TEST_DB_TYPE") == config.Postgres {
-		cfg.Type = config.Postgres
+	if t := os.Getenv("GAMEWE_TEST_DB_TYPE"); t == config.Postgres || t == config.MSSQL {
+		cfg.Type = t
 	}
 	cfg.User, cfg.Password, cfg.Name = os.Getenv("GAMEWE_TEST_DB_USER"), os.Getenv("GAMEWE_TEST_DB_PASSWORD"), os.Getenv("GAMEWE_TEST_DB_NAME")
 	cfg.TLS.Mode = config.TLSDisable
@@ -73,6 +74,12 @@ func testDB(t *testing.T) *database.DB {
 	}
 	for _, tb := range all {
 		tbl := tb.Name
+		if db.MSSQL() { // TRUNCATE starts the identity at 1 again
+			if _, err := db.Exec("TRUNCATE TABLE " + tbl); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
 		if _, err := db.Exec("DELETE FROM " + tbl); err != nil {
 			t.Fatal(err)
 		}
@@ -88,7 +95,7 @@ func testDB(t *testing.T) *database.DB {
 	}
 	for _, q := range []string{
 		// explicit ids: the tinyint id would run out over many test runs
-		`INSERT INTO hlstats_Games (id, code, name) VALUES (1, 'css', 'Counter-Strike: Source'), (2, 'tf', 'Team Fortress 2')`,
+		identityInsert(db, `INSERT INTO hlstats_Games (id, code, name) VALUES (1, 'css', 'Counter-Strike: Source'), (2, 'tf', 'Team Fortress 2')`),
 		`INSERT INTO hlstats_Actions (game, code, reward_player, reward_team, team, for_PlayerActions, for_TeamActions) VALUES
 			('css', 'Planted_The_Bomb', 15, 0, 'TERRORIST', '1', '0'), ('css', 'CTs_Win', 0, 2, 'CT', '0', '1')`,
 		`INSERT INTO hlstats_Weapons (game, code, name, modifier) VALUES ('css', 'weapon1', 'W1', 2.00)`,
@@ -100,6 +107,27 @@ func testDB(t *testing.T) *database.DB {
 		}
 	}
 	return db
+}
+
+// identityInsert lets an insert that gives the identity column (an
+// explicit id) run on SQL Server.
+func identityInsert(db *database.DB, q string) string {
+	m := regexp.MustCompile(`^\s*INSERT INTO (\w+) \(([^)]*)\)`).FindStringSubmatch(q)
+	if !db.MSSQL() || m == nil {
+		return q
+	}
+	tables, _ := schema.Tables(schema.MSSQL)
+	for _, tb := range tables {
+		if !strings.EqualFold(tb.Name, m[1]) {
+			continue
+		}
+		for _, c := range tb.Columns {
+			if strings.Contains(c.Def, "IDENTITY") && slices.Contains(strings.Split(strings.ReplaceAll(m[2], " ", ""), ","), c.Name) {
+				return "SET IDENTITY_INSERT " + m[1] + " ON; " + q + "; SET IDENTITY_INSERT " + m[1] + " OFF"
+			}
+		}
+	}
+	return q
 }
 
 // strictLog returns a logger whose warnings and errors fail the test.
@@ -190,7 +218,7 @@ func TestIntegrationThreeServers(t *testing.T) {
 		t.Errorf("live kills of the renamed roamer: %d, want 1", got)
 	}
 	var stored string
-	if err := db.QueryRow(`SELECT d.lastName FROM hlstats_Players_Data d JOIN hlstats_PlayerUniqueIds u USING (playerId)
+	if err := db.QueryRow(`SELECT d.lastName FROM hlstats_Players_Data d JOIN hlstats_PlayerUniqueIds u ON u.playerId = d.playerId
 		WHERE u.uniqueId = '0:777' AND u.game = 'tf'`).Scan(&stored); err != nil || stored != newName {
 		t.Errorf("stored name %q (%v), want %q", stored, err, newName)
 	}
@@ -223,11 +251,11 @@ func TestIntegrationThreeServers(t *testing.T) {
 		// The roamer is one player per game, even though two css servers
 		// registered it at the same moment.
 		{"roamer unique ids", count(t, db, `SELECT COUNT(*) FROM hlstats_PlayerUniqueIds WHERE uniqueId = '0:777'`), 2},
-		{"no orphan players", count(t, db, `SELECT COUNT(*) FROM hlstats_Players p LEFT JOIN hlstats_PlayerUniqueIds u USING (playerId) WHERE u.playerId IS NULL`), 0},
+		{"no orphan players", count(t, db, `SELECT COUNT(*) FROM hlstats_Players p LEFT JOIN hlstats_PlayerUniqueIds u ON u.playerId = p.playerId WHERE u.playerId IS NULL`), 0},
 		{"players", count(t, db, `SELECT COUNT(*) FROM hlstats_Players`), 3*3 - 1},
-		{"roamer css kills", count(t, db, `SELECT p.kills FROM hlstats_Players p JOIN hlstats_PlayerUniqueIds u USING (playerId) WHERE u.uniqueId = '0:777' AND u.game = 'css'`), 2},
-		{"roamer css wins", count(t, db, `SELECT p.wins FROM hlstats_Players p JOIN hlstats_PlayerUniqueIds u USING (playerId) WHERE u.uniqueId = '0:777' AND u.game = 'css'`), 2},
-		{"roamer tf kills", count(t, db, `SELECT p.kills FROM hlstats_Players p JOIN hlstats_PlayerUniqueIds u USING (playerId) WHERE u.uniqueId = '0:777' AND u.game = 'tf'`), 1},
+		{"roamer css kills", count(t, db, `SELECT p.kills FROM hlstats_Players p JOIN hlstats_PlayerUniqueIds u ON u.playerId = p.playerId WHERE u.uniqueId = '0:777' AND u.game = 'css'`), 2},
+		{"roamer css wins", count(t, db, `SELECT p.wins FROM hlstats_Players p JOIN hlstats_PlayerUniqueIds u ON u.playerId = p.playerId WHERE u.uniqueId = '0:777' AND u.game = 'css'`), 2},
+		{"roamer tf kills", count(t, db, `SELECT p.kills FROM hlstats_Players p JOIN hlstats_PlayerUniqueIds u ON u.playerId = p.playerId WHERE u.uniqueId = '0:777' AND u.game = 'tf'`), 1},
 		{"team bonuses (css only)", count(t, db, `SELECT COUNT(*) FROM hlstats_Events_TeamBonuses WHERE bonus = 2 AND game_id = ?`, css), 4},
 		{"player actions", count(t, db, `SELECT COUNT(*) FROM hlstats_Events_PlayerActions WHERE bonus = 15`), 2},
 		{"weapon stats", count(t, db, `SELECT SUM(shots) FROM hlstats_Players_Weapons`), 30},
@@ -249,7 +277,7 @@ func TestIntegrationThreeServers(t *testing.T) {
 	}
 	// weapon1 has modifier 2.00 on css: a kill is worth 10 (+1 headshot).
 	var skill int
-	if err := db.QueryRow(`SELECT p.skill FROM hlstats_Players p JOIN hlstats_PlayerUniqueIds u USING (playerId)
+	if err := db.QueryRow(`SELECT p.skill FROM hlstats_Players p JOIN hlstats_PlayerUniqueIds u ON u.playerId = p.playerId
 		WHERE u.uniqueId = '0:101' AND u.game = 'css'`).Scan(&skill); err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +308,7 @@ func TestIntegrationConcurrentCounters(t *testing.T) {
 		}
 	}
 	hub.Close(context.Background())
-	if got := count(t, db, `SELECT p.kills FROM hlstats_Players p JOIN hlstats_PlayerUniqueIds u USING (playerId) WHERE u.uniqueId = '0:1'`); got != 2*n {
+	if got := count(t, db, `SELECT p.kills FROM hlstats_Players p JOIN hlstats_PlayerUniqueIds u ON u.playerId = p.playerId WHERE u.uniqueId = '0:1'`); got != 2*n {
 		t.Errorf("killer kills %d, want %d", got, 2*n)
 	}
 	if got := count(t, db, `SELECT kills FROM hlstats_Weapons WHERE code = 'ak47'`); got != 2*n {
@@ -353,9 +381,21 @@ func loadSeed(t *testing.T, db *database.DB) {
 	t.Helper()
 	for _, tbl := range []string{"hlstats_Games", "hlstats_Actions", "hlstats_Weapons", "hlstats_Options", "hlstats_Teams",
 		"hlstats_Roles", "hlstats_Awards", "hlstats_Definition_Ranks_Ribbons", "hlstats_Definition_Ribbons_Classes", "hlstats_ClanTags"} {
+		if db.MSSQL() { // TRUNCATE starts the identity at 1 again
+			if _, err := db.Exec("TRUNCATE TABLE " + tbl); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
 		if _, err := db.Exec("DELETE FROM " + tbl); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if db.MSSQL() {
+		if err := database.RunTestScript(context.Background(), db, schema.Seed(db.Type)); err != nil {
+			t.Fatal(err)
+		}
+		return
 	}
 	seedFile := "../../internal/schema/mysql/seed.sql"
 	if db.Postgres() {
@@ -456,7 +496,7 @@ func TestIntegrationSeedEvents(t *testing.T) {
 // which old HLstatsX code used, for every day of many years.
 func TestIntegrationYearWeek(t *testing.T) {
 	db := testDB(t)
-	if db.Postgres() {
+	if db.Type != config.MySQL {
 		t.Skip("YEARWEEK is a MariaDB function")
 	}
 	for d := time.Date(1999, 12, 1, 0, 0, 0, 0, time.UTC); d.Year() < 2041; d = d.AddDate(0, 0, 1) {
@@ -690,7 +730,7 @@ func TestIntegrationDailyAwards(t *testing.T) {
 	in, out := day.Add(12*time.Hour).Unix(), day.Add(-time.Hour).Unix() // inside / before the day
 	exec := func(q string, args ...any) {
 		t.Helper()
-		if _, err := db.Exec(db.Q(q), args...); err != nil {
+		if _, err := db.Exec(db.Q(identityInsert(db, q)), args...); err != nil {
 			t.Fatalf("%s: %v", q, err)
 		}
 	}
@@ -1103,7 +1143,7 @@ func TestIntegrationClonedGame(t *testing.T) {
 	loadSeed(t, db)
 	id := count(t, db, `SELECT MAX(id) FROM hlstats_Games`) + 1 // explicit: the tinyint auto-increment runs out over many test runs
 	for _, q := range []string{
-		fmt.Sprintf(`INSERT INTO hlstats_Games (id, code, name, realgame, hidden) VALUES (%d, 'css3', 'Counter-Strike: Source - GunGame', 'css', '0')`, id),
+		identityInsert(db, fmt.Sprintf(`INSERT INTO hlstats_Games (id, code, name, realgame, hidden) VALUES (%d, 'css3', 'Counter-Strike: Source - GunGame', 'css', '0')`, id)),
 		`INSERT INTO hlstats_Teams (game, code, name, hidden) SELECT 'css3', code, name, hidden FROM hlstats_Teams WHERE game = 'css'`,
 		`INSERT INTO hlstats_Actions (game, code, reward_player, reward_team, team, description, for_PlayerActions, for_PlayerPlayerActions, for_TeamActions, for_WorldActions)
 			SELECT 'css3', code, reward_player, reward_team, team, description, for_PlayerActions, for_PlayerPlayerActions, for_TeamActions, for_WorldActions FROM hlstats_Actions WHERE game = 'css'`,
@@ -1190,7 +1230,7 @@ func TestIntegrationKillPositions(t *testing.T) {
 	}
 	hub.Close(context.Background())
 	rows, err := db.Query(db.Q(`SELECT FLOOR(loc_1 / 64.0) AS gx, FLOOR(loc_2 / 64.0) AS gy, type, COUNT(*) AS n
-		FROM hlstats_Events_Locations WHERE map = (SELECT MIN(map) FROM hlstats_Events_Locations) GROUP BY 1, 2, 3 ORDER BY 3, 1, 2`))
+		FROM hlstats_Events_Locations WHERE map = (SELECT MIN(map) FROM hlstats_Events_Locations) GROUP BY FLOOR(loc_1 / 64.0), FLOOR(loc_2 / 64.0), type ORDER BY 3, 1, 2`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1235,7 +1275,7 @@ func TestIntegrationKillPositions(t *testing.T) {
 		{"plugin positions before the kill line", count(t, db, `SELECT COUNT(*) FROM hlstats_Events_Frags WHERE pos_x = -500 AND pos_y = 600 AND pos_z = 70 AND pos_victim_x = -480 AND pos_victim_y = 640 AND pos_victim_z = 64 AND headshot = 1`), 1},
 		{"no position", count(t, db, `SELECT COUNT(*) FROM hlstats_Events_Frags WHERE pos_x IS NULL AND pos_victim_x IS NULL`), 1},
 		{"frag heatmap bins", count(t, db, `SELECT COUNT(*) FROM (SELECT FLOOR(pos_victim_x / 64.0) AS gx, FLOOR(pos_victim_y / 64.0) AS gy, COUNT(*) AS n
-			FROM hlstats_Events_Frags WHERE pos_victim_x IS NOT NULL GROUP BY 1, 2) b`), 4},
+			FROM hlstats_Events_Frags WHERE pos_victim_x IS NOT NULL GROUP BY FLOOR(pos_victim_x / 64.0), FLOOR(pos_victim_y / 64.0)) b`), 4},
 	}
 	for _, c := range checks {
 		if c.got != c.want {
@@ -1307,7 +1347,7 @@ func TestIntegrationSurvived(t *testing.T) {
 	}
 	hub.Close(context.Background())
 	intType := "SIGNED" // CAST target for the float column survived
-	if db.Postgres() {
+	if db.Type != config.MySQL {
 		intType = "INTEGER"
 	}
 	q := func(uid, col string) int {
@@ -1559,7 +1599,7 @@ func TestIntegrationEventServerID(t *testing.T) {
 // counted as the weapon.
 func TestIntegrationCS2(t *testing.T) {
 	db := testDB(t)
-	if _, err := db.Exec(`INSERT INTO hlstats_Games (id, code, name, realgame) VALUES (3, 'cs2', 'Counter-Strike 2', 'cs2')`); err != nil {
+	if _, err := db.Exec(identityInsert(db, `INSERT INTO hlstats_Games (id, code, name, realgame) VALUES (3, 'cs2', 'Counter-Strike 2', 'cs2')`)); err != nil {
 		t.Fatal(err)
 	}
 	addr := "198.51.100.9:27015"
@@ -1618,7 +1658,7 @@ func TestIntegrationCS2(t *testing.T) {
 // groups (nothing counted twice).
 func TestIntegrationCS2Plugin(t *testing.T) {
 	db := testDB(t)
-	if _, err := db.Exec(`INSERT INTO hlstats_Games (id, code, name, realgame) VALUES (3, 'cs2', 'Counter-Strike 2', 'cs2')`); err != nil {
+	if _, err := db.Exec(identityInsert(db, `INSERT INTO hlstats_Games (id, code, name, realgame) VALUES (3, 'cs2', 'Counter-Strike 2', 'cs2')`)); err != nil {
 		t.Fatal(err)
 	}
 	addr := "198.51.100.9:27015"
@@ -1690,7 +1730,7 @@ func TestIntegrationInvalidUTF8(t *testing.T) {
 		t.Errorf("chat message %q (%v), want %q", msg, err, "� � �")
 	}
 	var name string
-	if err := db.QueryRow(`SELECT d.lastName FROM hlstats_Players_Data d JOIN hlstats_PlayerUniqueIds u USING (playerId)
+	if err := db.QueryRow(`SELECT d.lastName FROM hlstats_Players_Data d JOIN hlstats_PlayerUniqueIds u ON u.playerId = d.playerId
 		WHERE u.uniqueId = '0:91'`).Scan(&name); err != nil || name != "�" {
 		t.Errorf("stored name %q (%v), want %q", name, err, "�")
 	}

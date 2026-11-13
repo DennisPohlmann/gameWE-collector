@@ -64,8 +64,11 @@ func TestConfig(name, user, password string) config.Database {
 func AdminDB(name string) (*DB, error) {
 	if name == "" {
 		name = "mysql"
-		if MigrateTestEnv() == config.Postgres {
+		switch MigrateTestEnv() {
+		case config.Postgres:
 			name = "postgres"
+		case config.MSSQL:
+			name = "master"
 		}
 	}
 	return Open(TestConfig(name, os.Getenv("GAMEWE_TEST_MIGRATE_ADMIN_USER"), os.Getenv("GAMEWE_TEST_MIGRATE_ADMIN_PASSWORD")))
@@ -87,6 +90,38 @@ func CreateTestDatabase(ctx context.Context, name string, oldRights bool) error 
 	}
 	defer admin.Close()
 	pw := map[string]string{"collector": TestPassword("gamewe"), "web": TestPassword("gamewe_web"), "admin": TestPassword("gamewe_web_admin")}
+	if admin.MSSQL() {
+		if err := msDropDatabase(ctx, admin, name); err != nil {
+			return err
+		}
+		data, err := os.ReadFile(repoFile("schema/mssql/init/00_create_database.sql"))
+		if err != nil {
+			return err
+		}
+		q := func(s string) string { return strings.ReplaceAll(s, "'", "''") }
+		s := strings.NewReplacer("$(db)", name, "$(collector_pw)", q(pw["collector"]), "$(web_pw)", q(pw["web"]), "$(admin_pw)", q(pw["admin"]),
+			":on error exit", "").Replace(string(data))
+		// One connection: the script switches the database (USE).
+		conn, err := admin.Conn(ctx)
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+		for _, batch := range regexp.MustCompile(`(?m)^GO\s*$`).Split(s, -1) {
+			if strings.TrimSpace(batch) == "" {
+				continue
+			}
+			if _, err := conn.ExecContext(ctx, batch); err != nil {
+				return fmt.Errorf("00_create_database.sql: %w", err)
+			}
+		}
+		conn.ExecContext(ctx, "USE master")
+		if oldRights {
+			_, err = conn.ExecContext(ctx, "USE ["+name+"]; ALTER ROLE db_owner DROP MEMBER gamewe; "+
+				"ALTER ROLE db_datareader ADD MEMBER gamewe; ALTER ROLE db_datawriter ADD MEMBER gamewe; USE master")
+		}
+		return err
+	}
 	if admin.Postgres() {
 		admin.ExecContext(ctx, `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`, name)
 		if _, err := admin.ExecContext(ctx, `DROP DATABASE IF EXISTS `+name); err != nil {
@@ -154,12 +189,33 @@ func DropTestDatabase(ctx context.Context, name string) error {
 		return err
 	}
 	defer admin.Close()
+	if admin.MSSQL() {
+		return msDropDatabase(ctx, admin, name)
+	}
 	if admin.Postgres() {
 		admin.ExecContext(ctx, `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`, name)
 		_, err = admin.ExecContext(ctx, `DROP DATABASE IF EXISTS `+name)
 		return err
 	}
 	_, err = admin.ExecContext(ctx, "DROP DATABASE IF EXISTS `"+name+"`")
+	return err
+}
+
+// DropColumnSQL drops a column (to make an older database); on SQL Server
+// its default constraint first.
+func DropColumnSQL(db *DB, table, col string) string {
+	q := `ALTER TABLE ` + table + ` DROP COLUMN ` + col
+	if !db.MSSQL() {
+		return q
+	}
+	return `DECLARE @c sysname = (SELECT d.name FROM sys.default_constraints d JOIN sys.columns c ON c.object_id = d.parent_object_id
+		AND c.column_id = d.parent_column_id WHERE d.parent_object_id = OBJECT_ID('` + db.Prefix.Table(table) + `') AND c.name = '` + col + `');
+		IF @c IS NOT NULL EXEC ('ALTER TABLE ` + db.Prefix.Table(table) + ` DROP CONSTRAINT ' + @c); ` + q
+}
+
+// msDropDatabase drops a test database on SQL Server, ending its sessions.
+func msDropDatabase(ctx context.Context, admin *DB, name string) error {
+	_, err := admin.ExecContext(ctx, `IF DB_ID('`+name+`') IS NOT NULL BEGIN ALTER DATABASE [`+name+`] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [`+name+`] END`)
 	return err
 }
 

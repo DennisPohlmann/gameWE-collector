@@ -21,7 +21,7 @@ func TestIntegrationPlayerBans(t *testing.T) {
 	db := testDB(t)
 	exec := func(q string, args ...any) {
 		t.Helper()
-		if _, err := db.Exec(db.Q(q), args...); err != nil {
+		if _, err := db.Exec(db.Q(identityInsert(db, q)), args...); err != nil {
 			t.Fatalf("%s: %v", q, err)
 		}
 	}
@@ -107,7 +107,7 @@ func TestIntegrationBansAndLongIDs(t *testing.T) {
 	db := testDB(t)
 	exec := func(q string, args ...any) {
 		t.Helper()
-		if _, err := db.Exec(db.Q(q), args...); err != nil {
+		if _, err := db.Exec(db.Q(identityInsert(db, q)), args...); err != nil {
 			t.Fatalf("%s: %v", q, err)
 		}
 	}

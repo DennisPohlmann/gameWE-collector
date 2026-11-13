@@ -93,7 +93,7 @@ func TestMigrateMaintenance(t *testing.T) {
 	// drop: on MariaDB the collector user may not; the admin with the SQL
 	err = DropTables(ctx, db)
 	var re *DropRightsError
-	if db.Postgres() {
+	if db.Postgres() || db.MSSQL() { // the owner (PostgreSQL), db_owner (SQL Server)
 		if err != nil {
 			t.Fatalf("drop as owner: %v", err)
 		}

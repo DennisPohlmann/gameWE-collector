@@ -238,7 +238,7 @@ func TestIntegrationScheduledResetAll(t *testing.T) {
 
 func exec(t *testing.T, db *database.DB, q string, args ...any) {
 	t.Helper()
-	if _, err := db.Exec(db.Q(q), args...); err != nil {
+	if _, err := db.Exec(db.Q(identityInsert(db, q)), args...); err != nil {
 		t.Fatal(err)
 	}
 }

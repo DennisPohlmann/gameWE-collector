@@ -62,6 +62,9 @@ func (a *Admin) exec(ctx context.Context, query string, args ...any) (int64, err
 
 // ignore makes an INSERT skip rows that violate a unique key.
 func (a *Admin) ignore(insert string) string {
+	if a.DB.MSSQL() {
+		return database.MSSQLIgnore(insert)
+	}
 	if a.DB.Postgres() {
 		return insert + " ON CONFLICT DO NOTHING"
 	}
@@ -633,7 +636,8 @@ func (a *Admin) ListServers(ctx context.Context) error {
 // Servers returns the game servers; the RCON password and the log secret
 // only as set / not set (the query does not read them).
 func (a *Admin) Servers(ctx context.Context) ([]ServerRow, error) {
-	rows, err := a.q(ctx, `SELECT s.serverId, s.address, s.port, s.game, COALESCE(g.realgame, ''), s.rcon_password <> '', s.log_secret <> '', s.name
+	rows, err := a.q(ctx, `SELECT s.serverId, s.address, s.port, s.game, COALESCE(g.realgame, ''),
+		CASE WHEN s.rcon_password <> '' THEN 1 ELSE 0 END, CASE WHEN s.log_secret <> '' THEN 1 ELSE 0 END, s.name
 		FROM hlstats_Servers s LEFT JOIN hlstats_Games g ON g.code = s.game ORDER BY s.serverId`)
 	if err != nil {
 		return nil, err

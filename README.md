@@ -12,8 +12,8 @@ HLstatsX. The **collector** is its core: one static Go binary that
 - tracks connects, disconnects, team changes, kills (weapon, headshot), suicides,
   teamkills, round wins and team scores, plus per-weapon stats from the gameWE plugins,
 - writes players, kills, skill, rounds, weapon and action statistics into an
-  **HLstatsX database** (the gameME-style HLstatsX schema) on **MariaDB / MySQL**
-  or **PostgreSQL**, with optional TLS that never falls back to plaintext,
+  **HLstatsX database** (the gameME-style HLstatsX schema) on **MariaDB / MySQL**,
+  **PostgreSQL** or **Microsoft SQL Server**, with optional TLS that never falls back to plaintext,
 - answers gameME's in-game commands (**!rank, !kpd, !session, !next, !top10,
   !statsme, !hideranking, !gamewe_reset, ...**, in 9 languages) over RCON
   through the gameWE SourceMod plugin (AMX Mod X plugin on GoldSrc), opens
@@ -44,7 +44,7 @@ Current version: see `VERSION` and [CHANGELOG.md](CHANGELOG.md).
   [INSTALLATION](docs/INSTALLATION.md#b2-windows-zip-native)), a container runtime (Docker / Podman) or
   Kubernetes with Helm (`charts/gamewe-collector`,
   [INSTALLATION](docs/INSTALLATION.md#on-kubernetes-helm))
-- MariaDB 11.4 or 12.3, or PostgreSQL 17 or 18 (tested in CI)
+- MariaDB 11.4 or 12.3, PostgreSQL 17 or 18, or SQL Server 2022 (tested in CI)
 - Game servers with a [supported game](#supported-games) that can send their
   logs to the collector (UDP; HTTP for Counter-Strike 2)
 
@@ -265,7 +265,7 @@ and the [web](https://github.com/DennisPohlmann/gameWE-web/blob/main/docs/INSTAL
    host network) or from the release archive
    `gamewe-collector-<version>-linux-amd64.tar.gz` with systemd.
 2. Create the database and its users with `schema/init/init-db.sh` (MariaDB)
-   or `schema/postgres/init/init-db.sh` (PostgreSQL).
+   or `schema/postgres/init/init-db.sh` (PostgreSQL) or `schema/mssql/init/init-db.sh` (SQL Server).
 3. Put the database connection into `/etc/gamewe/collector/config.yaml`,
    create the tables with `gamewe db init` (or let the first start do it)
    and check with `gamewe config test` (the file, nothing started) and

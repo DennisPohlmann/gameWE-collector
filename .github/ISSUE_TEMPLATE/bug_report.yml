@@ -20,7 +20,7 @@ body:
     id: environment
     attributes:
       label: "Database and setup"
-      placeholder: "e.g. MariaDB 11.4 / PostgreSQL 17, Docker quick start or the tar.gz package, OS"
+      placeholder: "e.g. MariaDB 11.4 / PostgreSQL 17 / SQL Server 2022, Docker quick start or the tar.gz package, OS"
     validations:
       required: true
   - type: input

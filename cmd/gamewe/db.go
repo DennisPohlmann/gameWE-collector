@@ -430,6 +430,9 @@ func backupAdvice(d config.Database, stamp string) string { return backupFor(d, 
 // backupFor is the backup recommendation before gamewe db what.
 func backupFor(d config.Database, what, stamp string) string {
 	ing := map[string]string{"migrate": "migrating", "drop": "dropping", "reset": "resetting", "cleanup": "cleaning up"}[what]
+	if d.Type == config.MSSQL {
+		return fmt.Sprintf("Make a backup before %s, e.g.:\n  sqlcmd -S %s -U sa -C -Q \"BACKUP DATABASE [%s] TO DISK = N'%s-before-%s-%s.bak'\"", ing, d.Host, d.Name, d.Name, what, stamp)
+	}
 	if d.Type == config.Postgres {
 		return fmt.Sprintf("Make a backup before %s, e.g.:\n  pg_dump -U postgres -h %s -Fc %s > %s-before-%s-%s.dump", ing, d.Host, d.Name, d.Name, what, stamp)
 	}
@@ -549,6 +552,9 @@ func migrate(ctx context.Context, db *database.DB, d config.Database, f migrateF
 }
 
 func grantsHint(d config.Database) string {
+	if d.Type == config.MSSQL {
+		return fmt.Sprintf("%s -print | sqlcmd -S %s -U sa -d %s -C -b", dbCommand("grants"), d.Host, d.Name)
+	}
 	if d.Type == config.Postgres {
 		return fmt.Sprintf("%s -print | psql -U postgres -d %s", dbCommand("grants"), d.Name)
 	}

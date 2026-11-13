@@ -27,7 +27,7 @@ func TestIntegrationBanSync(t *testing.T) {
 	db := testDB(t)
 	exec := func(q string, args ...any) {
 		t.Helper()
-		if _, err := db.Exec(db.Q(q), args...); err != nil {
+		if _, err := db.Exec(db.Q(identityInsert(db, q)), args...); err != nil {
 			t.Fatalf("%s: %v", q, err)
 		}
 	}
@@ -64,7 +64,7 @@ func TestIntegrationBanSync(t *testing.T) {
 	}
 	w := &BanSync{Store: store, Set: set, Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Loc: time.UTC, Now: clock.now, Sleep: clock.sleep,
 		Config: BanSyncConfig{Enabled: true, Recheck: 24 * time.Hour, Pause: time.Second, SourceBans: true, SourceBansEvery: 30 * time.Minute},
-		List: func(context.Context, string, time.Duration) ([]sourcebans.Ban, error) { return list, nil },
+		List:   func(context.Context, string, time.Duration) ([]sourcebans.Ban, error) { return list, nil },
 		Steam: func(_ context.Context, _ string, ids []string) (map[string]steam.PlayerBans, error) {
 			out := map[string]steam.PlayerBans{}
 			for _, i := range ids {
@@ -137,7 +137,9 @@ func TestIntegrationBanSync(t *testing.T) {
 
 	// The list cannot be read; 32's ban ends after an hour and goes all the
 	// same; the admin's hide of 32 stays.
-	w.List = func(context.Context, string, time.Duration) ([]sourcebans.Ban, error) { return nil, sourcebans.ErrUnknownTemplate }
+	w.List = func(context.Context, string, time.Duration) ([]sourcebans.Ban, error) {
+		return nil, sourcebans.ErrUnknownTemplate
+	}
 	clock.t = time.Date(2026, 10, 30, 13, 31, 0, 0, time.UTC)
 	w.lastSB = time.Time{}
 	w.Step(ctx)

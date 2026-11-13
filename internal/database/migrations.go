@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"gamewe-collector/internal/schema"
 	"gamewe-collector/internal/settings"
 )
 
@@ -329,17 +330,14 @@ func (m Migration) Checksum() string {
 // ranking's template (the game whose code is the ranking's realgame) to the
 // ranking, where the ranking has no award or ribbon of that code yet. It only
 // adds rows. codes are constants of Migrations, never user input.
-func rankingAwardsSQL(postgres bool, codes []string) []string {
+func rankingAwardsSQL(dialect string, codes []string) []string {
 	quoted := make([]string, len(codes))
 	for i, c := range codes {
 		quoted[i] = "'" + strings.ReplaceAll(c, "'", "''") + "'"
 	}
 	in := strings.Join(quoted, ", ")
-	ins, conflict := "INSERT IGNORE INTO ", ""
-	if postgres {
-		ins, conflict = "INSERT INTO ", " ON CONFLICT DO NOTHING"
-	}
-	return []string{
+	ins, conflict := insertIgnore(dialect)
+	return msIgnoreAll(dialect, []string{
 		ins + `hlstats_Awards (awardType, game, code, name, verb)
 			SELECT a.awardType, g.code, a.code, a.name, a.verb
 			FROM hlstats_Games g JOIN hlstats_Awards a ON a.game = g.realgame
@@ -351,7 +349,7 @@ func rankingAwardsSQL(postgres bool, codes []string) []string {
 			WHERE g.realgame <> '' AND g.code <> g.realgame AND r.definition_type = 'ribbons2' AND r.code IN (` + in + `)
 			  AND NOT EXISTS (SELECT 1 FROM hlstats_Definition_Ranks_Ribbons x
 			                  WHERE x.game_code = g.code AND x.definition_type = r.definition_type AND x.code = r.code)` + conflict,
-	}
+	})
 }
 
 // retireOptionsSQL deletes the retired hlstats_Options rows. Keys and values
@@ -386,11 +384,8 @@ func retireOptionsSQL(opts []RetiredOption) []string {
 // this collector) gets no per-ranking rows: the new default, bots ranked
 // with points. Rows that exist are kept, so a second run changes nothing.
 // Only constants, no user input.
-func botsPerRankingSQL(postgres bool) []string {
-	ins, conflict := "INSERT IGNORE INTO ", ""
-	if postgres {
-		ins, conflict = "INSERT INTO ", " ON CONFLICT DO NOTHING"
-	}
+func botsPerRankingSQL(dialect string) []string {
+	ins, conflict := insertIgnore(dialect)
 	truthy := func(key string) string {
 		return `EXISTS (SELECT 1 FROM hlstats_Options o WHERE o.keyname = '` + key + `' AND LOWER(TRIM(o.value)) IN ('1', 'true', 'yes', 'on'))`
 	}
@@ -403,26 +398,47 @@ func botsPerRankingSQL(postgres bool) []string {
 			WHERE EXISTS (SELECT 1 FROM hlstats_Options o WHERE o.keyname IN ('gamewe_rank_bots', 'gamewe_ignore_bots'))
 			  AND NOT EXISTS (SELECT 1 FROM hlstats_Options x WHERE x.keyname = CONCAT('` + prefix + `', g.code))` + conflict
 	}
-	return []string{
+	return msIgnoreAll(dialect, []string{
 		write("gamewe_rank_bots_", ranked),
 		write("gamewe_bot_points_", `CASE WHEN `+l4d+` THEN '1' ELSE `+ranked+` END`),
 		`DELETE FROM hlstats_Options WHERE keyname IN ('gamewe_rank_bots', 'gamewe_ignore_bots')`,
-	}
+	})
 }
 
 // secretOptionsSQL moves the secret settings out of the table the public web
 // user can read. A second run finds nothing to move.
-func secretOptionsSQL(postgres bool) []string {
-	ins, conflict := "INSERT IGNORE INTO ", ""
-	if postgres {
-		ins, conflict = "INSERT INTO ", " ON CONFLICT DO NOTHING"
-	}
+func secretOptionsSQL(dialect string) []string {
+	ins, conflict := insertIgnore(dialect)
 	keys := "'" + strings.Join(settings.SecretKeys, "', '") + "'"
-	return []string{
+	return msIgnoreAll(dialect, []string{
 		ins + `hlstats_gamewe_secrets (keyname, value)
 			SELECT keyname, COALESCE(value, '') FROM hlstats_Options WHERE keyname IN (` + keys + `)` + conflict,
 		`DELETE FROM hlstats_Options WHERE keyname IN (` + keys + `)`,
+	})
+}
+
+// insertIgnore is the start and the end of an insert that skips existing
+// keys: INSERT IGNORE INTO / ON CONFLICT DO NOTHING; on SQL Server a plain
+// insert that msIgnoreAll rewrites.
+func insertIgnore(dialect string) (ins, conflict string) {
+	switch dialect {
+	case schema.Postgres:
+		return "INSERT INTO ", " ON CONFLICT DO NOTHING"
+	case schema.MSSQL:
+		return "INSERT INTO ", ""
 	}
+	return "INSERT IGNORE INTO ", ""
+}
+
+// msIgnoreAll applies MSSQLIgnore to the inserts of stmts on SQL Server.
+func msIgnoreAll(dialect string, stmts []string) []string {
+	if dialect != schema.MSSQL {
+		return stmts
+	}
+	for i, q := range stmts {
+		stmts[i] = MSSQLIgnore(q)
+	}
+	return stmts
 }
 
 // careerKillsSQL fills career_kills from kills where it is still 0, so a

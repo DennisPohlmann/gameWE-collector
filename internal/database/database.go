@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Package database opens the MariaDB / MySQL or PostgreSQL connection
+// Package database opens the MariaDB / MySQL, PostgreSQL or SQL Server connection
 // with strict TLS handling. Once TLS is configured, a connection never
 // falls back to plaintext.
 package database
@@ -21,6 +21,8 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
+	mssql "github.com/microsoft/go-mssqldb"
+	"github.com/microsoft/go-mssqldb/msdsn"
 
 	"gamewe-collector/internal/config"
 )
@@ -41,7 +43,7 @@ var Tables = []string{
 // DB is a connection pool together with its SQL dialect and table prefix.
 type DB struct {
 	*sql.DB
-	Type string // config.MySQL or config.Postgres
+	Type string // config.MySQL, config.Postgres or config.MSSQL
 	// Prefix of the table names; the pool rewrites hlstats_ in every
 	// statement to it (prefix.go).
 	Prefix Prefix
@@ -50,10 +52,16 @@ type DB struct {
 // Postgres reports whether the database is PostgreSQL.
 func (d *DB) Postgres() bool { return d.Type == config.Postgres }
 
+// MSSQL reports whether the database is Microsoft SQL Server.
+func (d *DB) MSSQL() bool { return d.Type == config.MSSQL }
+
 // Q converts a query written with ? placeholders for the driver.
 func (d *DB) Q(query string) string {
-	if d.Postgres() {
+	switch d.Type {
+	case config.Postgres:
 		return Rebind(query)
+	case config.MSSQL:
+		return ToMSSQL(query)
 	}
 	return query
 }
@@ -65,9 +73,12 @@ func Open(cfg config.Database) (*DB, error) {
 		return nil, err
 	}
 	var conn driver.Connector
-	if cfg.Type == config.Postgres {
+	switch cfg.Type {
+	case config.Postgres:
 		conn, err = openPostgres(cfg, tlsConf)
-	} else {
+	case config.MSSQL:
+		conn, err = openMSSQL(cfg, tlsConf)
+	default:
 		conn, err = openMySQL(cfg, tlsConf)
 	}
 	if err != nil {
@@ -141,6 +152,32 @@ func openPostgres(cfg config.Database, tlsConf *tls.Config) (driver.Connector, e
 	return stdlib.GetConnector(*cc), nil
 }
 
+func openMSSQL(cfg config.Database, tlsConf *tls.Config) (driver.Connector, error) {
+	q := url.Values{}
+	q.Set("database", cfg.Name)
+	q.Set("app name", "gamewe")
+	q.Set("dial timeout", strconv.Itoa(cfg.ConnectTimeout))
+	// Without database.tls only the login is encrypted (the driver's
+	// default); the certificate is not checked then.
+	q.Set("encrypt", "false")
+	q.Set("trustservercertificate", "true")
+	u := &url.URL{
+		Scheme:   "sqlserver",
+		User:     url.UserPassword(cfg.User, cfg.Password),
+		Host:     net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)),
+		RawQuery: q.Encode(),
+	}
+	c, err := msdsn.Parse(u.String())
+	if err != nil {
+		return nil, fmt.Errorf("mssql config: %w", err)
+	}
+	if tlsConf != nil {
+		c.Encryption = msdsn.EncryptionRequired
+		c.TLSConfig = tlsConf
+	}
+	return mssql.NewConnectorConfig(c), nil
+}
+
 // Info describes the live connection, as reported by the server.
 type Info struct {
 	Version    string
@@ -165,6 +202,13 @@ func Inspect(ctx context.Context, db *DB) (Info, error) {
 				`SELECT ssl, COALESCE(version, ''), COALESCE(cipher, '') FROM pg_stat_ssl WHERE pid = pg_backend_pid()`).
 				Scan(&info.TLS, &info.TLSVersion, &info.Cipher)
 		}
+		return info, err
+	}
+	if db.MSSQL() {
+		err = conn.QueryRowContext(ctx, `SELECT CAST(SERVERPROPERTY('ProductVersion') AS nvarchar(64)), CAST(SERVERPROPERTY('Edition') AS nvarchar(128)),
+			CASE WHEN CONNECTIONPROPERTY('encrypt_option') = 'TRUE' THEN 1 ELSE 0 END`).Scan(&info.Version, &info.Cipher, &info.TLS)
+		info.Version = "Microsoft SQL Server " + info.Version + " (" + info.Cipher + ")"
+		info.Cipher = ""
 		return info, err
 	}
 	var name string

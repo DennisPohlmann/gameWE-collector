@@ -29,8 +29,8 @@ func testDB(t *testing.T) *database.DB {
 	port, _ := strconv.Atoi(os.Getenv("GAMEWE_TEST_DB_PORT"))
 	cfg := config.Defaults().Database
 	cfg.Host, cfg.Port, cfg.Type = os.Getenv("GAMEWE_TEST_DB_HOST"), port, config.MySQL
-	if os.Getenv("GAMEWE_TEST_DB_TYPE") == config.Postgres {
-		cfg.Type = config.Postgres
+	if t := os.Getenv("GAMEWE_TEST_DB_TYPE"); t == config.Postgres || t == config.MSSQL {
+		cfg.Type = t
 	}
 	cfg.User, cfg.Password, cfg.Name = os.Getenv("GAMEWE_TEST_DB_USER"), os.Getenv("GAMEWE_TEST_DB_PASSWORD"), os.Getenv("GAMEWE_TEST_DB_NAME")
 	cfg.TLS.Mode = config.TLSDisable
@@ -352,7 +352,11 @@ func TestAdminGameBots(t *testing.T) {
 		{990004, "zz_oth", "BOT:Bob", 0, 0}, // another ranking
 	}
 	for _, p := range players {
-		if _, err := db.Exec(db.Q(`INSERT INTO hlstats_Players (playerId, game, hideranking) VALUES (?, ?, ?)`), p.id, p.game, p.hide); err != nil {
+		q := `INSERT INTO hlstats_Players (playerId, game, hideranking) VALUES (?, ?, ?)`
+		if db.MSSQL() {
+			q = database.MSSQLIdentityInsert("hlstats_Players", q)
+		}
+		if _, err := db.Exec(db.Q(q), p.id, p.game, p.hide); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := db.Exec(db.Q(`INSERT INTO hlstats_PlayerUniqueIds (playerId, uniqueId, game) VALUES (?, ?, ?)`), p.id, p.uid, p.game); err != nil {

@@ -71,6 +71,9 @@ package: build geoip
 	umask 022 && install -d $(STAGE)/$(OPT)/doc/schema/postgres/init
 	install -m 0644 schema/postgres/init/00_create_database.sql $(STAGE)/$(OPT)/doc/schema/postgres/init/
 	install -m 0755 schema/postgres/init/init-db.sh $(STAGE)/$(OPT)/doc/schema/postgres/init/
+	umask 022 && install -d $(STAGE)/$(OPT)/doc/schema/mssql/init
+	install -m 0644 schema/mssql/init/00_create_database.sql $(STAGE)/$(OPT)/doc/schema/mssql/init/
+	install -m 0755 schema/mssql/init/init-db.sh $(STAGE)/$(OPT)/doc/schema/mssql/init/
 	umask 022 && install -d $(STAGE)/$(OPT)/doc/schema/move
 	install -m 0755 schema/move/move-db.sh $(STAGE)/$(OPT)/doc/schema/move/
 	install -d $(DIST)
@@ -90,7 +93,7 @@ package-windows: build-windows geoip
 	install -m 0644 geoip-data/NOTICE $(WIN_STAGE)/$(WIN_PKG)/doc/GEOIP-NOTICE
 	install -m 0644 README.md CHANGELOG.md LICENSE THIRD-PARTY-LICENSES.md docs/*.md $(WIN_STAGE)/$(WIN_PKG)/doc/
 	cp -r licenses $(WIN_STAGE)/$(WIN_PKG)/doc/licenses
-	cp -r schema/init schema/postgres $(WIN_STAGE)/$(WIN_PKG)/doc/schema/
+	cp -r schema/init schema/postgres schema/mssql $(WIN_STAGE)/$(WIN_PKG)/doc/schema/
 	install -d $(DIST)
 	rm -f $(DIST)/$(WIN_PKG).zip
 	cd $(WIN_STAGE) && zip -qrX ../../$(DIST)/$(WIN_PKG).zip $(WIN_PKG)
@@ -104,8 +107,9 @@ IMAGE ?= gamewe-collector
 docker: geoip
 	docker build --build-arg VERSION=$(VERSION) -t $(IMAGE):$(VERSION) .
 
-# Generate the PostgreSQL files (internal/schema/postgres/) from the MariaDB
-# ones (internal/schema/mysql/). Both are compiled into the binary; the
+# Generate the PostgreSQL files (internal/schema/postgres/) and from them the
+# SQL Server files (internal/schema/mssql/) from the MariaDB
+# ones (internal/schema/mysql/). All are compiled into the binary; the
 # package ships only the init scripts (schema/init/: database and users).
 schema:
 	$(GO) run ./tools/schemagen

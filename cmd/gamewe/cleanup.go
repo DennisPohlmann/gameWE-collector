@@ -127,6 +127,9 @@ func printUnknown(c dbIO, unknown []string) {
 }
 
 func cleanupHint(d config.Database) string {
+	if d.Type == config.MSSQL {
+		return fmt.Sprintf("%s -print | sqlcmd -S %s -U sa -d %s -C -b", dbCommand("cleanup"), d.Host, d.Name)
+	}
 	if d.Type == config.Postgres {
 		return fmt.Sprintf("%s -print | psql -U postgres -d %s", dbCommand("cleanup"), d.Name)
 	}

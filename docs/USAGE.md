@@ -370,7 +370,7 @@ nothing while one runs. A collector runs when
 
 - it holds the *collector lock* of the database: a running `gamewe run`
   (0.7.2 and newer) holds it on a connection of its own (MariaDB `GET_LOCK`,
-  PostgreSQL advisory lock); the database releases it when the collector
+  PostgreSQL advisory lock, SQL Server `sp_getapplock`); the database releases it when the collector
   ends, so this also tells a collector on another host or in a container;
 - a `gamewe run` process runs on this host (found in `/proc`, whatever the
   path of the binary; also collectors up to 0.7.1, which hold no lock), or
@@ -499,7 +499,7 @@ minutes, ending idle visits, the heartbeat, reloading servers and settings.
 
 **One job at a time.** A ranking reset (also a scheduled one), the move of inactive players and the
 daily awards take the same lock in the database (`GET_LOCK` on MariaDB /
-MySQL, `pg_advisory_lock` on PostgreSQL), in the collector and in the
+MySQL, `pg_advisory_lock` on PostgreSQL, `sp_getapplock` on SQL Server), in the collector and in the
 commands; a command waits for a job in progress up to `-wait` (default 10
 minutes, then exit code 1 and nothing changed). So a cron run of
 `gamewe awards` at the minute of the collector's own run cannot write a day

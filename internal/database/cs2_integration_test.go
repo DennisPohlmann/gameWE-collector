@@ -20,8 +20,8 @@ func TestMigrateCS2(t *testing.T) {
 	var before int
 	db.QueryRow(`SELECT COUNT(*) FROM hlstats_Weapons WHERE game <> 'cs2'`).Scan(&before)
 	for _, q := range []string{
-		`ALTER TABLE hlstats_Players_Weapons DROP COLUMN neck`,
-		`ALTER TABLE hlstats_Players_Weapons_History_Months DROP COLUMN neck`,
+		DropColumnSQL(db, "hlstats_Players_Weapons", "neck"),
+		DropColumnSQL(db, "hlstats_Players_Weapons_History_Months", "neck"),
 		`DELETE FROM hlstats_Weapons WHERE game = 'cs2'`,
 		`DELETE FROM hlstats_Actions WHERE game = 'cs2'`,
 		`DELETE FROM hlstats_Awards WHERE game = 'cs2'`,

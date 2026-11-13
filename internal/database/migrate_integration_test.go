@@ -66,6 +66,9 @@ func counts(t *testing.T, db *DB) map[string]int {
 	if db.Postgres() {
 		q = `SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema() AND table_name LIKE 'hlstats\_%'`
 	}
+	if db.MSSQL() {
+		q = `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = SCHEMA_NAME() AND TABLE_NAME LIKE 'hlstats\_%' ESCAPE '\'`
+	}
 	rows, err := db.Query(q)
 	if err != nil {
 		t.Fatal(err)
@@ -282,7 +285,7 @@ func TestMigrateHLstatsX(t *testing.T) {
 			if name2 != "Bravo ä" {
 				t.Errorf("player name %q", name2)
 			}
-			cat, _ := readCatalog(ctx, db, false, db.Prefix)
+			cat, _ := readCatalog(ctx, db, schema.MySQL, db.Prefix)
 			if cat.hasIndex("hlstats_Events_Frags", "killerId") || !cat.hasIndex("hlstats_Events_Frags", "killer_time") {
 				t.Errorf("frags indexes %v", cat.indexes["hlstats_events_frags"])
 			}
@@ -308,16 +311,27 @@ func TestMigrateOldGameWE(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if _, err := admin.Exec(admin.Q(`INSERT INTO hlstats_Players (playerId, game, skill) VALUES (4711, 'css', 1234)`)); err != nil {
+			ins := `INSERT INTO hlstats_Players (playerId, game, skill) VALUES (4711, 'css', 1234)`
+			if admin.MSSQL() {
+				ins = MSSQLIdentityInsert("hlstats_Players", ins)
+			}
+			if _, err := admin.Exec(admin.Q(ins)); err != nil {
 				t.Fatal(err)
 			}
 			if older {
 				var qs []string
-				if admin.Postgres() {
+				switch {
+				case admin.MSSQL(): // an index goes before its column
+					qs = []string{`DROP TABLE hlstats_gamewe_jobs`, `DROP INDEX hlstats_Events_Frags_server_id ON hlstats_Events_Frags`,
+						DropColumnSQL(admin, "hlstats_Events_Frags", "server_id"), DropColumnSQL(admin, "hlstats_Events_Frags", "pos_x"),
+						DropColumnSQL(admin, "hlstats_Events_Frags", "pos_victim_z"),
+						`DROP INDEX hlstats_Events_Frags_killer_time ON hlstats_Events_Frags`, `DROP INDEX hlstats_Events_Frags_victim_time ON hlstats_Events_Frags`,
+						`CREATE INDEX hlstats_Events_Frags_killerId ON hlstats_Events_Frags (killerId)`, `CREATE INDEX hlstats_Events_Frags_victimId ON hlstats_Events_Frags (victimId)`}
+				case admin.Postgres():
 					qs = []string{`DROP TABLE hlstats_gamewe_jobs`, `ALTER TABLE hlstats_Events_Frags DROP COLUMN server_id, DROP COLUMN pos_x, DROP COLUMN pos_victim_z`,
 						`DROP INDEX hlstats_Events_Frags_killer_time`, `DROP INDEX hlstats_Events_Frags_victim_time`,
 						`CREATE INDEX hlstats_Events_Frags_killerId ON hlstats_Events_Frags (killerId)`, `CREATE INDEX hlstats_Events_Frags_victimId ON hlstats_Events_Frags (victimId)`}
-				} else {
+				default:
 					qs = []string{"DROP TABLE hlstats_gamewe_jobs", "ALTER TABLE hlstats_Events_Frags DROP COLUMN server_id, DROP COLUMN pos_x, DROP COLUMN pos_victim_z, " +
 						"DROP KEY killer_time, DROP KEY victim_time, ADD KEY killerId (killerId), ADD KEY victimId (victimId)"}
 				}
@@ -357,8 +371,8 @@ func TestMigrateOldGameWE(t *testing.T) {
 			if err := db.QueryRow(`SELECT COUNT(*) FROM hlstats_Players WHERE playerId = 4711 AND skill = 1234`).Scan(&n); err != nil || n != 1 {
 				t.Errorf("player row: %d, %v", n, err)
 			}
-			cat, _ := readCatalog(ctx, db, db.Postgres(), db.Prefix)
-			if cat.hasIndex("hlstats_Events_Frags", indexName(db.Postgres(), "hlstats_Events_Frags", "killerId")) {
+			cat, _ := readCatalog(ctx, db, db.Type, db.Prefix)
+			if cat.hasIndex("hlstats_Events_Frags", indexName(db.Type, "hlstats_Events_Frags", "killerId")) {
 				t.Error("killerId is still there")
 			}
 			webRights(t, name)
@@ -406,7 +420,7 @@ func TestMigrateLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	unlock, err := migrateLock(ctx, conn, db.Postgres(), db.Prefix, time.Second, nil)
+	unlock, err := migrateLock(ctx, conn, db.Type, db.Prefix, time.Second, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -429,9 +443,13 @@ func TestMigrateOwnerRights(t *testing.T) {
 	name := "mig_owner"
 	db := newTestDB(t, name, true)
 	admin := adminIn(t, name)
-	if db.Postgres() {
-		server := adminIn(t, "")
-		if _, err := server.Exec(`ALTER DATABASE ` + name + ` OWNER TO gamewe`); err != nil {
+	if db.Type != schema.MySQL {
+		grant := `ALTER ROLE db_owner ADD MEMBER gamewe`
+		server := admin
+		if db.Postgres() {
+			grant, server = `ALTER DATABASE `+name+` OWNER TO gamewe`, adminIn(t, "")
+		}
+		if _, err := server.Exec(grant); err != nil {
 			t.Fatal(err)
 		}
 		// The old install, run as the owner: the tables belong to gamewe.
@@ -459,9 +477,9 @@ func TestMigrateOwnerRights(t *testing.T) {
 		t.Fatalf("all rights, but: %v", err)
 	}
 	switch {
-	case db.Postgres() && len(res.Warnings) != 0:
+	case db.Type != schema.MySQL && len(res.Warnings) != 0:
 		t.Errorf("owner: warnings %v", res.Warnings)
-	case !db.Postgres() && (len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], "may not grant rights")):
+	case db.Type == schema.MySQL && (len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], "may not grant rights")):
 		t.Errorf("ALL without GRANT OPTION: warnings %v (want one)", res.Warnings)
 	}
 	t.Logf("warnings: %v", res.Warnings)
@@ -475,7 +493,7 @@ func TestMigrateMyISAM(t *testing.T) {
 	migrateTest(t)
 	ctx := context.Background()
 	db := newTestDB(t, "mig_myisam", false)
-	if db.Postgres() {
+	if db.Type != schema.MySQL {
 		t.Skip("storage engines are a MariaDB matter")
 	}
 	admin := adminIn(t, "mig_myisam")
@@ -585,7 +603,7 @@ func TestMigrateMyISAM(t *testing.T) {
 			t.Errorf("%s: %s", n, e)
 		}
 	}
-	cat, _ := readCatalog(ctx, db, false, db.Prefix)
+	cat, _ := readCatalog(ctx, db, schema.MySQL, db.Prefix)
 	for _, ix := range [][2]string{{"hlstats_Events_Frags", "map_time"}, {"hlstats_server_load", "server_time"}, {"hlstats_Events_Chat", "game_time"},
 		{"hlstats_Events_PlayerActions", "player_time"}, {"hlstats_Events_PlayerActions", "map_action"}, {"hlstats_Events_ChangeTeam", "player_team"}} {
 		if !cat.hasIndex(ix[0], ix[1]) {
@@ -628,6 +646,9 @@ func TestMigrateLegacyVersionTable(t *testing.T) {
 	rename := "RENAME TABLE `" + MigrationsTable + "` TO `" + LegacyMigrationsTable + "`"
 	if db.Postgres() {
 		rename = "ALTER TABLE " + MigrationsTable + " RENAME TO " + LegacyMigrationsTable
+	}
+	if db.MSSQL() {
+		rename = "EXEC sp_rename '" + MigrationsTable + "', '" + LegacyMigrationsTable + "'"
 	}
 	for _, emptyNew := range []bool{false, true} {
 		if _, err := admin.Exec("DROP TABLE IF EXISTS " + LegacyMigrationsTable); err != nil {

@@ -77,7 +77,7 @@ func oldIn(cat catalog, pfx Prefix) []OldTable {
 // the schema nor known as old (named as in the database, with the prefix):
 // those are only listed, never dropped.
 func OldTables(ctx context.Context, db *DB) (old []OldTable, unknown []string, err error) {
-	cat, err := readCatalog(ctx, db.DB, db.Postgres(), db.Prefix)
+	cat, err := readCatalog(ctx, db.DB, db.Type, db.Prefix)
 	if err != nil {
 		return nil, nil, err
 	}

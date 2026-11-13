@@ -18,6 +18,33 @@
     ]
   },
   {
+    "path": "github.com/golang-sql/civil",
+    "version": "v0.0.0-20220223132316-b832511892a9",
+    "scope": "binary",
+    "license": "Apache-2.0",
+    "files": [
+      "LICENSE"
+    ]
+  },
+  {
+    "path": "github.com/golang-sql/sqlexp",
+    "version": "v0.1.0",
+    "scope": "binary",
+    "license": "BSD-3-Clause",
+    "files": [
+      "LICENSE"
+    ]
+  },
+  {
+    "path": "github.com/google/uuid",
+    "version": "v1.6.0",
+    "scope": "binary",
+    "license": "BSD-3-Clause",
+    "files": [
+      "LICENSE"
+    ]
+  },
+  {
     "path": "github.com/jackc/pgpassfile",
     "version": "v1.0.0",
     "scope": "binary",
@@ -64,6 +91,15 @@
     ]
   },
   {
+    "path": "github.com/microsoft/go-mssqldb",
+    "version": "v1.11.2",
+    "scope": "binary",
+    "license": "BSD-3-Clause",
+    "files": [
+      "LICENSE.txt"
+    ]
+  },
+  {
     "path": "github.com/oschwald/maxminddb-golang",
     "version": "v1.13.1",
     "scope": "binary",
@@ -82,6 +118,15 @@
     ]
   },
   {
+    "path": "github.com/shopspring/decimal",
+    "version": "v1.4.0",
+    "scope": "binary",
+    "license": "MIT",
+    "files": [
+      "LICENSE"
+    ]
+  },
+  {
     "path": "go.yaml.in/yaml/v3",
     "version": "v3.0.6",
     "scope": "binary",
@@ -95,6 +140,15 @@
     "path": "go4.org/netipx",
     "version": "v0.0.0-20260823151212-3075585bcbeb",
     "scope": "test",
+    "license": "BSD-3-Clause",
+    "files": [
+      "LICENSE"
+    ]
+  },
+  {
+    "path": "golang.org/x/crypto",
+    "version": "v0.55.0",
+    "scope": "binary",
     "license": "BSD-3-Clause",
     "files": [
       "LICENSE"

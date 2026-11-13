@@ -2,7 +2,7 @@
 # The checks of the CI job "test" (.github/workflows/build.yml), run locally,
 # e.g. from the pre-push hook (tools/install-hooks.sh): go vet, go test,
 # govulncheck, actionlint and the Helm chart (lint, template, package).
-# Not here: the integration tests (they need MariaDB and PostgreSQL, see
+# Not here: the integration tests (they need MariaDB, PostgreSQL and SQL Server, see
 # docs/DEVELOPMENT.md), the image scan and TestWebSourceKeys unless
 # GAMEWE_WEB_SRC points at a gameWE-web checkout.
 #

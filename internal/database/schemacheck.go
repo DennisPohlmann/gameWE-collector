@@ -60,9 +60,9 @@ func MissingSchema(ctx context.Context, db *DB) ([]Requirement, error) {
 	if err != nil {
 		return nil, err
 	}
-	cat, err := readCatalog(ctx, db.DB, db.Postgres(), db.Prefix)
+	cat, err := readCatalog(ctx, db.DB, db.Type, db.Prefix)
 	if err != nil {
 		return nil, err
 	}
-	return withPrefix(missing(tables, cat, db.Postgres()), db.Prefix), nil
+	return withPrefix(missing(tables, cat, db.Type), db.Prefix), nil
 }

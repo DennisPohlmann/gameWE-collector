@@ -9,8 +9,8 @@ import (
 	"testing"
 )
 
-// The PostgreSQL files in the repository must be what the generator makes
-// from the MariaDB files (run `make schema` after changing those).
+// The PostgreSQL and SQL Server files in the repository must be what the
+// generator makes from the MariaDB files (run `make schema` after changing those).
 func TestPostgresFilesUpToDate(t *testing.T) {
 	schema, _ := os.ReadFile("../../internal/schema/mysql/schema.sql")
 	seed, _ := os.ReadFile("../../internal/schema/mysql/seed.sql")
@@ -23,10 +23,21 @@ func TestPostgresFilesUpToDate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	msSchema, msSeed, err := ConvertMSSQL(wantSchema, wantSeed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	msGrants, err := ConvertMSSQLGrants(wantGrants, string(grants))
+	if err != nil {
+		t.Fatal(err)
+	}
 	for file, want := range map[string]string{
-		"../../internal/schema/postgres/schema.sql":       wantSchema,
+		"../../internal/schema/postgres/schema.sql": wantSchema,
 		"../../internal/schema/postgres/seed.sql":   wantSeed,
 		"../../internal/schema/postgres/grants.sql": wantGrants,
+		"../../internal/schema/mssql/schema.sql":    msSchema,
+		"../../internal/schema/mssql/seed.sql":      msSeed,
+		"../../internal/schema/mssql/grants.sql":    msGrants,
 	} {
 		got, err := os.ReadFile(file)
 		if err != nil || string(got) != want {

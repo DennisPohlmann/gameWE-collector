@@ -8,6 +8,8 @@
 //	internal/schema/mysql/seed.sql    -> internal/schema/postgres/seed.sql
 //	internal/schema/mysql/grants.sql  -> internal/schema/postgres/grants.sql
 //
+// and the SQL Server files (internal/schema/mssql/) from the PostgreSQL ones.
+//
 // Run it from the repository root (`make schema` does).
 package main
 
@@ -56,7 +58,27 @@ func run(root string) error {
 	if err := os.WriteFile(dir+"schema.sql", []byte(pgSchema), 0o644); err != nil {
 		return err
 	}
-	return os.WriteFile(dir+"seed.sql", []byte(pgSeed), 0o644)
+	if err := os.WriteFile(dir+"seed.sql", []byte(pgSeed), 0o644); err != nil {
+		return err
+	}
+	msSchema, msSeed, err := ConvertMSSQL(pgSchema, pgSeed)
+	if err != nil {
+		return err
+	}
+	msGrants, err := ConvertMSSQLGrants(pgGrants, string(grants))
+	if err != nil {
+		return err
+	}
+	dir = root + "/internal/schema/mssql/"
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	for name, s := range map[string]string{"schema.sql": msSchema, "seed.sql": msSeed, "grants.sql": msGrants} {
+		if err := os.WriteFile(dir+name, []byte(s), 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Generate returns the PostgreSQL schema (tables and indexes) and the

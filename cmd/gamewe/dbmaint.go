@@ -192,6 +192,9 @@ func dbDrop(ctx context.Context, db *database.DB, d config.Database, yes, dry bo
 }
 
 func dropHint(d config.Database) string {
+	if d.Type == config.MSSQL {
+		return fmt.Sprintf("%s -print | sqlcmd -S %s -U sa -d %s -C -b", dbCommand("drop"), d.Host, d.Name)
+	}
 	if d.Type == config.Postgres {
 		return fmt.Sprintf("%s -print | psql -U postgres -d %s", dbCommand("drop"), d.Name)
 	}
@@ -401,11 +404,14 @@ func dbOptimizeCmd(args []string, c dbIO) error {
 		return fmt.Errorf("the database %s has no gameWE tables", cfg.Database.Name)
 	}
 	verb := "OPTIMIZE TABLE"
-	if db.Postgres() {
+	switch {
+	case db.Postgres():
 		verb = "VACUUM ANALYZE"
+	case db.MSSQL():
+		verb = "ALTER INDEX REORGANIZE and UPDATE STATISTICS"
 	}
 	fmt.Fprintf(c.out, "%s of %d tables of the database %s\n", verb, len(own), cfg.Database.Name)
-	if !db.Postgres() {
+	if db.Type == config.MySQL {
 		fmt.Fprintln(c.out, "OPTIMIZE TABLE rebuilds each table (and locks it on MyISAM): the collector waits meanwhile (best at a quiet time).")
 	}
 	if cf.dryRun {

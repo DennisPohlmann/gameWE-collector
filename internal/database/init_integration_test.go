@@ -8,7 +8,7 @@
 // deletes them again. Set the database of each type to test as
 // host:port/name, and the web passwords given to init-db.sh:
 //
-//	GAMEWE_TEST_INIT_MYSQL=127.0.0.1:33306/gamewe_init GAMEWE_TEST_INIT_PG=127.0.0.1:35432/gamewe_init \
+//	GAMEWE_TEST_INIT_MYSQL=127.0.0.1:33306/gamewe_init GAMEWE_TEST_INIT_PG=127.0.0.1:35432/gamewe_init GAMEWE_TEST_INIT_MSSQL=127.0.0.1:1433/gamewe_init \
 //	GAMEWE_TEST_WEB_PASSWORD=... GAMEWE_TEST_WEB_ADMIN_PASSWORD=... \
 //	go test -tags integration -run Init ./internal/database/
 //
@@ -27,7 +27,7 @@ import (
 	"gamewe-collector/internal/config"
 )
 
-var initEnv = map[string]string{config.MySQL: "GAMEWE_TEST_INIT_MYSQL", config.Postgres: "GAMEWE_TEST_INIT_PG"}
+var initEnv = map[string]string{config.MySQL: "GAMEWE_TEST_INIT_MYSQL", config.Postgres: "GAMEWE_TEST_INIT_PG", config.MSSQL: "GAMEWE_TEST_INIT_MSSQL"}
 
 // initDB connects to the freshly initialized database of type typ as user.
 func initDB(t *testing.T, typ, user, password string) *DB {
@@ -52,7 +52,7 @@ func initDB(t *testing.T, typ, user, password string) *DB {
 }
 
 func eachType(t *testing.T, f func(t *testing.T, typ string)) {
-	for _, typ := range []string{config.MySQL, config.Postgres} {
+	for _, typ := range []string{config.MySQL, config.Postgres, config.MSSQL} {
 		t.Run(typ, func(t *testing.T) { f(t, typ) })
 	}
 }
@@ -133,6 +133,11 @@ func TestInitWebGrants(t *testing.T) {
 			if tbl == "hlstats_Events_Chat" {
 				continue // admin only
 			}
+			if typ == config.MSSQL && (tbl == "hlstats_Servers" || tbl == "hlstats_Events_Connects") {
+				// SQL Server refuses COUNT(*) with rights on some columns
+				// only: the web counts a column (checked below).
+				continue
+			}
 			if _, err := db.ExecContext(ctx, `SELECT COUNT(*) FROM `+tbl); err != nil {
 				t.Errorf("gamewe_web cannot read %s: %v", tbl, err)
 			}
@@ -177,6 +182,11 @@ func columns(t *testing.T, db *DB) map[string]column {
 			LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
 			WHERE n.nspname = current_schema() AND c.relkind IN ('r', 'p') AND c.relname LIKE 'hlstats\_%' AND a.attnum > 0 AND NOT a.attisdropped`
 	}
+	if db.MSSQL() {
+		q = `SELECT LOWER(t.name), LOWER(c.name), c.is_nullable, COALESCE(d.definition, ''), c.is_identity
+			FROM sys.columns c JOIN sys.tables t ON t.object_id = c.object_id LEFT JOIN sys.default_constraints d ON d.object_id = c.default_object_id
+			WHERE t.schema_id = SCHEMA_ID() AND t.name LIKE 'hlstats\_%' ESCAPE '\'`
+	}
 	rows, err := db.Query(q)
 	if err != nil {
 		t.Fatal(err)
@@ -206,9 +216,12 @@ var pgCast = regexp.MustCompile(`::[a-z ]+(\(\d+(,\d+)?\))?$`)
 // PostgreSQL (see docs/DB-SEMANTICS.md).
 func normDefault(s string) string {
 	s = pgCast.ReplaceAllString(s, "")
-	if strings.HasPrefix(s, "(") && strings.HasSuffix(s, ")") {
-		s = s[1 : len(s)-1] // PostgreSQL: (-1)
+	for strings.HasPrefix(s, "(") && strings.HasSuffix(s, ")") {
+		s = s[1 : len(s)-1] // PostgreSQL: (-1); SQL Server: ((0)), (N'x')
 		s = pgCast.ReplaceAllString(s, "")
+	}
+	if strings.HasPrefix(s, "N'") {
+		s = s[1:] // SQL Server: a Unicode literal
 	}
 	if len(s) >= 2 && s[0] == '\'' && s[len(s)-1] == '\'' {
 		s = strings.ReplaceAll(s[1:len(s)-1], "''", "'")
@@ -240,6 +253,13 @@ func primaryKeys(t *testing.T, db *DB) map[string]string {
 			JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY(i.indkey)
 			WHERE i.indisprimary AND n.nspname = current_schema() AND c.relname LIKE 'hlstats\_%' GROUP BY c.relname`
 	}
+	if db.MSSQL() {
+		q = `SELECT LOWER(t.name), LOWER(STRING_AGG(c.name, ',') WITHIN GROUP (ORDER BY ic.key_ordinal))
+			FROM sys.indexes i JOIN sys.tables t ON t.object_id = i.object_id
+			JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+			JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+			WHERE i.is_primary_key = 1 AND t.schema_id = SCHEMA_ID() AND t.name LIKE 'hlstats\_%' ESCAPE '\' GROUP BY t.name`
+	}
 	rows, err := db.Query(q)
 	if err != nil {
 		t.Fatal(err)
@@ -260,8 +280,20 @@ func primaryKeys(t *testing.T, db *DB) map[string]string {
 // identity columns and primary keys (hlstats_Options: keyname,
 // hlstats_Users: username).
 func TestInitSchemaParity(t *testing.T) {
+	for _, other := range []string{config.Postgres, config.MSSQL} {
+		t.Run(other, func(t *testing.T) { schemaParity(t, other) })
+	}
+}
+
+// schemaParity compares the MariaDB schema with the one of typ (named
+// PostgreSQL in the messages, the first one compared).
+func schemaParity(t *testing.T, typ string) {
 	my := initDB(t, config.MySQL, "gamewe_web_admin", os.Getenv("GAMEWE_TEST_WEB_ADMIN_PASSWORD"))
-	pg := initDB(t, config.Postgres, "gamewe_web_admin", os.Getenv("GAMEWE_TEST_WEB_ADMIN_PASSWORD"))
+	user, pw := "gamewe_web_admin", os.Getenv("GAMEWE_TEST_WEB_ADMIN_PASSWORD")
+	if typ == config.MSSQL {
+		user, pw = "gamewe", TestPassword("gamewe") // the defaults need VIEW DEFINITION, which the owner has
+	}
+	pg := initDB(t, typ, user, pw)
 	a, b := columns(t, my), columns(t, pg)
 	if len(a) < 300 {
 		t.Fatalf("only %d MariaDB columns", len(a))

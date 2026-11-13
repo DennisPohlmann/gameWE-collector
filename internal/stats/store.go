@@ -30,6 +30,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"gamewe-collector/internal/config"
 	"gamewe-collector/internal/database"
 	"gamewe-collector/internal/games"
 	"gamewe-collector/internal/settings"
@@ -232,12 +233,31 @@ func (s *Store) query(ctx context.Context, q string, args ...any) (*sql.Rows, er
 }
 
 func (s *Store) exec(ctx context.Context, q string, args ...any) (sql.Result, error) {
-	return s.db.ExecContext(ctx, s.db.Q(q), args...)
+	res, err := s.db.ExecContext(ctx, s.db.Q(q), args...)
+	// SQL Server: a statement chosen as deadlock victim runs again (it is
+	// one statement outside a transaction, rolled back as a whole).
+	for try := 0; try < 3 && s.db.MSSQL() && database.MSSQLDeadlock(err); try++ {
+		time.Sleep(time.Duration(10*(try+1)) * time.Millisecond)
+		res, err = s.db.ExecContext(ctx, s.db.Q(q), args...)
+	}
+	return res, err
+}
+
+// withID lets an insert that gives the identity column of table run on
+// SQL Server.
+func (s *Store) withID(table, q string) string {
+	if !s.db.MSSQL() {
+		return q
+	}
+	return database.MSSQLIdentityInsert(table, q)
 }
 
 // ignore turns "INSERT INTO ..." into an insert that skips rows whose key
 // already exists.
 func (s *Store) ignore(insert string) string {
+	if s.db.MSSQL() {
+		return database.MSSQLIgnore(insert)
+	}
 	if s.db.Postgres() {
 		return insert + " ON CONFLICT DO NOTHING"
 	}
@@ -254,19 +274,30 @@ func (s *Store) upsert(insert, table, key string, sets ...set) string {
 	parts := make([]string, len(sets))
 	for i, st := range sets {
 		old, new := st.col, "VALUES("+st.col+")"
-		if s.db.Postgres() {
+		switch {
+		case s.db.Postgres():
 			old, new = table+"."+st.col, "EXCLUDED."+st.col
+		case s.db.MSSQL():
+			old, new = table+"."+st.col, "v."+st.col
 		}
 		parts[i] = st.col + " = " + strings.NewReplacer("{old}", old, "{new}", new).Replace(st.expr)
 	}
 	if s.db.Postgres() {
 		return insert + " ON CONFLICT (" + key + ") DO UPDATE SET " + strings.Join(parts, ", ")
 	}
+	if s.db.MSSQL() {
+		return database.MSSQLUpsert(insert, key, parts)
+	}
 	return insert + " ON DUPLICATE KEY UPDATE " + strings.Join(parts, ", ")
 }
 
 // insertID runs an insert and returns the generated id of column idCol.
 func (s *Store) insertID(ctx context.Context, q, idCol string, args ...any) (int64, error) {
+	if s.db.MSSQL() {
+		var id int64
+		err := s.queryRow(ctx, q+"; SELECT CAST(SCOPE_IDENTITY() AS bigint)", args...).Scan(&id)
+		return id, err
+	}
 	if s.db.Postgres() {
 		var id int64
 		err := s.queryRow(ctx, q+" RETURNING "+idCol, args...).Scan(&id)
@@ -316,7 +347,7 @@ func (s *Store) cached(key string, load func() (any, error)) (any, error) {
 // skillSet adds a delta to the skill column without going below zero (in
 // MariaDB the column is unsigned, so the sum is computed as signed).
 func (s *Store) skillSet() string {
-	if s.db.Postgres() {
+	if s.db.Type != config.MySQL {
 		return `skill = GREATEST(skill + ?, 0)`
 	}
 	return `skill = GREATEST(CAST(skill AS SIGNED) + ?, 0)`
@@ -420,8 +451,11 @@ func (s *Store) EnsureServer(ctx context.Context, ap netip.AddrPort, game, name 
 func (s *Store) hasColumn(ctx context.Context, table, column string) (bool, error) {
 	var n int
 	schema := "DATABASE()"
-	if s.db.Postgres() {
+	switch {
+	case s.db.Postgres():
 		schema = "current_schema()"
+	case s.db.MSSQL():
+		schema = "SCHEMA_NAME()"
 	}
 	err := s.queryRow(ctx, `SELECT COUNT(*) FROM information_schema.columns
 		WHERE table_schema = `+schema+` AND LOWER(table_name) = LOWER(?) AND LOWER(column_name) = LOWER(?)`, s.db.Prefix.Table(table), column).Scan(&n)
@@ -591,7 +625,7 @@ func (s *Store) Player(ctx context.Context, ev Ev, uniqueID, name string) (id in
 		return 0, 0, err
 	}
 	if err := s.run(ctx,
-		step{s.ignore(`INSERT INTO hlstats_Players (playerId, game, game_id, skill, last_event, hideranking) VALUES (?, ?, ?, ?, ?, ?)`),
+		step{s.withID("hlstats_Players", s.ignore(`INSERT INTO hlstats_Players (playerId, game, game_id, skill, last_event, hideranking) VALUES (?, ?, ?, ?, ?, ?)`)),
 			[]any{id, game, ev.Srv.GameID, s.set.Get().StartSkill, ev.ts(), boolInt(IsBot(uniqueID) && !s.set.Get().RankBots(game))}},
 	); err != nil {
 		return 0, 0, err
@@ -671,9 +705,21 @@ func (s *Store) reactivate(ctx context.Context, id int64) error {
 
 func (s *Store) reactivateSteps(id int64) []step {
 	return []step{
-		{s.ignore(`INSERT INTO hlstats_Players SELECT * FROM hlstats_PlayersInactive WHERE playerId = ?`), []any{id}},
+		{s.reactivateInsert(), []any{id}},
 		{`DELETE FROM hlstats_PlayersInactive WHERE playerId = ?`, []any{id}},
 	}
+}
+
+// reactivateInsert copies a row of hlstats_PlayersInactive (the same
+// columns) to hlstats_Players unless that has the player.
+func (s *Store) reactivateInsert() string {
+	if !s.db.MSSQL() {
+		return s.ignore(`INSERT INTO hlstats_Players SELECT * FROM hlstats_PlayersInactive WHERE playerId = ?`)
+	}
+	// SQL Server: the columns by name, and the identity column playerId may
+	// only take a given value with IDENTITY_INSERT.
+	cols := database.MSSQLColumns("hlstats_Players")
+	return s.withID("hlstats_Players", database.MSSQLIgnore(`INSERT INTO hlstats_Players (`+cols+`) SELECT `+cols+` FROM hlstats_PlayersInactive WHERE playerId = ?`))
 }
 
 func (s *Store) join(ctx context.Context, ev Ev, p Live) error {

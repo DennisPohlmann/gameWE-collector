@@ -144,7 +144,11 @@ func (s *Store) moveInactive(ctx context.Context, ids []int64, cutoff time.Time)
 	}
 	// PostgreSQL: concurrent updates of these rows wait until the batch is
 	// done and then find no row (a visit start then moves it back).
-	rows, err := tx.QueryContext(ctx, s.db.Q(`SELECT playerId FROM hlstats_Players WHERE playerId IN (`+in+`) FOR UPDATE`), idArgs...)
+	lock := `SELECT playerId FROM hlstats_Players WHERE playerId IN (` + in + `) FOR UPDATE`
+	if s.db.MSSQL() {
+		lock = `SELECT playerId FROM hlstats_Players WITH (UPDLOCK, ROWLOCK) WHERE playerId IN (` + in + `)`
+	}
+	rows, err := tx.QueryContext(ctx, s.db.Q(lock), idArgs...)
 	if err != nil {
 		return 0, fmt.Errorf("lock hlstats_Players: %w", err)
 	}

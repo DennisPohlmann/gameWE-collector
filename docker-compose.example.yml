@@ -8,9 +8,9 @@
 # (hlstats_Servers), so do not rely on published ports (-p) unless you have
 # checked that the source address is kept (see README, Docker).
 #
-# Optional: a database in the same Compose project, either MariaDB or
-# PostgreSQL (choose one with --profile; set the root password in .env as
-# DB_ROOT_PASSWORD). It listens on 127.0.0.1 only, which the collector reaches
+# Optional: a database in the same Compose project, MariaDB, PostgreSQL or
+# Microsoft SQL Server (choose one with --profile; set the root password in
+# .env as DB_ROOT_PASSWORD). It listens on 127.0.0.1 only, which the collector reaches
 # through the host network (database.host: 127.0.0.1). Create the gameWE
 # database once it is up, with the init script from the repository or the
 # package (/opt/gamewe/collector/doc/schema/...):
@@ -24,6 +24,15 @@
 #                cd schema/postgres/init && PSQL='docker compose exec -T postgres psql' \
 #                  COLLECTOR_PASSWORD=... WEB_PASSWORD=... WEB_ADMIN_PASSWORD=... ./init-db.sh -U postgres
 #                config: type: postgres, port: 5432
+#
+#   SQL Server:  set MSSQL_ACCEPT_EULA=Y in .env if you accept Microsoft's license
+#                (https://go.microsoft.com/fwlink/?linkid=857698); DB_ROOT_PASSWORD
+#                needs 8+ characters of three kinds (upper, lower, digit, symbol)
+#                docker compose --profile mssql up -d
+#                cd schema/mssql/init && SQLCMDPASSWORD="$DB_ROOT_PASSWORD" \
+#                  SQLCMD='docker compose exec -T -e SQLCMDPASSWORD -e db -e collector_pw -e web_pw -e admin_pw mssql /opt/mssql-tools18/bin/sqlcmd' \
+#                  COLLECTOR_PASSWORD=... WEB_PASSWORD=... WEB_ADMIN_PASSWORD=... ./init-db.sh -S localhost -U sa -C
+#                config: type: mssql, port: 1433
 #
 # (Run the init commands from the directory of docker-compose.yml, or add
 # -f /path/to/docker-compose.yml to "docker compose".) The collector creates
@@ -72,7 +81,20 @@ services:
     volumes:
       - postgres:/var/lib/postgresql
 
+  mssql:
+    profiles: [mssql]
+    image: mcr.microsoft.com/mssql/server:2022-latest   # SQL Server 2022 or newer (GREATEST, IS DISTINCT FROM)
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: ${MSSQL_ACCEPT_EULA:-}            # Y: you accept Microsoft's license (see above)
+      MSSQL_SA_PASSWORD: ${DB_ROOT_PASSWORD:-}       # required: set it in .env
+      MSSQL_PID: Express                             # free edition (10 GB per database); Developer is not for production
+    ports: ["127.0.0.1:1433:1433"]
+    volumes:
+      - mssql:/var/opt/mssql
+
 volumes:
   gamewe-data:
   mariadb:
   postgres:
+  mssql:

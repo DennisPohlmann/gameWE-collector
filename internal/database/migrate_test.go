@@ -35,12 +35,12 @@ func fullCatalog(t *testing.T, dialect string) ([]schema.Table, catalog) {
 }
 
 func TestSyncNothingMissing(t *testing.T) {
-	for _, d := range []string{schema.MySQL, schema.Postgres} {
+	for _, d := range []string{schema.MySQL, schema.Postgres, schema.MSSQL} {
 		tables, c := fullCatalog(t, d)
-		if m := missing(tables, c, d == schema.Postgres); len(m) != 0 {
+		if m := missing(tables, c, d); len(m) != 0 {
 			t.Errorf("%s: %v", d, m)
 		}
-		if s := syncSteps(tables, c, d == schema.Postgres, true, Migrations[1].Drop, nil); len(s) != 0 {
+		if s := syncSteps(tables, c, d, true, Migrations[1].Drop, nil); len(s) != 0 {
 			t.Errorf("%s: %+v", d, s)
 		}
 	}
@@ -50,7 +50,7 @@ func TestSyncNothingMissing(t *testing.T) {
 // table without server_id and positions, with killerId / victimId instead of
 // killer_time / victim_time, and no hlstats_gamewe_jobs.
 func TestSyncOldDatabase(t *testing.T) {
-	for _, d := range []string{schema.MySQL, schema.Postgres} {
+	for _, d := range []string{schema.MySQL, schema.Postgres, schema.MSSQL} {
 		pg := d == schema.Postgres
 		tables, c := fullCatalog(t, d)
 		delete(c.tables, "hlstats_gamewe_jobs")
@@ -59,17 +59,17 @@ func TestSyncOldDatabase(t *testing.T) {
 			delete(c.columns[frags], col)
 		}
 		for _, ix := range []string{"killer_time", "victim_time", "server_id"} {
-			delete(c.indexes[frags], strings.ToLower(indexName(pg, frags, ix)))
+			delete(c.indexes[frags], strings.ToLower(indexName(d, frags, ix)))
 		}
-		c.indexes[frags][strings.ToLower(indexName(pg, frags, "killerId"))] = true
-		c.indexes[frags][strings.ToLower(indexName(pg, frags, "victimId"))] = true
+		c.indexes[frags][strings.ToLower(indexName(d, frags, "killerId"))] = true
+		c.indexes[frags][strings.ToLower(indexName(d, frags, "victimId"))] = true
 		c.rows[frags] = 3_000_000
 
-		m := missing(tables, c, pg)
+		m := missing(tables, c, d)
 		if len(m) != 7 || m[0].Table != "hlstats_Events_Frags" {
 			t.Errorf("%s missing: %v", d, m)
 		}
-		steps := syncSteps(tables, c, pg, true, Migrations[1].Drop, nil)
+		steps := syncSteps(tables, c, d, true, Migrations[1].Drop, nil)
 		if len(steps) != 2 {
 			t.Fatalf("%s: %d steps: %+v", d, len(steps), steps)
 		}
@@ -82,6 +82,19 @@ func TestSyncOldDatabase(t *testing.T) {
 			t.Errorf("%s jobs step: %+v", d, j)
 		}
 		all := strings.Join(f.stmts, ";\n")
+		if d == schema.MSSQL {
+			for _, want := range []string{"ALTER TABLE hlstats_Events_Frags ADD server_id int NOT NULL DEFAULT 0",
+				"CREATE INDEX hlstats_Events_Frags_killer_time ON hlstats_Events_Frags (killerId, timestamp_id)",
+				"DROP INDEX IF EXISTS hlstats_events_frags_killerid ON hlstats_Events_Frags"} {
+				if !strings.Contains(all, want) {
+					t.Errorf("mssql lacks %q in\n%s", want, all)
+				}
+			}
+			if !strings.HasPrefix(j.stmts[0], "CREATE TABLE hlstats_gamewe_jobs (") || len(j.stmts) != 2 {
+				t.Errorf("mssql jobs: %q", j.stmts)
+			}
+			continue
+		}
 		if pg {
 			for _, want := range []string{"ALTER TABLE hlstats_Events_Frags ADD COLUMN IF NOT EXISTS server_id integer NOT NULL DEFAULT 0",
 				"CREATE INDEX IF NOT EXISTS hlstats_Events_Frags_killer_time ON hlstats_Events_Frags (killerId, timestamp_id)",
@@ -118,7 +131,7 @@ func TestDropNeedsReplacement(t *testing.T) {
 	delete(c.indexes["hlstats_events_frags"], "killer_time")
 	c.indexes["hlstats_events_frags"]["killerid"] = true
 	// No sync in this run: killer_time is not added, killerId stays.
-	if s := syncSteps(tables, c, false, false, Migrations[1].Drop, nil); len(s) != 0 {
+	if s := syncSteps(tables, c, schema.MySQL, false, Migrations[1].Drop, nil); len(s) != 0 {
 		t.Errorf("dropped without replacement: %+v", s)
 	}
 }
@@ -147,7 +160,7 @@ func TestCreateIfNotExists(t *testing.T) {
 		"CREATE UNIQUE INDEX a ON b (c)": "CREATE UNIQUE INDEX IF NOT EXISTS a ON b (c)",
 		"CREATE INDEX a ON b (c)":        "CREATE INDEX IF NOT EXISTS a ON b (c)",
 	} {
-		if got := createIfNotExists(in); got != want {
+		if got := createIfNotExists(schema.Postgres, in); got != want {
 			t.Errorf("%q: %q", in, got)
 		}
 	}
@@ -183,7 +196,7 @@ func TestDetectCE(t *testing.T) {
 }
 
 func TestDropSQL(t *testing.T) {
-	for _, dialect := range []string{schema.MySQL, schema.Postgres} {
+	for _, dialect := range []string{schema.MySQL, schema.Postgres, schema.MSSQL} {
 		q, err := DropSQL(dialect, "")
 		if err != nil {
 			t.Fatal(err)
@@ -204,7 +217,7 @@ func TestDropSQL(t *testing.T) {
 }
 
 func TestPurgeTables(t *testing.T) {
-	for _, dialect := range []string{schema.MySQL, schema.Postgres} {
+	for _, dialect := range []string{schema.MySQL, schema.Postgres, schema.MSSQL} {
 		tables, err := PurgeTables(dialect)
 		if err != nil {
 			t.Fatal(err)
@@ -236,7 +249,7 @@ func TestSyncEngine(t *testing.T) {
 	c.indexes[frags]["map"] = true
 	c.rows[frags] = 3_000_000
 
-	m := missing(tables, c, false)
+	m := missing(tables, c, schema.MySQL)
 	if len(m) != len(tables)-1 /* Livestats */ -1 /* Options */ +1 /* map_time */ {
 		t.Errorf("%d requirements: %v", len(m), m)
 	}
@@ -260,7 +273,7 @@ func TestSyncEngine(t *testing.T) {
 		t.Errorf("%d engines, %d map_time", engines, maps)
 	}
 
-	steps := syncSteps(tables, c, false, true, Migrations[18].Drop, Migrations[18].Widen)
+	steps := syncSteps(tables, c, schema.MySQL, true, Migrations[18].Drop, Migrations[18].Widen)
 	if len(steps) != len(tables)-2 {
 		t.Fatalf("%d steps", len(steps))
 	}
@@ -278,7 +291,7 @@ func TestSyncEngine(t *testing.T) {
 		}
 	}
 	// Without sync (a Drop-only migration) nothing is converted.
-	if s := syncSteps(tables, c, false, false, nil, nil); len(s) != 0 {
+	if s := syncSteps(tables, c, schema.MySQL, false, nil, nil); len(s) != 0 {
 		t.Errorf("converted without sync: %+v", s)
 	}
 	// PostgreSQL: engines do not exist.
@@ -286,7 +299,7 @@ func TestSyncEngine(t *testing.T) {
 	for lt := range pc.tables {
 		pc.engines[lt] = "myisam"
 	}
-	if m := missing(pgTables, pc, true); len(m) != 0 {
+	if m := missing(pgTables, pc, schema.Postgres); len(m) != 0 {
 		t.Errorf("postgres: %v", m)
 	}
 }
@@ -295,7 +308,7 @@ func TestSyncEngine(t *testing.T) {
 // not converted.
 func TestSyncEngineUnknown(t *testing.T) {
 	tables, c := fullCatalog(t, schema.MySQL)
-	if m := missing(tables, c, false); len(m) != 0 {
+	if m := missing(tables, c, schema.MySQL); len(m) != 0 {
 		t.Errorf("%v", m)
 	}
 }
@@ -324,24 +337,27 @@ func TestColumnType(t *testing.T) {
 // COLUMN TYPE); a column of the right type, or one the database did not
 // tell, is left alone.
 func TestSyncWiden(t *testing.T) {
-	for _, d := range []string{schema.MySQL, schema.Postgres} {
+	for _, d := range []string{schema.MySQL, schema.Postgres, schema.MSSQL} {
 		pg := d == schema.Postgres
 		tables, c := fullCatalog(t, d)
 		oldType, want, stmt := "tinyint unsigned", "smallint unsigned", "MODIFY COLUMN `teamId` smallint(5) unsigned NOT NULL AUTO_INCREMENT"
 		if pg {
 			oldType, want, stmt = "smallint", "integer", "ALTER TABLE hlstats_Teams ALTER COLUMN teamId TYPE integer"
 		}
+		if d == schema.MSSQL {
+			oldType, want, stmt = "smallint", "int", "ALTER TABLE hlstats_Teams ALTER COLUMN teamId int NOT NULL"
+		}
 		c.types["hlstats_teams"]["teamid"] = oldType
 		c.types["hlstats_roles"]["roleid"] = ""  // unknown: left alone
 		c.types["hlstats_games"]["id"] = oldType // not in any Widen: left alone
-		m := missing(tables, c, pg)
+		m := missing(tables, c, d)
 		if len(m) != 1 || m[0].Table != "hlstats_Teams" || m[0].Column != "teamId" || m[0].Type != want {
 			t.Fatalf("%s: missing %v", d, m)
 		}
 		if got := m[0].String(); got != "schema outdated: column hlstats_Teams.teamId is not "+want {
 			t.Error(got)
 		}
-		steps := syncSteps(tables, c, pg, true, nil, allWiden())
+		steps := syncSteps(tables, c, d, true, nil, allWiden())
 		if len(steps) != 1 || steps[0].Table != "hlstats_Teams" || !strings.Contains(steps[0].What, "widen columns teamId (from "+oldType+" to "+want+")") {
 			t.Fatalf("%s: steps %+v", d, steps)
 		}
@@ -349,7 +365,7 @@ func TestSyncWiden(t *testing.T) {
 			t.Errorf("%s: %q", d, steps[0].stmts)
 		}
 		// Without Widen (an older migration's sync) the type stays.
-		if steps := syncSteps(tables, c, pg, true, nil, nil); len(steps) != 0 {
+		if steps := syncSteps(tables, c, d, true, nil, nil); len(steps) != 0 {
 			t.Errorf("%s: sync without widen: %+v", d, steps)
 		}
 	}

@@ -229,10 +229,14 @@ func TestMigrateRefusesRunningCollector(t *testing.T) {
 	d := database.TestConfig(name, "gamewe", database.TestPassword("gamewe"))
 	cfg := writeConfig(t, d)
 	stop := startRun(t, bin, cfg) // creates the tables (auto_migrate) and holds the collector lock
-	for _, q := range []string{
-		`ALTER TABLE hlstats_Servers DROP COLUMN server_version, DROP COLUMN server_os, DROP COLUMN server_vac, DROP COLUMN act_bots`,
-		`DELETE FROM ` + database.MigrationsTable + ` WHERE version >= 5`,
-	} {
+	qs := []string{`ALTER TABLE hlstats_Servers DROP COLUMN server_version, DROP COLUMN server_os, DROP COLUMN server_vac, DROP COLUMN act_bots`}
+	if admin.MSSQL() {
+		qs = nil
+		for _, c := range []string{"server_version", "server_os", "server_vac", "act_bots"} {
+			qs = append(qs, database.DropColumnSQL(admin, "hlstats_Servers", c))
+		}
+	}
+	for _, q := range append(qs, `DELETE FROM `+database.MigrationsTable+` WHERE version >= 5`) {
 		if _, err := admin.Exec(q); err != nil {
 			t.Fatal(err)
 		}
@@ -652,7 +656,11 @@ func TestMigrateCleanup(t *testing.T) {
 	}
 	old := []string{"hlstats_Trend", "hlstats_Players_Roles", "hlstats_Ribbons"}
 	if pfx.Default() {
-		stmts = append(stmts, `CREATE TABLE gamewe_schema_migrations AS SELECT * FROM hlstats_gamewe_schema_migrations`)
+		copyQ := `CREATE TABLE gamewe_schema_migrations AS SELECT * FROM hlstats_gamewe_schema_migrations`
+		if typ == config.MSSQL {
+			copyQ = `SELECT * INTO gamewe_schema_migrations FROM hlstats_gamewe_schema_migrations`
+		}
+		stmts = append(stmts, copyQ)
 		old = append(old, database.LegacyMigrationsTable)
 	}
 	for _, q := range stmts {

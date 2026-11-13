@@ -30,6 +30,7 @@ import (
 const (
 	MySQL    = "mysql"
 	Postgres = "postgres"
+	MSSQL    = "mssql" // Microsoft SQL Server 2022 or newer
 )
 
 // DefaultTablePrefix is the prefix of the table names (hlstats_Players),
@@ -648,8 +649,8 @@ func (l Listen) UDP() string {
 	return net.JoinHostPort(l.Address, strconv.Itoa(l.Port))
 }
 
-// Database is the connection to the HLstatsX database: MariaDB / MySQL or
-// PostgreSQL.
+// Database is the connection to the HLstatsX database: MariaDB / MySQL,
+// PostgreSQL or Microsoft SQL Server.
 type Database struct {
 	Type         string `yaml:"type"`
 	Host         string `yaml:"host"`
@@ -867,11 +868,16 @@ func (cfg *Config) finish() []Problem {
 		d.Type = MySQL
 	case "postgres", "postgresql", "pgsql":
 		d.Type = Postgres
+	case "mssql", "sqlserver":
+		d.Type = MSSQL
 	}
 	if d.Port == 0 {
 		d.Port = 3306
-		if d.Type == Postgres {
+		switch d.Type {
+		case Postgres:
 			d.Port = 5432
+		case MSSQL:
+			d.Port = 1433
 		}
 	}
 	d.TLS.Mode = strings.ToLower(strings.TrimSpace(d.TLS.Mode))
@@ -1004,8 +1010,8 @@ func (c Config) Problems() []Problem {
 		add("features.daily_awards.time", "%q: want HH:MM, e.g. \"00:00\"", c.Features.DailyAwards.Time)
 	}
 	d := c.Database
-	if d.Type != MySQL && d.Type != Postgres {
-		add("database.type", "%q must be mariadb (or mysql) or postgres", d.Type)
+	if d.Type != MySQL && d.Type != Postgres && d.Type != MSSQL {
+		add("database.type", "%q must be mariadb (or mysql), postgres or mssql", d.Type)
 	}
 	for _, f := range []struct{ key, v string }{{"host", d.Host}, {"user", d.User}, {"name", d.Name}} {
 		if f.v == "" {

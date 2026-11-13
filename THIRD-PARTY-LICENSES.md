@@ -21,12 +21,18 @@ Go version go1.27.3; modules as `go version -m gamewe` lists them.
 | `Go standard library and runtime` | 1.27.3 | BSD-3-Clause | https://go.dev | compiled into every Go program (runtime, net, crypto/tls, database/sql, ...) | [`LICENSE`](licenses/go/LICENSE) |
 | `filippo.io/edwards25519` | v1.2.0 | BSD-3-Clause | https://github.com/FiloSottile/edwards25519 | used by the MySQL driver (ed25519 authentication plugin) | [`LICENSE`](licenses/filippo.io_edwards25519/LICENSE) |
 | `github.com/go-sql-driver/mysql` | v1.10.1 | MPL-2.0 | https://github.com/go-sql-driver/mysql | MariaDB / MySQL database driver | [`LICENSE`](licenses/github.com_go-sql-driver_mysql/LICENSE) |
+| `github.com/golang-sql/civil` | v0.0.0-20220223132316-b832511892a9 | Apache-2.0 | https://github.com/golang-sql/civil | date and time types of the SQL Server driver | [`LICENSE`](licenses/github.com_golang-sql_civil/LICENSE) |
+| `github.com/golang-sql/sqlexp` | v0.1.0 | BSD-3-Clause | https://github.com/golang-sql/sqlexp | used by the SQL Server driver (messages of the server) | [`LICENSE`](licenses/github.com_golang-sql_sqlexp/LICENSE) |
+| `github.com/google/uuid` | v1.6.0 | BSD-3-Clause | https://github.com/google/uuid | used by the SQL Server driver (uniqueidentifier, connection ids) | [`LICENSE`](licenses/github.com_google_uuid/LICENSE) |
 | `github.com/jackc/pgpassfile` | v1.0.0 | MIT | https://github.com/jackc/pgpassfile | used by pgx (.pgpass files) | [`LICENSE`](licenses/github.com_jackc_pgpassfile/LICENSE) |
 | `github.com/jackc/pgservicefile` | v0.0.0-20240606120523-5a60cdf6a761 | MIT | https://github.com/jackc/pgservicefile | used by pgx (service files) | [`LICENSE`](licenses/github.com_jackc_pgservicefile/LICENSE) |
 | `github.com/jackc/pgx/v5` | v5.13.0 | MIT | https://github.com/jackc/pgx | PostgreSQL database driver | [`LICENSE`](licenses/github.com_jackc_pgx_v5/LICENSE) |
 | `github.com/jackc/puddle/v2` | v2.2.3 | MIT | https://github.com/jackc/puddle | connection pool of pgx | [`LICENSE`](licenses/github.com_jackc_puddle_v2/LICENSE) |
+| `github.com/microsoft/go-mssqldb` | v1.11.2 | BSD-3-Clause | https://github.com/microsoft/go-mssqldb | Microsoft SQL Server database driver | [`LICENSE.txt`](licenses/github.com_microsoft_go-mssqldb/LICENSE.txt) |
 | `github.com/oschwald/maxminddb-golang` | v1.13.1 | ISC | https://github.com/oschwald/maxminddb-golang | reads the GeoIP city database (.mmdb) | [`LICENSE`](licenses/github.com_oschwald_maxminddb-golang/LICENSE) |
+| `github.com/shopspring/decimal` | v1.4.0 | MIT | https://github.com/shopspring/decimal | decimal numbers of the SQL Server driver | [`LICENSE`](licenses/github.com_shopspring_decimal/LICENSE) |
 | `go.yaml.in/yaml/v3` | v3.0.6 | MIT AND Apache-2.0 | https://github.com/yaml/go-yaml | reads config.yaml | [`LICENSE`](licenses/go.yaml.in_yaml_v3/LICENSE), [`NOTICE`](licenses/go.yaml.in_yaml_v3/NOTICE) |
+| `golang.org/x/crypto` | v0.55.0 | BSD-3-Clause | https://pkg.go.dev/golang.org/x/crypto | used by the SQL Server driver (MD4 of its NTLM login) | [`LICENSE`](licenses/golang.org_x_crypto/LICENSE) |
 | `golang.org/x/sync` | v0.25.0 | BSD-3-Clause | https://pkg.go.dev/golang.org/x/sync | used by pgx (its connection pool puddle) | [`LICENSE`](licenses/golang.org_x_sync/LICENSE) |
 | `golang.org/x/sys` | v0.50.0 | BSD-3-Clause | https://pkg.go.dev/golang.org/x/sys | system calls: the terminal mode of the `gamewe` questions (Linux), used by maxminddb-golang | [`LICENSE`](licenses/golang.org_x_sys/LICENSE) |
 | `golang.org/x/text` | v0.44.0 | BSD-3-Clause | https://pkg.go.dev/golang.org/x/text | text encoding and Unicode handling of pgx | [`LICENSE`](licenses/golang.org_x_text/LICENSE) |

@@ -432,3 +432,25 @@ What a reader has to know:
 
 `yearweek_id` is computed by the collector (MySQL `YEARWEEK` mode 0, weeks
 start on Sunday) and has the same values on both databases.
+
+## SQL Server
+
+The SQL Server schema (`internal/schema/mssql/`) is generated from the
+PostgreSQL one, so the table above applies, with these differences (the CI
+tests compare its columns, NOT NULLs, defaults, identity columns and primary
+keys with MariaDB's):
+
+| Topic | SQL Server |
+|-------|------------|
+| Names | unquoted, as written in the schema (`hlstats_Players.playerId`); the database collation (case-insensitive, `init-db.sh`) makes `playerid` the same name, and result columns keep the spelling of the query |
+| Text | `nvarchar(n)` (Unicode); `hlstats_Events_Chat.message` is `nvarchar(max)`. Write string literals with non-ASCII text as `N'...'` (bound parameters need nothing). Comparison and `ORDER BY` follow the case-insensitive collation, as on MariaDB |
+| Other types | integers as on PostgreSQL (`smallint`, `int`, `bigint`), `real`, `float` (MariaDB `double`), `datetime2(0)` (MariaDB `datetime`), `date` |
+| Identity | `IDENTITY(1,1)`: insert without the id column (`SCOPE_IDENTITY()` or `OUTPUT INSERTED.id` gives the new id); an explicit id needs `SET IDENTITY_INSERT <table> ON` |
+| Unique keys with NULL | SQL Server allows one NULL per unique index, MariaDB any number: the one such key (`hlstats_Definition_Ribbons_Classes (game_code, class)`) is a filtered index `WHERE class IS NOT NULL` |
+| Paging | no `LIMIT`: `ORDER BY ... OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY` (or `TOP (10)`) |
+| Insert or update | no `INSERT IGNORE` / `ON CONFLICT`: `INSERT ... SELECT ... WHERE NOT EXISTS (...)` or `MERGE` |
+| Functions | `GREATEST`, `LEAST`, `CONCAT`, `COALESCE`, `STRING_AGG` as elsewhere; `ISNULL`/`COALESCE` instead of `IFNULL`, `LEN` instead of `LENGTH`, `ROUND(x, 0)` (two arguments) |
+| Averages and division | `AVG` of an integer column is an integer and `kills / deaths` an integer division: write `AVG(CAST(x AS float))`, `kills * 1.0 / NULLIF(deaths, 0)` |
+| Booleans | no boolean values: `CASE WHEN a > b THEN 1 ELSE 0 END` instead of `a > b` in a select list |
+| `GROUP BY` | as strict as PostgreSQL, and no column numbers or aliases (`GROUP BY 1`): repeat the expression |
+| Rights | column rights as on MariaDB, but checked strictly: see [DATABASE.md](DATABASE.md#sql-server) |

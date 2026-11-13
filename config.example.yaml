@@ -58,9 +58,9 @@ listen:
     # trusted_proxies: [127.0.0.1]
 
 database:
-  type: mariadb           # mariadb (= mysql) or postgres
+  type: mariadb           # mariadb (= mysql), postgres or mssql (SQL Server 2022+)
   host: db.example.org
-  # port: 3306            # default: 3306 (mariadb / mysql), 5432 (postgres)
+  # port: 3306            # default: 3306 (mariadb / mysql), 5432 (postgres), 1433 (mssql)
   user: gamewe
   password: "change-me"
   # password_file: /etc/gamewe/collector/db-password   # alternative to password

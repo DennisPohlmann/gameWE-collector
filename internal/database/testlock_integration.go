@@ -26,6 +26,19 @@ func LockForTest(ctx context.Context, db *DB, wait time.Duration) (func(), error
 	if err != nil {
 		return nil, err
 	}
+	if db.MSSQL() {
+		var r int
+		err := conn.QueryRowContext(ctx, `DECLARE @r int; EXEC @r = sp_getapplock @Resource = @p1, @LockMode = 'Exclusive', @LockOwner = 'Session', @LockTimeout = @p2; SELECT @r`,
+			testLockName, wait.Milliseconds()).Scan(&r)
+		if err != nil || r < 0 {
+			conn.Close()
+			return nil, fmt.Errorf("test lock: %v (got %d)", err, r)
+		}
+		return func() {
+			conn.ExecContext(context.Background(), `EXEC sp_releaseapplock @Resource = @p1, @LockOwner = 'Session'`, testLockName)
+			conn.Close()
+		}, nil
+	}
 	if db.Postgres() {
 		ctx, cancel := context.WithTimeout(ctx, wait)
 		defer cancel()

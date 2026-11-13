@@ -34,7 +34,7 @@ func OwnTables(ctx context.Context, db *DB) (own, other []string, err error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	cat, err := readCatalog(ctx, db.DB, db.Postgres(), db.Prefix)
+	cat, err := readCatalog(ctx, db.DB, db.Type, db.Prefix)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -59,8 +59,8 @@ func OwnTables(ctx context.Context, db *DB) (own, other []string, err error) {
 
 // quoteTable quotes a table name of the schema for the dialect.
 func quoteTable(dialect, name string) string {
-	if dialect == schema.Postgres {
-		return name // the PostgreSQL schema uses unquoted (lower case) names
+	if dialect != schema.MySQL {
+		return name // the PostgreSQL and SQL Server schemas use unquoted names
 	}
 	return "`" + name + "`"
 }
@@ -157,7 +157,15 @@ func ResetData(ctx context.Context, db *DB) error {
 		return err
 	}
 	defer conn.Close()
-	if db.Postgres() {
+	if db.MSSQL() {
+		// TRUNCATE also starts the identity columns again at 1.
+		for _, t := range tables {
+			if _, err = conn.ExecContext(ctx, "TRUNCATE TABLE "+quoteTable(db.Type, t.Name)); err != nil {
+				err = fmt.Errorf("%s: %w", t.Name, err)
+				break
+			}
+		}
+	} else if db.Postgres() {
 		names := make([]string, 0, len(tables))
 		for _, t := range tables {
 			names = append(names, quoteTable(db.Type, t.Name))
@@ -179,7 +187,7 @@ func ResetData(ctx context.Context, db *DB) error {
 		}
 	}
 	if err != nil {
-		return rightsHint(ctx, conn, db.Postgres(), db.Prefix, err)
+		return rightsHint(ctx, conn, db.Type, db.Prefix, err)
 	}
 	return runScript(ctx, conn, db.Type, schema.Seed(db.Type))
 }
@@ -216,7 +224,7 @@ func Purge(ctx context.Context, db *DB, before time.Time, dry bool) ([]TableRows
 	if err != nil {
 		return nil, err
 	}
-	cat, err := readCatalog(ctx, db.DB, db.Postgres(), db.Prefix)
+	cat, err := readCatalog(ctx, db.DB, db.Type, db.Prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -237,8 +245,11 @@ func Purge(ctx context.Context, db *DB, before time.Time, dry bool) ([]TableRows
 		var total int64
 		for {
 			stmt := "DELETE FROM " + q + " WHERE timestamp_id < ?"
-			if !db.Postgres() {
+			switch db.Type {
+			case schema.MySQL:
 				stmt += fmt.Sprintf(" LIMIT %d", purgeChunk)
+			case schema.MSSQL:
+				stmt = fmt.Sprintf("DELETE TOP (%d) FROM %s WHERE timestamp_id < ?", purgeChunk, q)
 			}
 			res, err := db.ExecContext(ctx, db.Q(stmt), before.Unix())
 			if err != nil {
@@ -246,7 +257,7 @@ func Purge(ctx context.Context, db *DB, before time.Time, dry bool) ([]TableRows
 			}
 			n, _ := res.RowsAffected()
 			total += n
-			if db.Postgres() || n < purgeChunk {
+			if db.Postgres() || n < purgeChunk { // PostgreSQL: one DELETE
 				break
 			}
 		}
@@ -271,6 +282,12 @@ func Optimize(ctx context.Context, db *DB, tables []string, progress func(table 
 		}
 		if progress != nil {
 			progress(t)
+		}
+		if db.MSSQL() {
+			if _, err := conn.ExecContext(ctx, "ALTER INDEX ALL ON "+quoteTable(db.Type, t)+" REORGANIZE; UPDATE STATISTICS "+quoteTable(db.Type, t)); err != nil {
+				return fmt.Errorf("%s: %w", t, err)
+			}
+			continue
 		}
 		if db.Postgres() {
 			if _, err := conn.ExecContext(ctx, "VACUUM (ANALYZE) "+quoteTable(db.Type, t)); err != nil {

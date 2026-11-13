@@ -168,9 +168,9 @@ The RCON load data of `hlstats_server_load` (CPU, FPS, uptime) are switched with
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `type` | `mariadb` | `mariadb` or `mysql` (the same), `postgres` (also `postgresql`, `pgsql`) |
+| `type` | `mariadb` | `mariadb` or `mysql` (the same), `postgres` (also `postgresql`, `pgsql`), `mssql` (also `sqlserver`; SQL Server 2022 or newer) |
 | `host` | – | host name or IP of the database server |
-| `port` | `3306` / `5432` | default by `type`: 3306 for MariaDB / MySQL, 5432 for PostgreSQL |
+| `port` | `3306` / `5432` / `1433` | default by `type`: 3306 for MariaDB / MySQL, 5432 for PostgreSQL, 1433 for SQL Server |
 | `user`, `name` | – | database user and database name |
 | `table_prefix` | `hlstats` | prefix of the table names, as `DB_PREFIX` of HLstatsX:CE: `hlstats` gives `hlstats_Players`, `gw` gives `gw_Players` (`gw_` is the same as `gw`). A letter, then letters, digits and `_`, at most 16 characters; not `gamewe` and not starting with `hlstats_`. The web frontend needs the same value (`DB_TABLE_PREFIX`). See [DATABASE.md](DATABASE.md#table-prefix) |
 | `password` | – | password, or: |

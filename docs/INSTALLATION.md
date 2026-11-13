@@ -30,6 +30,7 @@ passwords.
 |----------|----------|-------|
 | MariaDB | 11.4 (LTS), 12.3 (LTS) | recommended; `schema/init/` |
 | PostgreSQL | 17, 18 | `schema/postgres/init/` |
+| Microsoft SQL Server | 2022 | `schema/mssql/init/`; also Express (free, 10 GB per database). Older versions lack `GREATEST`, `LEAST` and `IS DISTINCT FROM`. Notes: [DATABASE.md](DATABASE.md#sql-server) |
 | MySQL 8.x | not supported | the collector speaks the MySQL protocol, but the schema (`USING HASH`) and the web users' rights (`BEGIN NOT ATOMIC`) use MariaDB syntax. Use MariaDB or PostgreSQL. |
 
 **Folder layout** (release archive; the container has the same paths inside):
@@ -237,6 +238,7 @@ opt/gamewe/collector/doc/                       README, CHANGELOG, INSTALLATION,
                                                 LICENSE, THIRD-PARTY-LICENSES.md, licenses/, GEOIP-NOTICE
 opt/gamewe/collector/doc/schema/init/           MariaDB: 00_create_database.sql, init-db.sh (database and users; the tables are built into gamewe)
 opt/gamewe/collector/doc/schema/postgres/init/  PostgreSQL: the same two files
+opt/gamewe/collector/doc/schema/mssql/init/     SQL Server: the same two files (sqlcmd)
 opt/gamewe/collector/doc/schema/move/           move-db.sh: copy the data from MariaDB to PostgreSQL or back (DATABASE.md)
 var/lib/gamewe/collector/dbip-city-lite.mmdb    GeoIP database (DB-IP City Lite, CC BY 4.0), updated there monthly
 ```
@@ -286,9 +288,9 @@ listen:
     # trusted_proxies: []       # reverse proxies whose X-Forwarded-For is used
 
 database:
-  type: mariadb                 # mariadb (= mysql) or postgres
+  type: mariadb                 # mariadb (= mysql), postgres or mssql
   host: 127.0.0.1
-  # port: 3306                  # default 3306 (mariadb), 5432 (postgres)
+  # port: 3306                  # default 3306 (mariadb), 5432 (postgres), 1433 (mssql)
   user: gamewe
   password_file: /etc/gamewe/collector/db-password   # or: password: "change-me"
   name: gamewe
@@ -448,8 +450,8 @@ for the service. Check with `icacls "$conf\config.yaml"`.
 
 ## C. Database
 
-MariaDB (tested: 11.4 and 12.3) or PostgreSQL (tested: 17 and 18). Three
-database users:
+MariaDB (tested: 11.4 and 12.3), PostgreSQL (tested: 17 and 18) or SQL Server
+(tested: 2022). Three database users:
 
 | User | For | Rights |
 |------|-----|--------|
@@ -474,6 +476,10 @@ COLLECTOR_PASSWORD='change-me' WEB_PASSWORD='change-me' WEB_ADMIN_PASSWORD='chan
 # PostgreSQL, as a superuser
 cd /opt/gamewe/collector/doc/schema/postgres/init
 COLLECTOR_PASSWORD='change-me' WEB_PASSWORD='change-me' WEB_ADMIN_PASSWORD='change-me' ./init-db.sh -U postgres
+
+# SQL Server, as sysadmin (sqlcmd; the sa password in SQLCMDPASSWORD)
+cd /opt/gamewe/collector/doc/schema/mssql/init
+COLLECTOR_PASSWORD='change-me' WEB_PASSWORD='change-me' WEB_ADMIN_PASSWORD='change-me' ./init-db.sh -S db.example.org -U sa
 
 # then, with database.* set in /etc/gamewe/collector/config.yaml:
 sudo -u gamewe /opt/gamewe/collector/bin/gamewe db init         # the tables (or let the first start do it)

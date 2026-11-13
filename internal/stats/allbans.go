@@ -7,6 +7,9 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"gamewe-collector/internal/config"
+	"gamewe-collector/internal/database"
 )
 
 // hlstats_Bans holds the bans of every known Steam account, one row per
@@ -104,31 +107,40 @@ func (s *Store) SteamChecked(ctx context.Context) (map[uint64]int64, error) {
 // update list (later assignments see the new values).
 func (s *Store) changedAt(cols ...string) string {
 	old, new := func(c string) string { return c }, func(c string) string { return "VALUES(" + c + ")" }
-	if s.db.Postgres() {
+	switch {
+	case s.db.Postgres():
 		old, new = func(c string) string { return "hlstats_Bans." + c }, func(c string) string { return "EXCLUDED." + c }
+	case s.db.MSSQL():
+		old, new = func(c string) string { return "hlstats_Bans." + c }, func(c string) string { return "v." + c }
 	}
 	diff := make([]string, len(cols))
 	for i, c := range cols {
 		diff[i] = old(c) + " IS DISTINCT FROM " + new(c)
-		if !s.db.Postgres() {
+		if s.db.Type == config.MySQL {
 			diff[i] = "NOT (" + old(c) + " <=> " + new(c) + ")"
 		}
 	}
 	return "updated_at = CASE WHEN " + strings.Join(diff, " OR ") + " THEN " + new("updated_at") + " ELSE " + old("updated_at") + " END"
 }
 
-// onConflict is the start of the update part of an upsert into hlstats_Bans.
-func (s *Store) onConflict() string {
-	if s.db.Postgres() {
-		return " ON CONFLICT (steamid64, source) DO UPDATE SET "
+// banUpsert adds the update part sets to an insert into hlstats_Bans.
+func (s *Store) banUpsert(insert string, sets []string) string {
+	switch {
+	case s.db.Postgres():
+		return insert + " ON CONFLICT (steamid64, source) DO UPDATE SET " + strings.Join(sets, ", ")
+	case s.db.MSSQL():
+		return database.MSSQLUpsert(insert, "steamid64, source", sets)
 	}
-	return " ON DUPLICATE KEY UPDATE "
+	return insert + " ON DUPLICATE KEY UPDATE " + strings.Join(sets, ", ")
 }
 
 // newVal is the value of the insert of column c in the update part.
 func (s *Store) newVal(c string) string {
-	if s.db.Postgres() {
+	switch {
+	case s.db.Postgres():
 		return c + " = EXCLUDED." + c
+	case s.db.MSSQL():
+		return c + " = v." + c
 	}
 	return c + " = VALUES(" + c + ")"
 }
@@ -143,8 +155,8 @@ func (s *Store) SaveSteamBans(ctx context.Context, bans []SteamBan, now time.Tim
 		sets = append(sets, s.newVal(c))
 	}
 	q := `INSERT INTO hlstats_Bans (steamid64, source, banned, vac_banned, vac_bans, game_bans, community_banned, economy_ban,
-		days_since_last_ban, last_ban, first_seen, last_checked, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` +
-		s.onConflict() + strings.Join(sets, ", ")
+		days_since_last_ban, last_ban, first_seen, last_checked, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	q = s.banUpsert(q, sets)
 	day := now.Truncate(24 * time.Hour).Unix()
 	for _, b := range bans {
 		var last int64
@@ -184,7 +196,8 @@ func (s *Store) SaveSourceBans(ctx context.Context, bans []SourceBan, now time.T
 		sets = append(sets, s.newVal(c))
 	}
 	q := `INSERT INTO hlstats_Bans (steamid64, source, banned, sb_reason, sb_length, sb_created, sb_ends, sb_admin, last_ban,
-		first_seen, last_checked, updated_at) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)` + s.onConflict() + strings.Join(sets, ", ")
+		first_seen, last_checked, updated_at) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	q = s.banUpsert(q, sets)
 	keep := map[uint64]bool{}
 	for _, b := range bans {
 		keep[b.SteamID64] = true

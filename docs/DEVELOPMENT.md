@@ -12,7 +12,7 @@ make test vet                 # tests and static checks
 make build                    # build/linux-amd64/gamewe
 make package                  # dist/gamewe-collector-<version>-linux-amd64.tar.gz (+ .sha256)
 make package-windows          # dist/gamewe-collector-<version>-windows-amd64.zip (+ .sha256), needs zip
-make schema                   # after editing internal/schema/mysql/*.sql: regenerate internal/schema/postgres/
+make schema                   # after editing internal/schema/mysql/*.sql: regenerate internal/schema/postgres/ and mssql/
 make licenses                 # after a dependency change: license texts and licenses/modules.json, then THIRD-PARTY-LICENSES.md
 make docker                   # container image gamewe-collector:<version>
 ```
@@ -22,7 +22,7 @@ binary is static (`CGO_ENABLED=0`). GitHub Actions (`.github/workflows/build.yml
 builds and tests every push (any branch) and every pull request the way a
 release is built: the unit tests, govulncheck, actionlint, the integration
 tests against MariaDB 11.4 + PostgreSQL 17 and MariaDB 12.3 + PostgreSQL 18
-service containers, the Helm chart (lint and `helm package`), go vet, the
+service containers (each with SQL Server 2022), the Helm chart (lint and `helm package`), go vet, the
 unit tests and one install/start/stop of the service on a Windows runner,
 the amd64 packages for Linux and Windows (kept as workflow artifacts for 7
 days) and the container image
@@ -40,7 +40,7 @@ checks it on Linux.
 ## Integration tests
 
 `internal/collector/integration_test.go` runs three servers (two games),
-interleaved and concurrent, against a real MariaDB / MySQL or PostgreSQL. It
+interleaved and concurrent, against a real MariaDB / MySQL, PostgreSQL or SQL Server. It
 **deletes all rows** of the database it is given, so use a scratch database
 created with `init-db.sh` and `gamewe db migrate -f`:
 
@@ -49,6 +49,7 @@ GAMEWE_TEST_DB_TYPE=mysql GAMEWE_TEST_DB_HOST=127.0.0.1 GAMEWE_TEST_DB_PORT=3306
 GAMEWE_TEST_DB_PASSWORD=... GAMEWE_TEST_DB_NAME=hlstatsx_test GAMEWE_TEST_DB_WIPE=yes \
 go test -race -tags integration ./internal/collector/
 # PostgreSQL: GAMEWE_TEST_DB_TYPE=postgres GAMEWE_TEST_DB_PORT=5432 ...
+# SQL Server: GAMEWE_TEST_DB_TYPE=mssql GAMEWE_TEST_DB_PORT=1433 ...
 ```
 
 `internal/database/init_integration_test.go` checks databases freshly created
@@ -105,10 +106,12 @@ GAMEWE_TEST_MIGRATE_TYPE=mysql GAMEWE_TEST_MIGRATE_HOST=127.0.0.1 GAMEWE_TEST_MI
 GAMEWE_TEST_MIGRATE_ADMIN_USER=root GAMEWE_TEST_MIGRATE_ADMIN_PASSWORD=... \
 go test -p 1 -tags integration -run Migrate ./internal/database/ ./cmd/gamewe/
 # PostgreSQL: GAMEWE_TEST_MIGRATE_TYPE=postgres ... ADMIN_USER=postgres
+# SQL Server: GAMEWE_TEST_MIGRATE_TYPE=mssql ... ADMIN_USER=sa (a test container:
+#   docker run -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=... -p 1433:1433 mcr.microsoft.com/mssql/server:2022-latest)
 ```
 
 CI runs all of them against both MariaDB / PostgreSQL pairs of service
-containers.
+containers and SQL Server (`GAMEWE_TEST_INIT_MSSQL` for the init test).
 
 `gamewe db convert` has its own tests (`cmd/gamewe/convert_integration_test.go`,
 MariaDB only, same environment). They need the schema of HLstatsX:CE 1.7
@@ -148,8 +151,8 @@ Example, a new column `hlstats_Servers.log_secret`:
    (`TestWebUserGrants` fails without); a column the public web must not read
    (a secret) goes into the column list exclusion of `gamewe_web` there, like
    `rcon_password`.
-2. `make schema` (regenerates the PostgreSQL files; `TestPostgresFilesUpToDate`
-   fails if you forget).
+2. `make schema` (regenerates the PostgreSQL and SQL Server files;
+   `TestPostgresFilesUpToDate` fails if you forget).
 3. Append to `Migrations`, with the next version number (no gaps, never reuse
    one), a short kebab-case `Name` and a one-line `Desc` for the plan:
    ```go

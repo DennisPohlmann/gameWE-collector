@@ -23,7 +23,7 @@ func Split(dialect, script string) []Statement {
 	var out []Statement
 	var b strings.Builder
 	delim := ";"
-	pg := dialect == Postgres
+	pg := dialect != MySQL // no backslash escapes, no DELIMITER
 	flush := func(gexec bool) {
 		if s := strings.TrimSpace(b.String()); s != "" {
 			out = append(out, Statement{SQL: s, GExec: gexec})

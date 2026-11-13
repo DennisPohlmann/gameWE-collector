@@ -38,10 +38,14 @@ func waitRunning(t *testing.T, db *DB, want bool) {
 // database of 0.6.x.
 func toVersion4(t *testing.T, admin *DB) {
 	t.Helper()
-	for _, q := range []string{
-		`ALTER TABLE hlstats_Servers DROP COLUMN server_version, DROP COLUMN server_os, DROP COLUMN server_vac, DROP COLUMN act_bots`,
-		`DELETE FROM ` + MigrationsTable + ` WHERE version >= 5`,
-	} {
+	qs := []string{`ALTER TABLE hlstats_Servers DROP COLUMN server_version, DROP COLUMN server_os, DROP COLUMN server_vac, DROP COLUMN act_bots`}
+	if admin.MSSQL() {
+		qs = nil
+		for _, c := range []string{"server_version", "server_os", "server_vac", "act_bots"} {
+			qs = append(qs, DropColumnSQL(admin, "hlstats_Servers", c))
+		}
+	}
+	for _, q := range append(qs, `DELETE FROM `+MigrationsTable+` WHERE version >= 5`) {
 		if _, err := admin.Exec(q); err != nil {
 			t.Fatal(err)
 		}
@@ -96,6 +100,10 @@ func TestMigrateCollectorLock(t *testing.T) {
 	if admin.Postgres() {
 		kill = `SELECT 'SELECT pg_terminate_backend(' || pid || ')' FROM pg_locks WHERE locktype = 'advisory' AND granted AND objid::bigint = $1`
 	}
+	if admin.MSSQL() { // the only application lock of the test database
+		kill = `SELECT TOP 1 'KILL ' + CAST(request_session_id AS varchar(11)) + LEFT(@p1, 0) FROM sys.dm_tran_locks
+			WHERE resource_type = 'APPLICATION' AND resource_database_id = DB_ID() AND request_status = 'GRANT'`
+	}
 	var q string
 	arg := any(db.Prefix.lockName(runLockPrefix))
 	if admin.Postgres() {
@@ -121,6 +129,10 @@ func TestMigrateCollectorLock(t *testing.T) {
 	release := []string{`UNLOCK TABLES`}
 	if admin.Postgres() {
 		hold = []string{`BEGIN`, `LOCK TABLE hlstats_Servers IN ACCESS SHARE MODE`}
+		release = []string{`ROLLBACK`}
+	}
+	if admin.MSSQL() {
+		hold = []string{`BEGIN TRANSACTION`, `SELECT COUNT(*) FROM hlstats_Servers WITH (TABLOCK, HOLDLOCK)`}
 		release = []string{`ROLLBACK`}
 	}
 	execAll := func(c *sql.Conn, qs []string) {
@@ -173,6 +185,9 @@ func TestMigrateCollectorLock(t *testing.T) {
 	q, want := `SELECT @@SESSION.lock_wait_timeout = @@GLOBAL.lock_wait_timeout`, "1"
 	if one.Postgres() {
 		q, want = `SHOW lock_timeout`, "0"
+	}
+	if one.MSSQL() {
+		q, want = `SELECT CAST(@@LOCK_TIMEOUT AS varchar(11))`, "-1"
 	}
 	var got string
 	if err := one.QueryRow(q).Scan(&got); err != nil || got != want {

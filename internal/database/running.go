@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"gamewe-collector/internal/config"
+	"gamewe-collector/internal/schema"
 )
 
 // A running collector (`gamewe run`) holds the collector lock of its
@@ -31,8 +32,11 @@ var ErrCollectorRunning = errors.New("a collector is running on this database (i
 
 // tryRunLock takes the collector lock on conn without waiting.
 // The lock is per table prefix (Prefix.lockName, lockKey).
-func tryRunLock(ctx context.Context, conn *sql.Conn, postgres bool, p Prefix) (bool, error) {
-	if postgres {
+func tryRunLock(ctx context.Context, conn *sql.Conn, dialect string, p Prefix) (bool, error) {
+	if dialect == schema.MSSQL {
+		return msTryLock(ctx, conn, p.lockName(runLockPrefix))
+	}
+	if dialect == schema.Postgres {
 		var ok bool
 		err := conn.QueryRowContext(ctx, `SELECT pg_try_advisory_lock($1)`, p.lockKey(runLockKey)).Scan(&ok)
 		return ok, err
@@ -43,9 +47,13 @@ func tryRunLock(ctx context.Context, conn *sql.Conn, postgres bool, p Prefix) (b
 }
 
 // holdsRunLock reports whether conn (still) holds the collector lock.
-func holdsRunLock(ctx context.Context, conn *sql.Conn, postgres bool, p Prefix) (bool, error) {
+func holdsRunLock(ctx context.Context, conn *sql.Conn, dialect string, p Prefix) (bool, error) {
 	var ok bool
-	if postgres {
+	if dialect == schema.MSSQL {
+		err := conn.QueryRowContext(ctx, msHoldsLock, p.lockName(runLockPrefix)).Scan(&ok)
+		return ok, err
+	}
+	if dialect == schema.Postgres {
 		key := p.lockKey(runLockKey)
 		err := conn.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND pid = pg_backend_pid()
 			AND granted AND classid::bigint = $1 AND objid::bigint = $2 AND objsubid = 1)`, key>>32, key&0xffffffff).Scan(&ok)
@@ -65,12 +73,17 @@ func CollectorRunning(ctx context.Context, db *DB) (bool, error) {
 	}
 	defer conn.Close()
 	if db.Postgres() {
-		got, err := tryRunLock(ctx, conn, true, db.Prefix)
+		got, err := tryRunLock(ctx, conn, db.Type, db.Prefix)
 		if err != nil || !got {
 			return !got && err == nil, err
 		}
 		_, err = conn.ExecContext(ctx, `SELECT pg_advisory_unlock($1)`, db.Prefix.lockKey(runLockKey))
 		return false, err
+	}
+	if db.MSSQL() {
+		var used bool
+		err = conn.QueryRowContext(ctx, msLockUsed, db.Prefix.lockName(runLockPrefix)).Scan(&used)
+		return used, err
 	}
 	var id sql.NullInt64
 	err = conn.QueryRowContext(ctx, `SELECT IS_USED_LOCK(LEFT(CONCAT(?, DATABASE()), 64))`, db.Prefix.lockName(runLockPrefix)).Scan(&id)
@@ -111,7 +124,7 @@ func HoldCollectorLock(ctx context.Context, cfg config.Database, interval time.D
 			cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
 			if conn != nil {
-				if ok, err := holdsRunLock(cctx, conn, db.Postgres(), db.Prefix); err == nil && ok {
+				if ok, err := holdsRunLock(cctx, conn, db.Type, db.Prefix); err == nil && ok {
 					report("held", nil)
 					return
 				}
@@ -123,7 +136,7 @@ func HoldCollectorLock(ctx context.Context, cfg config.Database, interval time.D
 				report("error", err)
 				return
 			}
-			got, err := tryRunLock(cctx, c, db.Postgres(), db.Prefix)
+			got, err := tryRunLock(cctx, c, db.Type, db.Prefix)
 			switch {
 			case err != nil:
 				c.Close()
@@ -163,7 +176,7 @@ func LockCollector(ctx context.Context, db *DB) (func(), error) {
 	if err != nil {
 		return nil, Explain(err)
 	}
-	got, err := tryRunLock(ctx, conn, db.Postgres(), db.Prefix)
+	got, err := tryRunLock(ctx, conn, db.Type, db.Prefix)
 	if err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("collector lock: %w", err)
@@ -173,7 +186,7 @@ func LockCollector(ctx context.Context, db *DB) (func(), error) {
 		return nil, ErrCollectorRunning
 	}
 	return func() {
-		releaseRunLock(conn, db.Postgres(), db.Prefix)
+		releaseRunLock(conn, db.Type, db.Prefix)
 		conn.Close()
 	}, nil
 }

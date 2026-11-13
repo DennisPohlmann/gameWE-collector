@@ -53,7 +53,7 @@ In scope is the code in this repository, in particular:
 - RCON handling, database access and the schema/migrations shipped here
 - the container image, the Helm chart and the packaging in this repository
 
-Vulnerabilities in the game servers, in MariaDB/MySQL/PostgreSQL or in Go itself belong to those projects.
+Vulnerabilities in the game servers, in MariaDB/MySQL/PostgreSQL/SQL Server or in Go itself belong to those projects.
 
 Problems that come from a setup against the documentation (for example a
 database port open to the internet, or default passwords that were not
