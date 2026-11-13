@@ -30,9 +30,9 @@ Go version go1.27.3; modules as `go version -m gamewe` lists them.
 | `github.com/jackc/puddle/v2` | v2.2.3 | MIT | https://github.com/jackc/puddle | connection pool of pgx | [`LICENSE`](licenses/github.com_jackc_puddle_v2/LICENSE) |
 | `github.com/microsoft/go-mssqldb` | v1.11.2 | BSD-3-Clause | https://github.com/microsoft/go-mssqldb | Microsoft SQL Server database driver | [`LICENSE.txt`](licenses/github.com_microsoft_go-mssqldb/LICENSE.txt) |
 | `github.com/oschwald/maxminddb-golang` | v1.13.1 | ISC | https://github.com/oschwald/maxminddb-golang | reads the GeoIP city database (.mmdb) | [`LICENSE`](licenses/github.com_oschwald_maxminddb-golang/LICENSE) |
-| `github.com/shopspring/decimal` | v1.4.0 | MIT | https://github.com/shopspring/decimal | decimal numbers of the SQL Server driver | [`LICENSE`](licenses/github.com_shopspring_decimal/LICENSE) |
+| `github.com/shopspring/decimal` | v1.6.0 | MIT | https://github.com/shopspring/decimal | decimal numbers of the SQL Server driver | [`LICENSE`](licenses/github.com_shopspring_decimal/LICENSE) |
 | `go.yaml.in/yaml/v3` | v3.0.6 | MIT AND Apache-2.0 | https://github.com/yaml/go-yaml | reads config.yaml | [`LICENSE`](licenses/go.yaml.in_yaml_v3/LICENSE), [`NOTICE`](licenses/go.yaml.in_yaml_v3/NOTICE) |
-| `golang.org/x/crypto` | v0.55.0 | BSD-3-Clause | https://pkg.go.dev/golang.org/x/crypto | used by the SQL Server driver (MD4 of its NTLM login) | [`LICENSE`](licenses/golang.org_x_crypto/LICENSE) |
+| `golang.org/x/crypto` | v0.59.0 | BSD-3-Clause | https://pkg.go.dev/golang.org/x/crypto | used by the SQL Server driver (MD4 of its NTLM login) | [`LICENSE`](licenses/golang.org_x_crypto/LICENSE) |
 | `golang.org/x/sync` | v0.25.0 | BSD-3-Clause | https://pkg.go.dev/golang.org/x/sync | used by pgx (its connection pool puddle) | [`LICENSE`](licenses/golang.org_x_sync/LICENSE) |
 | `golang.org/x/sys` | v0.50.0 | BSD-3-Clause | https://pkg.go.dev/golang.org/x/sys | system calls: the terminal mode of the `gamewe` questions (Linux), used by maxminddb-golang | [`LICENSE`](licenses/golang.org_x_sys/LICENSE) |
 | `golang.org/x/text` | v0.44.0 | BSD-3-Clause | https://pkg.go.dev/golang.org/x/text | text encoding and Unicode handling of pgx | [`LICENSE`](licenses/golang.org_x_text/LICENSE) |
