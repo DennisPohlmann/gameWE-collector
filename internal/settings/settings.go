@@ -213,7 +213,7 @@ var SecretKeys = append([]string{"gamewe_steam_api_key", "gamewe_ts_query_passwo
 
 // IsSecretKey reports whether key belongs in hlstats_gamewe_secrets: one of
 // SecretKeys, a ranking's own FastDL secret (gamewe_fastdl_token_<game>, ...)
-// or an admin's own ntfy token (notify.UserTokenKey).
+// or an admin's own Telegram or ntfy token (notify.UserTokenKey).
 func IsSecretKey(key string) bool {
 	if slices.Contains(SecretKeys, key) || notify.IsUserSecret(key) {
 		return true

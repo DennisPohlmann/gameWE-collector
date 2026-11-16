@@ -3,14 +3,14 @@
 // Package notify sends short messages about what the collector did (a
 // ranking reset, a hall of fame) by e-mail (SMTP), Telegram (a bot posts to
 // a chat or channel) or ntfy (a topic on ntfy.sh or an own ntfy server).
-// The web admin sets it up under Settings → Services → Notifications; it is
-// stored in hlstats_Options (gamewe_notify_*), the passwords and tokens in
-// hlstats_gamewe_secrets. Nothing here is logged with a secret: errors are
+// Every admin chooses their own channels, addresses and events under My
+// account; only the SMTP server is set up once for all (Settings →
+// Services → Notifications). Stored in hlstats_Options (gamewe_notify_*,
+// gamewe_notifyu_*), the passwords and tokens in hlstats_gamewe_secrets. Nothing here is logged with a secret: errors are
 // cleaned of them before they leave the package.
 //
 // A new event: add it to Events (its key suffix), give it texts in
-// texts.go, a switch per channel in the web's settings page
-// (gamewe_notify_<channel>_<event>) and send it with Send.
+// texts.go, a check box in the web's My account and send it with Send.
 package notify
 
 import (
@@ -41,8 +41,7 @@ const (
 
 var Channels = []string{Email, Telegram, Ntfy}
 
-// Events, as the suffix of gamewe_notify_<channel>_<event> and in the list
-// of an admin's own notifications.
+// Events, in the list of an admin's own notifications.
 const (
 	EventReset  = "reset"  // a ranking was reset (by an admin, the API, the CLI or a schedule)
 	EventHall   = "hof"    // a period ended: the hall of fame was stored and the ranking reset
@@ -51,69 +50,55 @@ const (
 
 var Events = []string{EventReset, EventHall, EventUpdate}
 
-// The default of a shared target's event (gamewe_notify_<channel>_<event>
-// not set): the resets and the hall of fame, no updates.
-func eventDefault(e string) bool { return e != EventUpdate }
-
 // MaxRecipients is the most e-mail addresses one target takes.
 const MaxRecipients = 20
 
 // Timeout of one message to one target.
 const Timeout = 20 * time.Second
 
-// UserPrefix starts the keys of an admin's own notifications:
-// gamewe_notifyu_<hash>_<channel> = "<events>|<address>" (events comma
-// separated, address: an e-mail address, a Telegram chat or an ntfy topic)
-// gamewe_notifyu_<hash>_ntfy_token (UserTokenKey, the admin's own ntfy
-// token in hlstats_gamewe_secrets) and gamewe_notifyu_<hash>_last_<channel>
-// (written by the collector, as StatusKey). hash is the one of the admin's rights (gamewe_perms_<hash>
-// of the web): the first 32 hex digits of SHA-256 of the lower-case name.
+// UserPrefix starts the keys of an admin's own notifications (hash: the
+// one of the admin's rights, gamewe_perms_<hash> of the web, the first 32
+// hex digits of SHA-256 of the lower-case name):
+//
+//	gamewe_notifyu_<hash>_<channel>        "<events>|<address>": events comma
+//	                                        separated; address an e-mail address, a Telegram chat,
+//	                                        an ntfy topic (on ntfy.sh) or https://<server>/<topic>
+//	gamewe_notifyu_<hash>_telegram_token   the admin's Telegram bot (hlstats_gamewe_secrets)
+//	gamewe_notifyu_<hash>_ntfy_token       the admin's ntfy access token (hlstats_gamewe_secrets)
+//	gamewe_notifyu_<hash>_last_<channel>   written by the collector (StatusKey)
 const UserPrefix = "gamewe_notifyu_"
 
-// SecretKeys are stored in hlstats_gamewe_secrets.
-var SecretKeys = []string{"gamewe_notify_smtp_password", "gamewe_notify_telegram_token", "gamewe_notify_ntfy_token"}
+// DefaultNtfy is the ntfy server of a topic without a server.
+const DefaultNtfy = "https://ntfy.sh"
+
+// SecretKeys are stored in hlstats_gamewe_secrets (and the admins' own
+// tokens, IsUserSecret).
+var SecretKeys = []string{"gamewe_notify_smtp_password"}
 
 // Key is one option this package reads (docs/CONFIG.md). They are set in
 // the web admin, so like the web's keys they are not in settings.Keys
 // (`gamewe option list` would print the secrets).
 type Key struct{ Name, Default, Meaning string }
 
-// Keys lists the options of the notifications, the secret ones included.
+// Keys lists the options of the notifications, the secret ones included:
+// the language and the SMTP server, the only settings for all admins.
 func Keys() []Key {
-	k := []Key{
+	return []Key{
 		{"gamewe_notify_lang", "", "language of the notifications (a code of the web, e.g. de); empty: gamewe_default_lang, else English"},
-		{"gamewe_notify_email", "0", "1 = e-mail goes to the shared recipients (the admins' own need only the SMTP server and sender)"},
-		{"gamewe_notify_email_to", "", "shared e-mail recipients, separated by commas (at most 20); empty: none"},
 		{"gamewe_notify_email_from", "", "sender address of the e-mails"},
 		{"gamewe_notify_smtp_host", "", "SMTP server"},
 		{"gamewe_notify_smtp_port", "587", "SMTP port"},
 		{"gamewe_notify_smtp_security", "starttls", "starttls (port 587), tls (port 465) or none (only a server on the same machine)"},
 		{"gamewe_notify_smtp_user", "", "SMTP user; empty: no login"},
 		{"gamewe_notify_smtp_password", "", "SMTP password (hlstats_gamewe_secrets)"},
-		{"gamewe_notify_telegram", "0", "1 = Telegram goes to the shared chat (the admins' own need only the bot token)"},
-		{"gamewe_notify_telegram_token", "", "token of the Telegram bot from @BotFather (hlstats_gamewe_secrets)"},
-		{"gamewe_notify_telegram_chat", "", "shared Telegram chat: @channelname or the numeric chat id; empty: none"},
-		{"gamewe_notify_ntfy", "0", "1 = ntfy goes to the shared topic (the admins' own need nothing)"},
-		{"gamewe_notify_ntfy_url", "https://ntfy.sh", "address of the ntfy server (https)"},
-		{"gamewe_notify_ntfy_topic", "", "shared ntfy topic; empty: none"},
-		{"gamewe_notify_ntfy_token", "", "ntfy access token; empty: none (hlstats_gamewe_secrets)"},
 	}
-	for _, c := range Channels {
-		k = append(k, Key{"gamewe_notify_" + c + "_" + EventReset, "1", "1 = the shared " + c + " target gets every ranking reset"},
-			Key{"gamewe_notify_" + c + "_" + EventHall, "1", "1 = the shared " + c + " target gets the hall of fame when a period ends"},
-			Key{"gamewe_notify_" + c + "_" + EventUpdate, "0", "1 = the shared " + c + " target gets new releases of the collector and the web"})
-	}
-	return k
 }
 
 // OtherKey reports the keys of this package for `gamewe check`: Keys, the
-// ones the collector writes (StatusKey, SeenKey) and the admins' own.
+// ones the collector writes (SeenKey) and the admins' own.
 func OtherKey(k string) bool {
 	if slices.ContainsFunc(Keys(), func(x Key) bool { return x.Name == k }) {
 		return true
-	}
-	if c, ok := strings.CutPrefix(k, "gamewe_notify_last_"); ok {
-		return slices.Contains(Channels, c)
 	}
 	if c, ok := strings.CutPrefix(k, "gamewe_notify_seen_"); ok {
 		return c == "web" || c == "collector"
@@ -121,19 +106,20 @@ func OtherKey(k string) bool {
 	if r, ok := strings.CutPrefix(k, UserPrefix); ok {
 		h, c, ok := strings.Cut(r, "_")
 		c = strings.TrimPrefix(c, "last_")
-		return ok && userHash(h) && (slices.Contains(Channels, c) || c == "ntfy_token")
+		return ok && userHash(h) && (slices.Contains(Channels, c) || c == "telegram_token" || c == "ntfy_token")
 	}
 	return false
 }
 
-// UserTokenKey is the admin's own ntfy access token (hash as in
-// UserPrefix), stored in hlstats_gamewe_secrets.
-func UserTokenKey(hash string) string { return UserPrefix + hash + "_ntfy_token" }
+// UserTokenKey is the admin's own Telegram bot token or ntfy access token
+// (channel telegram or ntfy), stored in hlstats_gamewe_secrets.
+func UserTokenKey(hash, channel string) string { return UserPrefix + hash + "_" + channel + "_token" }
 
 // IsUserSecret reports the keys of the admins' own tokens.
 func IsUserSecret(k string) bool {
-	h, ok := strings.CutSuffix(strings.TrimPrefix(k, UserPrefix), "_ntfy_token")
-	return ok && strings.HasPrefix(k, UserPrefix) && userHash(h)
+	r, ok := strings.CutPrefix(k, UserPrefix)
+	h, c, _ := strings.Cut(r, "_")
+	return ok && userHash(h) && (c == "telegram_token" || c == "ntfy_token")
 }
 
 func userHash(h string) bool { return len(h) == 32 && strings.Trim(h, "0123456789abcdef") == "" }
@@ -142,66 +128,41 @@ func userHash(h string) bool { return len(h) == 32 && strings.Trim(h, "012345678
 // about, so each one is sent once.
 func SeenKey(component string) string { return "gamewe_notify_seen_" + component }
 
-// Target is who gets a message on one channel: the shared recipients of
-// the settings page (User empty) or one admin's own address.
+// Target is who gets a message on one channel: one admin's own address.
 type Target struct {
 	Channel string
-	User    string // the admin's hash; empty: shared
-	To      string // e-mail addresses, Telegram chat or ntfy topic
+	User    string // the admin's hash
+	To      string // e-mail address, Telegram chat, ntfy topic or https://<server>/<topic>
 	Events  []string
 }
 
 // StatusKey is where the collector writes the outcome of the last message
 // to t: "<unix time>|ok" or "<unix time>|error|<text>".
-func (t Target) StatusKey() string {
-	if t.User == "" {
-		return "gamewe_notify_last_" + t.Channel
-	}
-	return UserPrefix + t.User + "_last_" + t.Channel
-}
+func (t Target) StatusKey() string { return UserPrefix + t.User + "_last_" + t.Channel }
 
-// On reports whether a channel is turned on for the shared recipients.
-func On(opts map[string]string, channel string) bool {
-	return flag(opts, "gamewe_notify_"+channel, false)
-}
-
-// Ready reports whether the site has set up what a channel needs: the SMTP
-// server and sender, the bot token; ntfy needs nothing (ntfy.sh). The
-// admins' own targets need only this, not On.
-func Ready(opts map[string]string, channel string) bool {
+// Ready reports whether an admin's channel can send: e-mail needs the
+// site's SMTP server and sender, Telegram the admin's bot token, ntfy
+// nothing.
+func Ready(opts map[string]string, hash, channel string) bool {
 	switch channel {
 	case Email:
 		return strings.TrimSpace(opts["gamewe_notify_smtp_host"]) != "" && strings.TrimSpace(opts["gamewe_notify_email_from"]) != ""
 	case Telegram:
-		return botToken.MatchString(strings.TrimSpace(opts["gamewe_notify_telegram_token"]))
+		return botToken.MatchString(strings.TrimSpace(opts[UserTokenKey(hash, Telegram)]))
 	}
 	return channel == Ntfy
 }
 
-var sharedTo = map[string]string{Email: "gamewe_notify_email_to", Telegram: "gamewe_notify_telegram_chat", Ntfy: "gamewe_notify_ntfy_topic"}
-
-// Targets returns every target: per channel the shared one (channel on,
-// with an address) and then the admins' own (channel set up), sorted.
+// Targets returns the admins' own targets of the channels that can send,
+// sorted by channel and admin.
 func Targets(opts map[string]string) []Target {
 	var out []Target
 	for _, c := range Channels {
-		if to := strings.TrimSpace(opts[sharedTo[c]]); to != "" && On(opts, c) {
-			t := Target{Channel: c, To: to}
-			for _, e := range Events {
-				if flag(opts, "gamewe_notify_"+c+"_"+e, eventDefault(e)) {
-					t.Events = append(t.Events, e)
-				}
-			}
-			out = append(out, t)
-		}
-		if !Ready(opts, c) {
-			continue
-		}
 		var own []Target
 		for k, v := range opts {
 			r, ok := strings.CutPrefix(k, UserPrefix)
 			h, ch, _ := strings.Cut(r, "_")
-			if !ok || ch != c || !userHash(h) {
+			if !ok || ch != c || !userHash(h) || !Ready(opts, h, c) {
 				continue
 			}
 			if t, ok := ParseUser(c, h, v); ok {
@@ -239,25 +200,20 @@ func Wanted(opts map[string]string, events ...string) []Target {
 	return out
 }
 
-// Find returns the target of a test message: the shared one of channel
-// (user empty) or the admin's own, also without an event chosen.
+// Find returns the target of a test message: the admin's own address of
+// channel, also without an event chosen.
 func Find(opts map[string]string, user, channel string) (Target, error) {
 	if !slices.Contains(Channels, channel) {
 		return Target{}, fmt.Errorf("unknown channel %q", channel)
 	}
-	if user == "" {
-		if !On(opts, channel) {
-			return Target{}, fmt.Errorf("%s is turned off in the settings", channel)
-		}
-		if to := strings.TrimSpace(opts[sharedTo[channel]]); to != "" {
-			return Target{Channel: channel, To: to}, nil
-		}
-		return Target{}, fmt.Errorf("%s: no shared recipient set", channel)
-	}
 	if !userHash(user) {
-		return Target{}, errors.New("bad admin")
+		// Shared recipients (an empty hash) no longer exist.
+		return Target{}, errors.New("no admin: every admin sets their own notifications under My account")
 	}
-	if !Ready(opts, channel) {
+	if !Ready(opts, user, channel) {
+		if channel == Telegram {
+			return Target{}, errors.New("telegram: no valid bot token set")
+		}
 		return Target{}, fmt.Errorf("%s is not set up in the settings", channel)
 	}
 	_, to, _ := strings.Cut(opts[UserPrefix+user+"_"+channel], "|")
@@ -289,7 +245,7 @@ func (s *Sender) client() *http.Client {
 }
 
 // publicClient reaches only public addresses and follows no redirect:
-// for an admin's own ntfy server.
+// for the ntfy servers the admins enter.
 // shortcut: it dials directly (no HTTPS_PROXY); add the proxy when a
 // collector behind one needs own servers.
 var publicClient = &http.Client{
@@ -320,16 +276,6 @@ func publicOnly(_, address string, _ syscall.RawConn) error {
 	return nil
 }
 
-func flag(opts map[string]string, key string, def bool) bool {
-	switch strings.TrimSpace(opts[key]) {
-	case "1":
-		return true
-	case "0":
-		return false
-	}
-	return def
-}
-
 // Send sends m to t with the channel's settings from opts. The error
 // holds no password or token.
 func (s *Sender) Send(ctx context.Context, opts map[string]string, t Target, m Message) error {
@@ -349,7 +295,7 @@ func (s *Sender) Send(ctx context.Context, opts map[string]string, t Target, m M
 			err = sendMail(ctx, opts, to, m)
 		}
 	case Telegram:
-		err = s.sendTelegram(ctx, opts, t.To, m)
+		err = s.sendTelegram(ctx, opts[UserTokenKey(t.User, Telegram)], t.To, m)
 	case Ntfy:
 		err = s.sendNtfy(ctx, opts, t, m)
 	default:
@@ -416,7 +362,7 @@ var (
 	hostName  = regexp.MustCompile(`^[A-Za-z0-9.-]{1,253}$|^\[[0-9A-Fa-f:.]{2,45}\]$`)
 )
 
-// Recipients splits gamewe_notify_email_to into addresses (comma,
+// Recipients splits an e-mail address list into addresses (comma,
 // semicolon or space separated); an invalid one is an error.
 func Recipients(v string) ([]string, error) {
 	var out []string
@@ -462,8 +408,8 @@ func ntfyBase(v string) (string, error) {
 
 // ---------------------------------------------------------------- Telegram
 
-func (s *Sender) sendTelegram(ctx context.Context, opts map[string]string, chat string, m Message) error {
-	token := strings.TrimSpace(opts["gamewe_notify_telegram_token"])
+func (s *Sender) sendTelegram(ctx context.Context, token, chat string, m Message) error {
+	token = strings.TrimSpace(token)
 	chat = strings.TrimSpace(chat)
 	if !botToken.MatchString(token) {
 		return errors.New("telegram: no valid bot token")
@@ -506,19 +452,14 @@ func (s *Sender) sendTelegram(ctx context.Context, opts map[string]string, chat 
 // ---------------------------------------------------------------- ntfy
 
 func (s *Sender) sendNtfy(ctx context.Context, opts map[string]string, t Target, m Message) error {
-	base, err := ntfyBase(opts["gamewe_notify_ntfy_url"])
-	if err != nil {
-		return fmt.Errorf("ntfy: %w", err)
-	}
-	topic := strings.TrimSpace(t.To)
-	ownServer := false
-	if i := strings.LastIndex(topic, "/"); i >= 0 && t.User != "" {
-		// An admin's own server (https://host/path/topic): only for their own
-		// address, as the server fields of the settings need a higher right.
+	base, topic := DefaultNtfy, strings.TrimSpace(t.To)
+	if i := strings.LastIndex(topic, "/"); i >= 0 {
+		// The admin's server: https://host[/path]/topic.
+		var err error
 		if base, err = ntfyBase(topic[:i]); err != nil || base != topic[:i] || len(topic) > 200 {
-			return errors.New("ntfy: the own server must be https://host/topic")
+			return errors.New("ntfy: the server must be https://host/topic")
 		}
-		topic, ownServer = topic[i+1:], true
+		topic = topic[i+1:]
 	}
 	if !ntfyTopic.MatchString(topic) {
 		return errors.New("ntfy: no valid topic (letters, digits, _ and -)")
@@ -531,23 +472,13 @@ func (s *Sender) sendNtfy(ctx context.Context, opts map[string]string, t Target,
 		return errors.New("ntfy: bad request")
 	}
 	req.Header.Set("Content-Type", "application/json")
-	client := s.client()
-	tk := strings.TrimSpace(opts["gamewe_notify_ntfy_token"])
-	if ownServer {
-		// Never the site's token to another server; only public addresses,
-		// no redirects (an admin must not reach the collector's network).
-		tk = ""
-		if s == nil || s.HTTP == nil {
-			client = publicClient
-		}
+	// Any admin enters the server: only public addresses, no redirects
+	// (an admin must not reach the collector's network).
+	client := publicClient
+	if s != nil && s.HTTP != nil {
+		client = s.HTTP
 	}
-	if t.User != "" {
-		// The admin's own token wins, on the site's server and on their own.
-		if own := strings.TrimSpace(opts[UserTokenKey(t.User)]); own != "" {
-			tk = own
-		}
-	}
-	if tk != "" {
+	if tk := strings.TrimSpace(opts[UserTokenKey(t.User, Ntfy)]); tk != "" {
 		req.Header.Set("Authorization", "Bearer "+tk)
 	}
 	var res struct {

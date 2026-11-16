@@ -398,29 +398,30 @@ not know.
 ### Notifications
 
 The collector sends messages by e-mail (SMTP), Telegram (Bot API
-`sendMessage`, plain text) and ntfy (ntfy.sh or an own ntfy server, JSON
-publish) when a ranking is reset (job `reset`), when a scheduled reset stores
-a hall of fame (job `scheduled-reset`) and when a newer collector or web
-release is out (every 6 hours with `features.update_check`, once per release).
-A reset or hall of fame that `gamewe reset` or `gamewe halloffame run` does
-itself because no collector runs sends nothing. The web admin sets them up (Settings →
-Notifications; each admin picks their own under My account); the keys
-(`internal/notify`):
+`sendMessage`, plain text) and ntfy (JSON publish) when a ranking is reset
+(job `reset`), when a scheduled reset stores a hall of fame (job
+`scheduled-reset`) and when a newer collector or web release is out (every 6
+hours with `features.update_check`, once per release). A reset or hall of fame
+that `gamewe reset` or `gamewe halloffame run` does itself because no collector
+runs sends nothing. Every admin chooses their own channels, addresses and
+events under My account of the web admin; only the SMTP server is set up once
+for all (Settings → Notifications). The keys (`internal/notify`):
 
 | Key | Default | Meaning |
 |---|---|---|
-| `gamewe_notify_email`, `_telegram`, `_ntfy` | `0` | 1 = the channel sends to the shared recipients; the admins' own notifications do not need it, only what the channel needs: e-mail the SMTP server and sender, Telegram the bot token, ntfy nothing |
-| `gamewe_notify_<channel>_<event>` | `1` (`update`: `0`) | the shared recipients of the channel get the event `reset`, `hof` or `update` |
-| `gamewe_notify_email_to`, `gamewe_notify_telegram_chat`, `gamewe_notify_ntfy_topic` | – | the shared recipients: up to 20 e-mail addresses (comma separated, sent with `To: undisclosed-recipients:;`), a chat ID or `@channel`, an ntfy topic |
-| `gamewe_notify_smtp_host`, `_smtp_port`, `_smtp_security`, `_smtp_user`, `gamewe_notify_email_from` | –, `587`, `starttls` | the SMTP server; `starttls` (required), `tls` (port 465) or `none`; without TLS the login is only sent to localhost |
-| `gamewe_notify_smtp_password`, `gamewe_notify_telegram_token`, `gamewe_notify_ntfy_token` | – | stored in `hlstats_gamewe_secrets`; never logged or written to a status |
-| `gamewe_notify_ntfy_url` | `https://ntfy.sh` | the ntfy server, https only |
+| `gamewe_notify_smtp_host`, `_smtp_port`, `_smtp_security`, `_smtp_user`, `gamewe_notify_email_from` | –, `587`, `starttls` | the SMTP server for every admin's e-mails; `starttls` (required), `tls` (port 465) or `none`; without TLS the login is only sent to localhost |
+| `gamewe_notify_smtp_password` | – | stored in `hlstats_gamewe_secrets`; never logged or written to a status |
 | `gamewe_notify_lang` | `default_lang` | language of the messages |
-| `gamewe_notifyu_<hash>_<channel>` | – | an admin's own: `<events>|<address>` (hash as for the admin's rights); for ntfy a topic on `gamewe_notify_ntfy_url` or a topic on the admin's own server (`https://ntfy.example.org/topic`), sent without `gamewe_notify_ntfy_token`, only to a public address (no loopback, private or link-local address, no redirect, not through a proxy) |
-| `gamewe_notifyu_<hash>_ntfy_token` | – | the admin's own ntfy access token, stored in `hlstats_gamewe_secrets`; sent instead of `gamewe_notify_ntfy_token` with the admin's own messages only, also to their own server; never logged or written to a status |
-| `gamewe_notify_last_<channel>`, `gamewe_notifyu_<hash>_last_<channel>` | – | **written by the collector**: `<unix>|ok` or `<unix>|error|<text>` of the last message |
+| `gamewe_notifyu_<hash>_<channel>` | – | an admin's own: `<events>|<address>` (hash as for the admin's rights): an e-mail address, a Telegram chat ID or `@channel`, an ntfy topic on ntfy.sh or `https://<server>/<topic>` |
+| `gamewe_notifyu_<hash>_telegram_token`, `gamewe_notifyu_<hash>_ntfy_token` | – | the admin's own Telegram bot token (needed for Telegram) and ntfy access token (optional); stored in `hlstats_gamewe_secrets`, sent only with that admin's messages, never logged or written to a status |
+| `gamewe_notifyu_<hash>_last_<channel>` | – | **written by the collector**: `<unix>|ok` or `<unix>|error|<text>` of the last message |
 | `gamewe_notify_seen_web`, `gamewe_notify_seen_collector` | – | **written by the collector**: the last release it told about |
 | `gamewe_web_version` | – | **written by the web** at start (its version), compared with the latest web release |
 
+E-mail goes out once the SMTP server and sender are set, Telegram once the
+admin stored a valid bot token, ntfy always. The ntfy servers the admins enter
+are only reached at a public address (no loopback, private or link-local
+address, no redirect, not through a proxy).
+
 A test message is the job `notify-test` (`mode` the channel, `game` the
-admin's hash or empty for the shared recipients); the web admin queues it.
+admin's hash); the web admin queues it.

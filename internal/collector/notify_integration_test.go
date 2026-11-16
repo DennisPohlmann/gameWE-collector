@@ -28,9 +28,10 @@ func TestIntegrationNotify(t *testing.T) {
 	flush(t, hub)
 	ctx := context.Background()
 	const admin = "0123456789abcdef0123456789abcdef"
+	const team = "abcdefabcdefabcdefabcdefabcdefab" // a second admin: only the hall of fame
 	for k, v := range map[string]string{
-		"gamewe_notify_email": "1", "gamewe_notify_email_to": "team@example.org", "gamewe_notify_email_reset": "0",
-		"gamewe_notify_email_from": "stats@example.org", "gamewe_notify_smtp_host": "smtp.example.org", "gamewe_notify_lang": "de",
+		notify.UserPrefix + team + "_email": "hof|team@example.org",
+		"gamewe_notify_email_from":          "stats@example.org", "gamewe_notify_smtp_host": "smtp.example.org", "gamewe_notify_lang": "de",
 		notify.UserPrefix + admin + "_email": "reset,update|me@example.org",
 		stats.ScheduleKey("css"):             "month",
 	} {
@@ -74,7 +75,7 @@ func TestIntegrationNotify(t *testing.T) {
 	if err := jobs.Poll(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if len(mails) != 2 || mails[0].to != "team@example.org" || mails[1].to != "me@example.org" || !strings.HasPrefix(mails[0].title, "Ruhmeshalle Counter-Strike: Source: 2026-10-01 – 2026-10-31") {
+	if len(mails) != 2 || mails[0].to != "me@example.org" || mails[1].to != "team@example.org" || !strings.HasPrefix(mails[1].title, "Ruhmeshalle Counter-Strike: Source: 2026-10-01 – 2026-10-31") {
 		t.Fatalf("hall mails %+v", mails)
 	}
 	mails = nil
@@ -90,9 +91,9 @@ func TestIntegrationNotify(t *testing.T) {
 		t.Fatalf("reset mails %+v", mails)
 	}
 
-	// Test messages: the admin's own (fails), the shared one, a missing one.
+	// Test messages: the admin's own (fails), the other admin's, one without an admin.
 	fail = "me@example.org"
-	for _, j := range [][2]string{{admin, notify.Email}, {"", notify.Email}, {"", notify.Telegram}} {
+	for _, j := range [][2]string{{admin, notify.Email}, {team, notify.Email}, {"", notify.Telegram}} {
 		if _, err := store.AddJob(ctx, stats.JobNotifyTest, j[0], j[1], "dennis", stats.JobOrigin{Feature: stats.OriginAdmin}, now); err != nil {
 			t.Fatal(err)
 		}
@@ -105,7 +106,7 @@ func TestIntegrationNotify(t *testing.T) {
 		t.Fatalf("jobs %+v %v", recent, err)
 	}
 	// newest first
-	if recent[0].Status != stats.JobFailed || !strings.Contains(recent[0].Result, "telegram is turned off") ||
+	if recent[0].Status != stats.JobFailed || !strings.Contains(recent[0].Result, "no admin") ||
 		recent[1].Status != stats.JobDone || recent[2].Status != stats.JobFailed || !strings.Contains(recent[2].Result, "550") {
 		t.Errorf("test jobs %+v", recent)
 	}
@@ -113,8 +114,8 @@ func TestIntegrationNotify(t *testing.T) {
 	if s := opts[notify.UserPrefix+admin+"_last_email"]; !strings.Contains(s, "|error|e-mail") && !strings.Contains(s, "|error|550") {
 		t.Errorf("own status %q", s)
 	}
-	if s := opts["gamewe_notify_last_email"]; !strings.HasSuffix(s, "|ok") {
-		t.Errorf("shared status %q", s)
+	if s := opts[notify.UserPrefix+team+"_last_email"]; !strings.HasSuffix(s, "|ok") {
+		t.Errorf("other admin's status %q", s)
 	}
 
 	// The same release is not told again, a new one of the web is.
