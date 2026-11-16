@@ -177,6 +177,11 @@ Example, a new column `hlstats_Servers.log_secret`:
    than `Sync`.
 6. Docs: the version table in [DATABASE.md](DATABASE.md#schema-versions-and-upgrades)
    and, for a new column, [DB-SEMANTICS.md](DB-SEMANTICS.md).
+7. When the website needs the migration: raise `MIN_SCHEMA` in gameWE-web's
+   `src/lib/collector-status.ts` to the new version, so its admin area warns
+   while a database is older. A new `gamewe_*` key the website stores in
+   `hlstats_Options` goes into `WebKeys` (`internal/settings/settings.go`) in
+   the same push pair; `TestWebSourceKeys` in CI reads gameWE-web's `main`.
 
 ## Releases
 

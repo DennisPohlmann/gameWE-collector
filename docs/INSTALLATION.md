@@ -707,6 +707,14 @@ migrates the database at start (`database.auto_migrate`). With
 refuses to start until then). To see the plan first: `gamewe db migrate -n`
 before the start.
 
+**Collector and website:** the website reads the tables the collector migrates.
+Update both together and in this order: stop both, update the collector first,
+then the website. Use the same kind of image tag for both (`latest` or
+versions released together, or `edge` for both). A website newer than the
+database shows a red note in its admin area ("The database is older than this
+website", with both schema versions); an older collector on a newer database
+warns in `gamewe db status` ("update the collector").
+
 ```bash
 # backup first (MariaDB / PostgreSQL / SQL Server)
 mariadb-dump -u root -p --single-transaction --routines gamewe > gamewe-before-update.sql
