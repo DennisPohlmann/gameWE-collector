@@ -340,6 +340,18 @@ func TestMessages(t *testing.T) {
 	if l := Lang(For(opts, Target{User: strings.Repeat("a", 32)})); l != "de" {
 		t.Errorf("site language %s", l)
 	}
+	// Without a language for the messages, the admin's language of the admin area.
+	opts[AdminLangPrefix+hash] = "ja"
+	opts[AdminLangPrefix+strings.Repeat("a", 32)] = "ja"
+	if l := Lang(For(opts, Target{User: hash})); l != "fr" {
+		t.Errorf("own language %s, want it before the admin language", l)
+	}
+	if l := Lang(For(opts, Target{User: strings.Repeat("a", 32)})); l != "ja" {
+		t.Errorf("admin language %s", l)
+	}
+	if l := Lang(For(opts, Target{})); l != "de" {
+		t.Errorf("shared target %s", l)
+	}
 	if _, ok := opts["gamewe_notify_lang"]; ok {
 		t.Error("For changed opts")
 	}

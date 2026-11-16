@@ -51,6 +51,7 @@ func TestWebKeysNotReported(t *testing.T) {
 		"gamewe_passkeyonly_c2fca2aa3a976ccd7b980318e0416b0d":               "1",
 		"gamewe_perms_c2fca2aa3a976ccd7b980318e0416b0d":                     "role:ab12cd34",
 		"gamewe_name_c2fca2aa3a976ccd7b980318e0416b0d":                      "Dennis",
+		"gamewe_adminlang_c2fca2aa3a976ccd7b980318e0416b0d":                 "ar",
 		"gamewe_role_ab12cd34":                                              "{}",
 		"gamewe_heartbeat":                                                  "1792889000",
 		"gamewe_reset_schedule_css":                                         "2 month",
@@ -99,9 +100,9 @@ var webNames = map[string]bool{
 	"gamewe_info": true, "gamewe_up": true, "gamewe_servers": true, "gamewe_players_online": true,
 	"gamewe_players_ranked": true, "gamewe_database_up": true, "gamewe_database_latency_seconds": true,
 	"gamewe_skin_preview": true, "gamewe_pk": true, // the passkey challenge cookie
-	// prefixes of the admin's passkey, rights, role and name rows, known to otherKey
+	// prefixes of the admin's passkey, rights, role, name and language rows, known to otherKey
 	"gamewe_passkey": true, "gamewe_passkey_": true, "gamewe_passkeyu_": true, "gamewe_passkeyonly_": true,
-	"gamewe_perms_": true, "gamewe_role_": true, "gamewe_name_": true,
+	"gamewe_perms_": true, "gamewe_role_": true, "gamewe_name_": true, "gamewe_adminlang_": true,
 	// prefixes of the notification keys (gamewe_notify_<channel>_<event>, ...), known to notify.OtherKey
 	"gamewe_notify_": true, "gamewe_notify_last_": true, "gamewe_notify_seen_": true, "gamewe_notifyu_": true,
 	// the retired shared bot and ntfy tokens (before 4689bd1), only hidden by the web

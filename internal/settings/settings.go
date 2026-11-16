@@ -305,7 +305,7 @@ func otherKey(k string) bool {
 			return gameCode(g)
 		}
 	}
-	// the web admin's passkeys, rights, roles and display names
+	// the web admin's passkeys, rights, roles, display names and languages
 	if r, ok := strings.CutPrefix(k, "gamewe_passkey_"); ok {
 		h, n, ok := strings.Cut(r, "_")
 		return ok && len(h) == 48 && strings.Trim(h, "0123456789abcdef") == "" && n != "" && strings.Trim(n, "0123456789") == ""
@@ -316,7 +316,7 @@ func otherKey(k string) bool {
 	if id, ok := strings.CutPrefix(k, "gamewe_role_"); ok {
 		return len(id) == 8 && strings.Trim(id, "0123456789abcdefghijklmnopqrstuvwxyz") == ""
 	}
-	for _, p := range []string{"gamewe_totp_", "gamewe_totpp_", "gamewe_totps_", "gamewe_passkeyonly_", "gamewe_perms_", "gamewe_name_"} {
+	for _, p := range []string{"gamewe_totp_", "gamewe_totpp_", "gamewe_totps_", "gamewe_passkeyonly_", "gamewe_perms_", "gamewe_name_", "gamewe_adminlang_"} {
 		if h, ok := strings.CutPrefix(k, p); ok {
 			return len(h) == 32 && strings.Trim(h, "0123456789abcdef") == ""
 		}

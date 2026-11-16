@@ -116,11 +116,20 @@ func OtherKey(k string) bool {
 // (channel telegram or ntfy), stored in hlstats_gamewe_secrets.
 func UserTokenKey(hash, channel string) string { return UserPrefix + hash + "_" + channel + "_token" }
 
+// AdminLangPrefix + <hash> is the language an admin chose for the web's
+// admin area (written by the web).
+const AdminLangPrefix = "gamewe_adminlang_"
+
 // For returns opts for the messages to t: with the language its admin
-// chose (gamewe_notifyu_<hash>_lang), else the site's (Lang).
+// chose for them (gamewe_notifyu_<hash>_lang), else the one they chose for
+// the admin area (gamewe_adminlang_<hash>), else the site's (Lang).
 func For(opts map[string]string, t Target) map[string]string {
 	out := maps.Clone(opts)
-	out["gamewe_notify_lang"] = opts[UserPrefix+t.User+"_lang"]
+	l := strings.TrimSpace(opts[UserPrefix+t.User+"_lang"])
+	if l == "" && t.User != "" {
+		l = opts[AdminLangPrefix+t.User]
+	}
+	out["gamewe_notify_lang"] = l
 	return out
 }
 

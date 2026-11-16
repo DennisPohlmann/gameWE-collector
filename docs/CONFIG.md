@@ -412,7 +412,8 @@ for all (Settings → Notifications). The keys (`internal/notify`):
 | `gamewe_notify_smtp_host`, `_smtp_port`, `_smtp_security`, `_smtp_user`, `gamewe_notify_email_from` | –, `587`, `starttls` | the SMTP server for every admin's e-mails; `starttls` (required), `tls` (port 465) or `none`; without TLS the login is only sent to localhost |
 | `gamewe_notify_smtp_password` | – | stored in `hlstats_gamewe_secrets`; never logged or written to a status |
 | `gamewe_notifyu_<hash>_<channel>` | – | an admin's own: `<events>|<address>` (hash as for the admin's rights): an e-mail address, a Telegram chat ID or `@channel`, an ntfy topic on ntfy.sh or `https://<server>/<topic>` |
-| `gamewe_notifyu_<hash>_lang` | `default_lang` | the language of the admin's messages |
+| `gamewe_notifyu_<hash>_lang` | `gamewe_adminlang_<hash>`, else `default_lang` | the language of the admin's messages |
+| `gamewe_adminlang_<hash>` | – | **written by the web**: the language the admin chose for the admin area (My account or the admin header's language menu); their messages use it when `gamewe_notifyu_<hash>_lang` is empty |
 | `gamewe_notifyu_<hash>_telegram_token`, `gamewe_notifyu_<hash>_ntfy_token` | – | the admin's own Telegram bot token (needed for Telegram) and ntfy access token (optional); stored in `hlstats_gamewe_secrets`, sent only with that admin's messages, never logged or written to a status |
 | `gamewe_notifyu_<hash>_last_<channel>` | – | **written by the collector**: `<unix>|ok` or `<unix>|error|<text>` of the last message |
 | `gamewe_notify_seen_web`, `gamewe_notify_seen_collector` | – | **written by the collector**: the last release it told about |
