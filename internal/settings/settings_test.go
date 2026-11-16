@@ -104,6 +104,8 @@ var webNames = map[string]bool{
 	"gamewe_perms_": true, "gamewe_role_": true, "gamewe_name_": true,
 	// prefixes of the notification keys (gamewe_notify_<channel>_<event>, ...), known to notify.OtherKey
 	"gamewe_notify_": true, "gamewe_notify_last_": true, "gamewe_notify_seen_": true, "gamewe_notifyu_": true,
+	// the retired shared bot and ntfy tokens (before 4689bd1), only hidden by the web
+	"gamewe_notify_telegram_token": true, "gamewe_notify_ntfy_token": true,
 }
 
 // TestWebSourceKeys keeps WebKeys in step with the web: every gamewe_* name
