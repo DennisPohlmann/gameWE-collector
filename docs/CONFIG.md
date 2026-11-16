@@ -409,7 +409,7 @@ Notifications; each admin picks their own under My account); the keys
 
 | Key | Default | Meaning |
 |---|---|---|
-| `gamewe_notify_email`, `_telegram`, `_ntfy` | `0` | 1 = the channel is on |
+| `gamewe_notify_email`, `_telegram`, `_ntfy` | `0` | 1 = the channel sends to the shared recipients; the admins' own notifications do not need it, only what the channel needs: e-mail the SMTP server and sender, Telegram the bot token, ntfy nothing |
 | `gamewe_notify_<channel>_<event>` | `1` (`update`: `0`) | the shared recipients of the channel get the event `reset`, `hof` or `update` |
 | `gamewe_notify_email_to`, `gamewe_notify_telegram_chat`, `gamewe_notify_ntfy_topic` | – | the shared recipients: up to 20 e-mail addresses (comma separated, sent with `To: undisclosed-recipients:;`), a chat ID or `@channel`, an ntfy topic |
 | `gamewe_notify_smtp_host`, `_smtp_port`, `_smtp_security`, `_smtp_user`, `gamewe_notify_email_from` | –, `587`, `starttls` | the SMTP server; `starttls` (required), `tls` (port 465) or `none`; without TLS the login is only sent to localhost |
@@ -417,6 +417,7 @@ Notifications; each admin picks their own under My account); the keys
 | `gamewe_notify_ntfy_url` | `https://ntfy.sh` | the ntfy server, https only |
 | `gamewe_notify_lang` | `default_lang` | language of the messages |
 | `gamewe_notifyu_<hash>_<channel>` | – | an admin's own: `<events>|<address>` (hash as for the admin's rights); for ntfy a topic on `gamewe_notify_ntfy_url` or a topic on the admin's own server (`https://ntfy.example.org/topic`), sent without `gamewe_notify_ntfy_token`, only to a public address (no loopback, private or link-local address, no redirect, not through a proxy) |
+| `gamewe_notifyu_<hash>_ntfy_token` | – | the admin's own ntfy access token, stored in `hlstats_gamewe_secrets`; sent instead of `gamewe_notify_ntfy_token` with the admin's own messages only, also to their own server; never logged or written to a status |
 | `gamewe_notify_last_<channel>`, `gamewe_notifyu_<hash>_last_<channel>` | – | **written by the collector**: `<unix>|ok` or `<unix>|error|<text>` of the last message |
 | `gamewe_notify_seen_web`, `gamewe_notify_seen_collector` | – | **written by the collector**: the last release it told about |
 | `gamewe_web_version` | – | **written by the web** at start (its version), compared with the latest web release |

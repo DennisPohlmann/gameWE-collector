@@ -30,7 +30,7 @@ func TestIntegrationNotify(t *testing.T) {
 	const admin = "0123456789abcdef0123456789abcdef"
 	for k, v := range map[string]string{
 		"gamewe_notify_email": "1", "gamewe_notify_email_to": "team@example.org", "gamewe_notify_email_reset": "0",
-		"gamewe_notify_email_from": "stats@example.org", "gamewe_notify_lang": "de",
+		"gamewe_notify_email_from": "stats@example.org", "gamewe_notify_smtp_host": "smtp.example.org", "gamewe_notify_lang": "de",
 		notify.UserPrefix + admin + "_email": "reset,update|me@example.org",
 		stats.ScheduleKey("css"):             "month",
 	} {

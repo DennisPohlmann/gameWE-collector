@@ -25,16 +25,19 @@ const hash = "0123456789abcdef0123456789abcdef"
 func TestTargets(t *testing.T) {
 	opts := map[string]string{
 		"gamewe_notify_email": "1", "gamewe_notify_email_to": "a@example.org, b@example.org", "gamewe_notify_email_hof": "0",
-		"gamewe_notify_telegram":                              "1", // no shared chat: only the admin's own
+		"gamewe_notify_telegram":                              "0", // no shared chat; off: the admin's own still go
+		"gamewe_notify_telegram_token":                        "123456:ABCdefGHIjklMNOpqrSTUvwxYZ012345678",
 		UserPrefix + hash + "_telegram":                       "update,reset,bogus|@gamewe_admins",
-		UserPrefix + hash + "_ntfy":                           "reset|mytopic",  // ntfy is off
-		UserPrefix + "ffffffffffffffffffffffffffffffff_email": "|x@example.org", // no event
+		UserPrefix + hash + "_ntfy":                           "reset|mytopic",        // ntfy is off: own ones need nothing
+		UserPrefix + hash + "_email":                          "reset|me@example.org", // no SMTP server
+		UserPrefix + "ffffffffffffffffffffffffffffffff_email": "|x@example.org",       // no event
 		UserPrefix + "short_email":                            "reset|x@example.org",
 	}
 	got := Targets(opts)
 	want := []Target{
 		{Channel: Email, To: "a@example.org, b@example.org", Events: []string{EventReset}},
 		{Channel: Telegram, User: hash, To: "@gamewe_admins", Events: []string{EventUpdate, EventReset}},
+		{Channel: Ntfy, User: hash, To: "mytopic", Events: []string{EventReset}},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("targets %+v", got)
@@ -44,7 +47,7 @@ func TestTargets(t *testing.T) {
 			t.Errorf("target %d: %+v, want %+v", i, got[i], want[i])
 		}
 	}
-	if w := Wanted(opts, EventHall, EventReset); len(w) != 2 {
+	if w := Wanted(opts, EventHall, EventReset); len(w) != 3 {
 		t.Errorf("hall or reset: %+v", w)
 	}
 	if w := Wanted(opts, EventUpdate); len(w) != 1 || w[0].User != hash {
@@ -62,8 +65,18 @@ func TestTargets(t *testing.T) {
 	if tg, err := Find(opts, hash, Telegram); err != nil || tg.To != "@gamewe_admins" {
 		t.Errorf("own telegram: %+v %v", tg, err)
 	}
-	if _, err := Find(opts, hash, Ntfy); err == nil {
-		t.Error("ntfy is off")
+	if n, err := Find(opts, hash, Ntfy); err != nil || n.To != "mytopic" {
+		t.Errorf("own ntfy while it is off for the shared: %+v %v", n, err)
+	}
+	if _, err := Find(opts, "", Ntfy); err == nil {
+		t.Error("shared ntfy is off")
+	}
+	if _, err := Find(opts, hash, Email); err == nil || !strings.Contains(err.Error(), "not set up") {
+		t.Errorf("own e-mail without a server: %v", err)
+	}
+	opts["gamewe_notify_smtp_host"], opts["gamewe_notify_email_from"] = "smtp.example.org", "stats@example.org"
+	if len(Targets(opts)) != 4 {
+		t.Errorf("own e-mail with a server: %+v", Targets(opts))
 	}
 	if _, err := Find(opts, "../x", Email); err == nil {
 		t.Error("bad hash")
@@ -71,15 +84,18 @@ func TestTargets(t *testing.T) {
 }
 
 func TestOtherKey(t *testing.T) {
-	for _, k := range []string{"gamewe_notify_email", "gamewe_notify_smtp_password", "gamewe_notify_ntfy_update", "gamewe_notify_last_email", "gamewe_notify_seen_web", UserPrefix + hash + "_ntfy", UserPrefix + hash + "_last_email"} {
+	for _, k := range []string{"gamewe_notify_email", "gamewe_notify_smtp_password", "gamewe_notify_ntfy_update", "gamewe_notify_last_email", "gamewe_notify_seen_web", UserPrefix + hash + "_ntfy", UserPrefix + hash + "_last_email", UserTokenKey(hash)} {
 		if !OtherKey(k) {
 			t.Errorf("%s not known", k)
 		}
 	}
-	for _, k := range []string{"gamewe_notify_x", "gamewe_notify_last_sms", UserPrefix + "abc_email", UserPrefix + hash + "_sms"} {
+	for _, k := range []string{"gamewe_notify_x", "gamewe_notify_last_sms", UserPrefix + "abc_email", UserPrefix + hash + "_sms", UserPrefix + hash + "_email_token"} {
 		if OtherKey(k) {
 			t.Errorf("%s known", k)
 		}
+	}
+	if !IsUserSecret(UserTokenKey(hash)) || IsUserSecret(UserPrefix+"abc_ntfy_token") || IsUserSecret(UserPrefix+hash+"_ntfy") || IsUserSecret("x"+UserTokenKey(hash)) {
+		t.Error("IsUserSecret")
 	}
 }
 
@@ -183,6 +199,22 @@ func TestNtfy(t *testing.T) {
 	if err := s.Send(context.Background(), opts, own, Message{Title: "t"}); err != nil || body["topic"] != "mine" || auth != "" {
 		t.Errorf("own server: %v %v %q", err, body, auth)
 	}
+	// Their own token: on their own server and instead of the site's one;
+	// never in an error.
+	opts[UserTokenKey(own.User)] = "tk_mineminemine"
+	if err := s.Send(context.Background(), opts, own, Message{}); err != nil || auth != "Bearer tk_mineminemine" {
+		t.Errorf("own token: %v %q", err, auth)
+	}
+	if err := s.Send(context.Background(), opts, Target{Channel: Ntfy, User: own.User, To: "game_we"}, Message{}); err != nil || auth != "Bearer tk_mineminemine" {
+		t.Errorf("own token on the site's server: %v %q", err, auth)
+	}
+	if err := s.Send(context.Background(), opts, Target{Channel: Ntfy, To: "game_we"}, Message{}); err != nil || auth != "Bearer tk_secretsecret" {
+		t.Errorf("shared target took an admin's token: %v %q", err, auth)
+	}
+	if err := clean(errors.New("echo tk_mineminemine"), opts); strings.Contains(err.Error(), "tk_mine") {
+		t.Errorf("own token in an error: %v", err)
+	}
+	delete(opts, UserTokenKey(own.User))
 	// Not for the shared recipients (the server fields need a higher right).
 	if err := s.Send(context.Background(), opts, Target{Channel: Ntfy, To: srv.URL + "/mine"}, Message{}); err == nil {
 		t.Error("shared topic with a server accepted")
