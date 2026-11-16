@@ -182,8 +182,8 @@ var texts = map[string]map[string]string{
 	},
 }
 
-// Lang is the language of the messages: gamewe_notify_lang, else the site's
-// gamewe_default_lang, else English.
+// Lang is the language of the messages: gamewe_notify_lang (the admin's, set
+// by For), else the site's gamewe_default_lang, else English.
 func Lang(opts map[string]string) string {
 	for _, k := range []string{"gamewe_notify_lang", "gamewe_default_lang"} {
 		v := strings.ToLower(strings.TrimSpace(opts[k]))

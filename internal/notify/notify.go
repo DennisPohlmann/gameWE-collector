@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/mail"
@@ -65,6 +66,7 @@ const Timeout = 20 * time.Second
 //	                                        an ntfy topic (on ntfy.sh) or https://<server>/<topic>
 //	gamewe_notifyu_<hash>_telegram_token   the admin's Telegram bot (hlstats_gamewe_secrets)
 //	gamewe_notifyu_<hash>_ntfy_token       the admin's ntfy access token (hlstats_gamewe_secrets)
+//	gamewe_notifyu_<hash>_lang             the language of the admin's messages (empty: gamewe_default_lang)
 //	gamewe_notifyu_<hash>_last_<channel>   written by the collector (StatusKey)
 const UserPrefix = "gamewe_notifyu_"
 
@@ -81,10 +83,9 @@ var SecretKeys = []string{"gamewe_notify_smtp_password"}
 type Key struct{ Name, Default, Meaning string }
 
 // Keys lists the options of the notifications, the secret ones included:
-// the language and the SMTP server, the only settings for all admins.
+// the SMTP server, the only setting for all admins.
 func Keys() []Key {
 	return []Key{
-		{"gamewe_notify_lang", "", "language of the notifications (a code of the web, e.g. de); empty: gamewe_default_lang, else English"},
 		{"gamewe_notify_email_from", "", "sender address of the e-mails"},
 		{"gamewe_notify_smtp_host", "", "SMTP server"},
 		{"gamewe_notify_smtp_port", "587", "SMTP port"},
@@ -106,7 +107,7 @@ func OtherKey(k string) bool {
 	if r, ok := strings.CutPrefix(k, UserPrefix); ok {
 		h, c, ok := strings.Cut(r, "_")
 		c = strings.TrimPrefix(c, "last_")
-		return ok && userHash(h) && (slices.Contains(Channels, c) || c == "telegram_token" || c == "ntfy_token")
+		return ok && userHash(h) && (slices.Contains(Channels, c) || c == "telegram_token" || c == "ntfy_token" || c == "lang")
 	}
 	return false
 }
@@ -114,6 +115,14 @@ func OtherKey(k string) bool {
 // UserTokenKey is the admin's own Telegram bot token or ntfy access token
 // (channel telegram or ntfy), stored in hlstats_gamewe_secrets.
 func UserTokenKey(hash, channel string) string { return UserPrefix + hash + "_" + channel + "_token" }
+
+// For returns opts for the messages to t: with the language its admin
+// chose (gamewe_notifyu_<hash>_lang), else the site's (Lang).
+func For(opts map[string]string, t Target) map[string]string {
+	out := maps.Clone(opts)
+	out["gamewe_notify_lang"] = opts[UserPrefix+t.User+"_lang"]
+	return out
+}
 
 // IsUserSecret reports the keys of the admins' own tokens.
 func IsUserSecret(k string) bool {

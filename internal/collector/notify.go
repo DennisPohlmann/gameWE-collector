@@ -38,9 +38,8 @@ func (j *Jobs) notifyEvent(ctx context.Context, msg func(opts map[string]string)
 	if len(targets) == 0 {
 		return
 	}
-	m := msg(opts)
 	for _, t := range targets {
-		j.sendTo(ctx, opts, t, m)
+		j.sendTo(ctx, opts, t, msg(notify.For(opts, t)))
 	}
 }
 
@@ -67,7 +66,7 @@ func (j *Jobs) notifyTest(ctx context.Context, job stats.Job) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := j.sendTo(ctx, opts, t, notify.TestMessage(opts, t.Channel)); err != nil {
+	if err := j.sendTo(ctx, opts, t, notify.TestMessage(notify.For(opts, t), t.Channel)); err != nil {
 		return "", err
 	}
 	return "sent by " + t.Channel, nil
@@ -122,9 +121,8 @@ func (j *Jobs) notifyUpdates(ctx context.Context) error {
 		known := c.current != "" && c.current != "dev"
 		tell := (known && update.Newer(rel.Version, c.current)) || (!known && seen != "")
 		if tell {
-			m := notify.UpdateMessage(opts, c.name, rel.Version, c.current, rel.URL)
 			for _, t := range notify.Wanted(opts, notify.EventUpdate) {
-				j.sendTo(ctx, opts, t, m)
+				j.sendTo(ctx, opts, t, notify.UpdateMessage(notify.For(opts, t), c.name, rel.Version, c.current, rel.URL))
 			}
 		}
 		if err := j.Store.SetOption(ctx, notify.SeenKey(c.name), rel.Version); err != nil {

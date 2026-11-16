@@ -332,6 +332,17 @@ func TestMessages(t *testing.T) {
 	if m.Title != "Ruhmeshalle Counter-Strike: 2026-10-01 – 2026-10-31" || !strings.Contains(m.Body, "1. Al ice (1500 Punkte)") || !strings.HasSuffix(m.Body, "https://stats.example.org/css/hall-of-fame") {
 		t.Errorf("%+v", m)
 	}
+	// Each admin's own language (For), else the site's.
+	opts[UserPrefix+hash+"_lang"] = "fr"
+	if l := Lang(For(opts, Target{User: hash})); l != "fr" {
+		t.Errorf("own language %s", l)
+	}
+	if l := Lang(For(opts, Target{User: strings.Repeat("a", 32)})); l != "de" {
+		t.Errorf("site language %s", l)
+	}
+	if _, ok := opts["gamewe_notify_lang"]; ok {
+		t.Error("For changed opts")
+	}
 	opts["gamewe_notify_lang"] = "ar"
 	if m := ResetMessage(opts, "css", "CS", "admin"); !strings.Contains(m.Body, "admin") || strings.Contains(m.Title, "{") {
 		t.Errorf("%+v", m)

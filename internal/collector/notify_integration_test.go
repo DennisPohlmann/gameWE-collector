@@ -31,7 +31,8 @@ func TestIntegrationNotify(t *testing.T) {
 	const team = "abcdefabcdefabcdefabcdefabcdefab" // a second admin: only the hall of fame
 	for k, v := range map[string]string{
 		notify.UserPrefix + team + "_email": "hof|team@example.org",
-		"gamewe_notify_email_from":          "stats@example.org", "gamewe_notify_smtp_host": "smtp.example.org", "gamewe_notify_lang": "de",
+		"gamewe_notify_email_from":          "stats@example.org", "gamewe_notify_smtp_host": "smtp.example.org",
+		notify.UserPrefix + admin + "_lang": "de", notify.UserPrefix + team + "_lang": "de",
 		notify.UserPrefix + admin + "_email": "reset,update|me@example.org",
 		stats.ScheduleKey("css"):             "month",
 	} {
