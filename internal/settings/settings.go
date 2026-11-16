@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+
+	"gamewe-collector/internal/notify"
 )
 
 // Command prefixes of the plugin's server commands (gamewe_psay, ...): the
@@ -171,7 +173,7 @@ func Keys() []Key {
 		}
 		return "0"
 	}
-	return []Key{
+	keys := []Key{
 		{"gamewe_start_skill", strconv.Itoa(d.StartSkill), "skill of a new player"},
 		{"gamewe_kill_points", strconv.Itoa(d.KillPoints), "base skill per kill (scaled by victim/killer skill and weapon modifier, at least 1)"},
 		{"gamewe_headshot_bonus", strconv.Itoa(d.HeadshotBonus), "extra skill per headshot on top of the hlstats_Actions headshot action (default 0: the action rewards it)"},
@@ -195,6 +197,7 @@ func Keys() []Key {
 		{"gamewe_console_events", b(d.ConsoleEvents), "1 = tell the involved players in their console the points of every kill and action (players switch it off with gamewe_display 0)"},
 		{"gamewe_global_chat", b(d.GlobalChat), "1 = announce player and team actions with points in the chat (players switch it off with gamewe_chat 0)"},
 	}
+	return keys
 }
 
 // WebKeys lists the gamewe_* keys in hlstats_Options that belong to the web
@@ -206,7 +209,7 @@ func Keys() []Key {
 //
 // SecretKeys are stored in hlstats_gamewe_secrets, which the public web user
 // cannot read, instead of hlstats_Options.
-var SecretKeys = []string{"gamewe_steam_api_key", "gamewe_ts_query_password", "gamewe_ts_password", "gamewe_metrics_token", "gamewe_fastdl_password", "gamewe_fastdl_token", "gamewe_fastdl_header"}
+var SecretKeys = append([]string{"gamewe_steam_api_key", "gamewe_ts_query_password", "gamewe_ts_password", "gamewe_metrics_token", "gamewe_fastdl_password", "gamewe_fastdl_token", "gamewe_fastdl_header"}, notify.SecretKeys...)
 
 // IsSecretKey reports whether key belongs in hlstats_gamewe_secrets: one of
 // SecretKeys, or a ranking's own FastDL secret (gamewe_fastdl_token_<game>, ...).
@@ -279,6 +282,7 @@ func otherKey(k string) bool {
 	switch k {
 	case "gamewe_reset_schedule", "gamewe_reset_mode", "gamewe_reset_paused", // the scheduled reset of all rankings
 		"gamewe_heartbeat", "gamewe_collector_version", "gamewe_collector_runtime", // written by the collector
+		"gamewe_web_version",                                                                   // written by the web at start (update notifications)
 		"gamewe_next_awards", "gamewe_next_bans", "gamewe_next_inactive", "gamewe_next_resets", // the job plan, written by the collector
 		"gamewe_daily_awards",                    // 1.4.x; now features.daily_awards in the config file
 		"gamewe_default_game",                    // old web setting nothing reads; migration 13 deletes both
@@ -287,7 +291,7 @@ func otherKey(k string) bool {
 		"gamewe_rank_bots", "gamewe_ignore_bots": // reported above
 		return true
 	}
-	if webKeys[k] {
+	if webKeys[k] || notify.OtherKey(k) {
 		return true
 	}
 	for _, p := range []string{"gamewe_link_", "gamewe_privacy_text_"} {

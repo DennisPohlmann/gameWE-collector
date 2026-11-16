@@ -13,7 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"gamewe-collector/internal/notify"
 	"gamewe-collector/internal/stats"
+	"gamewe-collector/internal/update"
 )
 
 // JobPoll is how often the collector looks for queued jobs.
@@ -47,6 +49,12 @@ type Jobs struct {
 	// ResetClock is features.scheduled_resets.time (HH:MM), only shown in
 	// the plan for the web admin.
 	ResetClock string
+	// Notify sends the notifications (internal/notify); nil: the default
+	// sender. UpdateCheck (features.update_check) lets it tell about new
+	// releases; Latest looks one up (tests; nil: GitHub).
+	Notify      *notify.Sender
+	UpdateCheck bool
+	Latest      func(ctx context.Context, repo string) (update.Release, error)
 
 	beatEvery    time.Duration // tests; 0: stats.HeartbeatInterval
 	lastPlan     time.Time
@@ -54,6 +62,7 @@ type Jobs struct {
 	lastPrune    time.Time
 	lastInactive time.Time
 	lastAwards   time.Time
+	lastUpdates  time.Time
 	written      map[string]string // plan keys as last written
 	// scheduled: QueueScheduled ran before (its jobs are no longer queued
 	// at the collector's start).
@@ -196,6 +205,12 @@ func (j *Jobs) Poll(ctx context.Context) error {
 			j.Log.Error("jobs: queueing the daily awards failed", "day", stats.AwardDate(day), "err", err)
 		}
 	}
+	if j.UpdateCheck && now.Sub(j.lastUpdates) >= updateNotifyEvery {
+		j.lastUpdates = now
+		if err := j.notifyUpdates(ctx); err != nil && ctx.Err() == nil {
+			j.Log.Debug("notify: update check failed", "err", err)
+		}
+	}
 	pending, err := j.Store.JobsByStatus(ctx, stats.JobPending)
 	if err != nil {
 		return err
@@ -214,7 +229,7 @@ func (j *Jobs) Poll(ctx context.Context) error {
 	for _, job := range pending {
 		// All games, where a second one is a no-op, and erasures, which take the
 		// job lock one after the other: none of them is refused.
-		if job.Type == stats.JobInactive || job.Type == stats.JobAwards || job.Type == stats.JobDeletePlayer {
+		if job.Type == stats.JobInactive || job.Type == stats.JobAwards || job.Type == stats.JobDeletePlayer || job.Type == stats.JobNotifyTest {
 			if ok, err := j.Store.ClaimJob(ctx, job.ID, stats.JobPending, j.now()); err != nil || !ok {
 				continue
 			}
@@ -522,6 +537,15 @@ func InactiveResult(moved int64, days int) string {
 
 // do runs a claimed job and stores its result.
 func (j *Jobs) do(ctx context.Context, job stats.Job) {
+	if job.Type == stats.JobNotifyTest {
+		res, err := j.notifyTest(ctx, job)
+		if err != nil {
+			j.finish(ctx, job, stats.JobFailed, err.Error())
+			return
+		}
+		j.finish(ctx, job, stats.JobDone, res)
+		return
+	}
 	if job.Type == stats.JobInactive {
 		res, err := j.moveInactive(ctx, j.now(), job.ID)
 		if err != nil {
@@ -564,6 +588,9 @@ func (j *Jobs) do(ctx context.Context, job stats.Job) {
 		text := ScheduledText(res)
 		j.Log.Info("jobs: scheduled ranking reset", "job", job.ID, "game", job.Game, "result", text)
 		j.finish(ctx, job, stats.JobDone, text)
+		if res.Due {
+			j.notifyEvent(ctx, j.hallMessage(ctx, job.Game, res), notify.EventHall, notify.EventReset)
+		}
 		return
 	}
 	if job.Type == stats.JobDeletePlayer {
@@ -597,6 +624,7 @@ func (j *Jobs) do(ctx context.Context, job stats.Job) {
 	}
 	j.Log.Info("jobs: ranking reset", "job", job.ID, "game", job.Game, "mode", job.Mode, "by", job.RequestedBy, "rows", stats.FormatCounts(res))
 	j.finish(ctx, job, stats.JobDone, stats.FormatCounts(res))
+	j.notifyEvent(ctx, j.resetMessage(ctx, job), notify.EventReset)
 }
 
 // decideAwards decides the awards of the day mode (YYYY-MM-DD) under the

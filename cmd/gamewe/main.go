@@ -24,13 +24,13 @@ import (
 	"syscall"
 	"time"
 
-	"gamewe-collector/internal/output"
 	"gamewe-collector/internal/collector"
 	"gamewe-collector/internal/config"
 	"gamewe-collector/internal/database"
 	"gamewe-collector/internal/games"
 	"gamewe-collector/internal/geoip"
 	"gamewe-collector/internal/localrun"
+	"gamewe-collector/internal/output"
 	"gamewe-collector/internal/rcon"
 	"gamewe-collector/internal/sdnotify"
 	"gamewe-collector/internal/settings"
@@ -519,9 +519,9 @@ func runCmd(args []string) error {
 	jobLock := func(ctx context.Context) (func(), error) { return database.JobLock(ctx, db, time.Hour, nil) }
 	zoneLoc, _ := cfg.Location() // checked by config.Validate
 	go (&collector.Jobs{Store: store, Hub: hub, Log: log, Lock: jobLock, Version: version.Version, Runtime: localrun.Runtime(), Zone: zoneLoc,
-		ResetClock: cfg.Features.ScheduledResets.Time,
-		Inactive:   collector.InactiveConfig{Enabled: ip.Enabled, At: collector.Schedule{Loc: ipLoc, Hour: ipH, Minute: ipM}},
-		Awards:     collector.AwardsConfig{Enabled: da.Enabled, At: collector.Schedule{Loc: daLoc, Hour: daH, Minute: daM}}}).Run(ctx)
+		ResetClock: cfg.Features.ScheduledResets.Time, UpdateCheck: cfg.Features.UpdateCheck.Enabled && !updateCheckOff(),
+		Inactive: collector.InactiveConfig{Enabled: ip.Enabled, At: collector.Schedule{Loc: ipLoc, Hour: ipH, Minute: ipM}},
+		Awards:   collector.AwardsConfig{Enabled: da.Enabled, At: collector.Schedule{Loc: daLoc, Hour: daH, Minute: daM}}}).Run(ctx)
 	if banWatch != nil {
 		go banWatch.Run(ctx)
 	}

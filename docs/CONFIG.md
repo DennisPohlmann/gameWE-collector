@@ -394,3 +394,32 @@ address is not configured. The list is `WebKeys` in `internal/settings/settings.
 a new web setting needs an entry there. CI checks out gameWE-web and fails
 (`TestWebSourceKeys`) when the web uses a `gamewe_*` key the collector does
 not know.
+
+### Notifications
+
+The collector sends messages by e-mail (SMTP), Telegram (Bot API
+`sendMessage`, plain text) and ntfy (ntfy.sh or an own ntfy server, JSON
+publish) when a ranking is reset (job `reset`), when a scheduled reset stores
+a hall of fame (job `scheduled-reset`) and when a newer collector or web
+release is out (every 6 hours with `features.update_check`, once per release).
+A reset or hall of fame that `gamewe reset` or `gamewe halloffame run` does
+itself because no collector runs sends nothing. The web admin sets them up (Settings →
+Notifications; each admin picks their own under My account); the keys
+(`internal/notify`):
+
+| Key | Default | Meaning |
+|---|---|---|
+| `gamewe_notify_email`, `_telegram`, `_ntfy` | `0` | 1 = the channel is on |
+| `gamewe_notify_<channel>_<event>` | `1` (`update`: `0`) | the shared recipients of the channel get the event `reset`, `hof` or `update` |
+| `gamewe_notify_email_to`, `gamewe_notify_telegram_chat`, `gamewe_notify_ntfy_topic` | – | the shared recipients: up to 20 e-mail addresses (comma separated, sent with `To: undisclosed-recipients:;`), a chat ID or `@channel`, an ntfy topic |
+| `gamewe_notify_smtp_host`, `_smtp_port`, `_smtp_security`, `_smtp_user`, `gamewe_notify_email_from` | –, `587`, `starttls` | the SMTP server; `starttls` (required), `tls` (port 465) or `none`; without TLS the login is only sent to localhost |
+| `gamewe_notify_smtp_password`, `gamewe_notify_telegram_token`, `gamewe_notify_ntfy_token` | – | stored in `hlstats_gamewe_secrets`; never logged or written to a status |
+| `gamewe_notify_ntfy_url` | `https://ntfy.sh` | the ntfy server, https only |
+| `gamewe_notify_lang` | `default_lang` | language of the messages |
+| `gamewe_notifyu_<hash>_<channel>` | – | an admin's own: `<events>|<address>` (hash as for the admin's rights) |
+| `gamewe_notify_last_<channel>`, `gamewe_notifyu_<hash>_last_<channel>` | – | **written by the collector**: `<unix>|ok` or `<unix>|error|<text>` of the last message |
+| `gamewe_notify_seen_web`, `gamewe_notify_seen_collector` | – | **written by the collector**: the last release it told about |
+| `gamewe_web_version` | – | **written by the web** at start (its version), compared with the latest web release |
+
+A test message is the job `notify-test` (`mode` the channel, `game` the
+admin's hash or empty for the shared recipients); the web admin queues it.

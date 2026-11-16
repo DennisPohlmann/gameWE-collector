@@ -93,6 +93,8 @@ var webNames = map[string]bool{
 	"gamewe_info": true, "gamewe_up": true, "gamewe_servers": true, "gamewe_players_online": true,
 	"gamewe_players_ranked": true, "gamewe_database_up": true, "gamewe_database_latency_seconds": true,
 	"gamewe_skin_preview": true,
+	// prefixes of the notification keys (gamewe_notify_<channel>_<event>, ...), known to notify.OtherKey
+	"gamewe_notify_": true, "gamewe_notify_last_": true, "gamewe_notify_seen_": true, "gamewe_notifyu_": true,
 }
 
 // TestWebSourceKeys keeps WebKeys in step with the web: every gamewe_* name

@@ -33,6 +33,9 @@ const (
 	JobScheduledReset = "scheduled-reset"
 	JobAwards         = "awards"
 	JobDeletePlayer   = "delete-player"
+	// JobNotifyTest sends a test message (mode: the channel; game: the
+	// admin's hash for their own address, empty for the shared one).
+	JobNotifyTest = "notify-test"
 )
 
 // JobBySchedule is requested_by of the jobs the collector queues itself
@@ -323,6 +326,16 @@ func (s *Store) SetVersion(ctx context.Context, v string) error {
 // SetOption writes one hlstats_Options row (see setOption).
 func (s *Store) SetOption(ctx context.Context, key, v string) error {
 	return s.setOption(ctx, key, v)
+}
+
+// GameName is the name of a ranking (hlstats_Games.name), its code when it
+// has none or cannot be read.
+func (s *Store) GameName(ctx context.Context, game string) string {
+	var name string
+	if err := s.queryRow(ctx, `SELECT name FROM hlstats_Games WHERE code = ?`, game).Scan(&name); err != nil || strings.TrimSpace(name) == "" {
+		return game
+	}
+	return strings.TrimSpace(name)
 }
 
 // setOption updates or inserts one hlstats_Options row. An update that
