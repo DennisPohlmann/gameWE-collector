@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"mime"
 	"net"
 	"net/http"
@@ -176,6 +177,35 @@ func TestNtfy(t *testing.T) {
 	}
 	if err := s.Send(context.Background(), opts, Target{Channel: Ntfy, To: "a/b"}, Message{}); err == nil {
 		t.Error("bad topic accepted")
+	}
+	// An admin's own server: their topic there, never the site's token.
+	own := Target{Channel: Ntfy, User: strings.Repeat("a", 32), To: srv.URL + "/mine"}
+	if err := s.Send(context.Background(), opts, own, Message{Title: "t"}); err != nil || body["topic"] != "mine" || auth != "" {
+		t.Errorf("own server: %v %v %q", err, body, auth)
+	}
+	// Not for the shared recipients (the server fields need a higher right).
+	if err := s.Send(context.Background(), opts, Target{Channel: Ntfy, To: srv.URL + "/mine"}, Message{}); err == nil {
+		t.Error("shared topic with a server accepted")
+	}
+	for _, to := range []string{"http://ntfy.example.org/t", "https://ntfy.example.org/", "https://ntfy.example.org/t?x"} {
+		own.To = to
+		if err := s.Send(context.Background(), opts, own, Message{}); err == nil {
+			t.Errorf("%s accepted", to)
+		}
+	}
+	// The default sender does not reach the collector's own network.
+	srv.Config.ErrorLog = log.New(io.Discard, "", 0)
+	own.To = srv.URL + "/mine"
+	if err := (&Sender{}).Send(context.Background(), opts, own, Message{}); err == nil || !strings.Contains(err.Error(), "public address") {
+		t.Errorf("loopback reached: %v", err)
+	}
+}
+
+func TestPublicOnly(t *testing.T) {
+	for addr, ok := range map[string]bool{"127.0.0.1:443": false, "10.1.2.3:443": false, "192.168.0.1:443": false, "169.254.169.254:80": false, "100.64.0.1:443": false, "[::1]:443": false, "[fd00::1]:443": false, "[::ffff:10.0.0.1]:443": false, "0.0.0.0:443": false, "93.184.216.34:443": true, "[2606:4700::1]:443": true} {
+		if err := publicOnly("tcp", addr, nil); (err == nil) != ok {
+			t.Errorf("%s: %v", addr, err)
+		}
 	}
 }
 

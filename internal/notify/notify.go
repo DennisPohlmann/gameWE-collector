@@ -19,13 +19,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/mail"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -258,6 +261,38 @@ func (s *Sender) client() *http.Client {
 	return http.DefaultClient
 }
 
+// publicClient reaches only public addresses and follows no redirect:
+// for an admin's own ntfy server.
+// shortcut: it dials directly (no HTTPS_PROXY); add the proxy when a
+// collector behind one needs own servers.
+var publicClient = &http.Client{
+	Transport: &http.Transport{
+		DialContext:         (&net.Dialer{Timeout: 10 * time.Second, Control: publicOnly}).DialContext,
+		TLSHandshakeTimeout: 10 * time.Second,
+	},
+	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+}
+
+var sharedAddressSpace = netip.MustParsePrefix("100.64.0.0/10") // carrier-grade NAT
+
+// publicOnly refuses to connect to loopback, private, link-local,
+// shared and unspecified addresses (checked after the name lookup).
+func publicOnly(_, address string, _ syscall.RawConn) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return err
+	}
+	ip, err := netip.ParseAddr(host)
+	if err != nil {
+		return err
+	}
+	ip = ip.Unmap()
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() || sharedAddressSpace.Contains(ip) {
+		return errors.New("the own ntfy server has no public address")
+	}
+	return nil
+}
+
 func flag(opts map[string]string, key string, def bool) bool {
 	switch strings.TrimSpace(opts[key]) {
 	case "1":
@@ -289,7 +324,7 @@ func (s *Sender) Send(ctx context.Context, opts map[string]string, t Target, m M
 	case Telegram:
 		err = s.sendTelegram(ctx, opts, t.To, m)
 	case Ntfy:
-		err = s.sendNtfy(ctx, opts, t.To, m)
+		err = s.sendNtfy(ctx, opts, t, m)
 	default:
 		err = fmt.Errorf("unknown channel %q", t.Channel)
 	}
@@ -325,8 +360,8 @@ func Status(now time.Time, err error) string {
 
 // do sends req and reads a JSON answer of at most 64 KiB into v. The error
 // never holds the URL (the Telegram token is part of it).
-func (s *Sender) do(req *http.Request, v any) (int, error) {
-	res, err := s.client().Do(req)
+func (s *Sender) do(c *http.Client, req *http.Request, v any) (int, error) {
+	res, err := c.Do(req)
 	if err != nil {
 		var ue *url.Error
 		if errors.As(err, &ue) {
@@ -428,7 +463,7 @@ func (s *Sender) sendTelegram(ctx context.Context, opts map[string]string, chat 
 		OK          bool   `json:"ok"`
 		Description string `json:"description"`
 	}
-	status, err := s.do(req, &res)
+	status, err := s.do(s.client(), req, &res)
 	if err != nil {
 		return fmt.Errorf("telegram: %w", err)
 	}
@@ -443,12 +478,21 @@ func (s *Sender) sendTelegram(ctx context.Context, opts map[string]string, chat 
 
 // ---------------------------------------------------------------- ntfy
 
-func (s *Sender) sendNtfy(ctx context.Context, opts map[string]string, topic string, m Message) error {
+func (s *Sender) sendNtfy(ctx context.Context, opts map[string]string, t Target, m Message) error {
 	base, err := ntfyBase(opts["gamewe_notify_ntfy_url"])
 	if err != nil {
 		return fmt.Errorf("ntfy: %w", err)
 	}
-	topic = strings.TrimSpace(topic)
+	topic := strings.TrimSpace(t.To)
+	ownServer := false
+	if i := strings.LastIndex(topic, "/"); i >= 0 && t.User != "" {
+		// An admin's own server (https://host/path/topic): only for their own
+		// address, as the server fields of the settings need a higher right.
+		if base, err = ntfyBase(topic[:i]); err != nil || base != topic[:i] || len(topic) > 200 {
+			return errors.New("ntfy: the own server must be https://host/topic")
+		}
+		topic, ownServer = topic[i+1:], true
+	}
 	if !ntfyTopic.MatchString(topic) {
 		return errors.New("ntfy: no valid topic (letters, digits, _ and -)")
 	}
@@ -460,14 +504,21 @@ func (s *Sender) sendNtfy(ctx context.Context, opts map[string]string, topic str
 		return errors.New("ntfy: bad request")
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if t := strings.TrimSpace(opts["gamewe_notify_ntfy_token"]); t != "" {
-		req.Header.Set("Authorization", "Bearer "+t)
+	client := s.client()
+	if ownServer {
+		// Never the site's token to another server; only public addresses,
+		// no redirects (an admin must not reach the collector's network).
+		if s == nil || s.HTTP == nil {
+			client = publicClient
+		}
+	} else if tk := strings.TrimSpace(opts["gamewe_notify_ntfy_token"]); tk != "" {
+		req.Header.Set("Authorization", "Bearer "+tk)
 	}
 	var res struct {
 		ID    string `json:"id"`
 		Error string `json:"error"`
 	}
-	status, err := s.do(req, &res)
+	status, err := s.do(client, req, &res)
 	if err != nil {
 		return fmt.Errorf("ntfy: %w", err)
 	}

@@ -416,7 +416,7 @@ Notifications; each admin picks their own under My account); the keys
 | `gamewe_notify_smtp_password`, `gamewe_notify_telegram_token`, `gamewe_notify_ntfy_token` | – | stored in `hlstats_gamewe_secrets`; never logged or written to a status |
 | `gamewe_notify_ntfy_url` | `https://ntfy.sh` | the ntfy server, https only |
 | `gamewe_notify_lang` | `default_lang` | language of the messages |
-| `gamewe_notifyu_<hash>_<channel>` | – | an admin's own: `<events>|<address>` (hash as for the admin's rights) |
+| `gamewe_notifyu_<hash>_<channel>` | – | an admin's own: `<events>|<address>` (hash as for the admin's rights); for ntfy a topic on `gamewe_notify_ntfy_url` or a topic on the admin's own server (`https://ntfy.example.org/topic`), sent without `gamewe_notify_ntfy_token`, only to a public address (no loopback, private or link-local address, no redirect, not through a proxy) |
 | `gamewe_notify_last_<channel>`, `gamewe_notifyu_<hash>_last_<channel>` | – | **written by the collector**: `<unix>|ok` or `<unix>|error|<text>` of the last message |
 | `gamewe_notify_seen_web`, `gamewe_notify_seen_collector` | – | **written by the collector**: the last release it told about |
 | `gamewe_web_version` | – | **written by the web** at start (its version), compared with the latest web release |
