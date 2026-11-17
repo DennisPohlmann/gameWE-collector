@@ -20,7 +20,7 @@ Go version go1.27.3; modules as `go version -m gamewe` lists them.
 |---|---|---|---|---|---|
 | `Go standard library and runtime` | 1.27.3 | BSD-3-Clause | https://go.dev | compiled into every Go program (runtime, net, crypto/tls, database/sql, ...) | [`LICENSE`](licenses/go/LICENSE) |
 | `filippo.io/edwards25519` | v1.2.0 | BSD-3-Clause | https://github.com/FiloSottile/edwards25519 | used by the MySQL driver (ed25519 authentication plugin) | [`LICENSE`](licenses/filippo.io_edwards25519/LICENSE) |
-| `github.com/go-sql-driver/mysql` | v1.10.1 | MPL-2.0 | https://github.com/go-sql-driver/mysql | MariaDB / MySQL database driver | [`LICENSE`](licenses/github.com_go-sql-driver_mysql/LICENSE) |
+| `github.com/go-sql-driver/mysql` | v1.10.2 | MPL-2.0 | https://github.com/go-sql-driver/mysql | MariaDB / MySQL database driver | [`LICENSE`](licenses/github.com_go-sql-driver_mysql/LICENSE) |
 | `github.com/golang-sql/civil` | v0.0.0-20220223132316-b832511892a9 | Apache-2.0 | https://github.com/golang-sql/civil | date and time types of the SQL Server driver | [`LICENSE`](licenses/github.com_golang-sql_civil/LICENSE) |
 | `github.com/golang-sql/sqlexp` | v0.1.0 | BSD-3-Clause | https://github.com/golang-sql/sqlexp | used by the SQL Server driver (messages of the server) | [`LICENSE`](licenses/github.com_golang-sql_sqlexp/LICENSE) |
 | `github.com/google/uuid` | v1.6.0 | BSD-3-Clause | https://github.com/google/uuid | used by the SQL Server driver (uniqueidentifier, connection ids) | [`LICENSE`](licenses/github.com_google_uuid/LICENSE) |
