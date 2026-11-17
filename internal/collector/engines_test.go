@@ -285,3 +285,44 @@ func TestPlayTimeFlush(t *testing.T) {
 		t.Errorf("at the disconnect: %v, want 170 each", st.playTime)
 	}
 }
+
+// Day of Defeat: Source and Day of Defeat log no headshots; the gameWE
+// plugins log `triggered "headshot"` from the hitgroup when the kill
+// happens, before the game's kill line (SourceMod: player_death pre hook;
+// AMX Mod X: DeathMsg). The headshot belongs to the killer's next kill.
+func TestDoDHeadshotBeforeKill(t *testing.T) {
+	for _, game := range []string{"dods", "dod"} {
+		t.Run(game, func(t *testing.T) {
+			st := newMemStore()
+			addr := "198.51.100.21:27015"
+			srv := st.addServers([]string{addr}, map[string]string{addr: game})[0]
+			p := NewProcessor(st, settings.NewLive(settings.Defaults()), srv, &recorder{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+			ctx, now := context.Background(), time.Now()
+			a, b := `"A<1><STEAM_0:0:11><Allies>"`, `"B<2><STEAM_0:1:22><Axis>"`
+			for _, l := range []string{
+				a + ` triggered "headshot"`,
+				a + ` killed ` + b + ` with "garand"`,  // headshot
+				b + ` killed ` + a + ` with "k98"`,     // no headshot
+				a + ` killed ` + b + ` with "frag_us"`, // no headshot
+			} {
+				if err := p.Handle(ctx, l, now); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := p.Tick(ctx, now); err != nil {
+				t.Fatal(err)
+			}
+			st.mu.Lock()
+			defer st.mu.Unlock()
+			want := []bool{true, false, false}
+			if len(st.kills) != len(want) {
+				t.Fatalf("kills %+v", st.kills)
+			}
+			for i, k := range st.kills {
+				if k.headshot != want[i] {
+					t.Errorf("kill %d (%s -> %s): headshot %v, want %v", i+1, k.killer, k.victim, k.headshot, want[i])
+				}
+			}
+		})
+	}
+}
