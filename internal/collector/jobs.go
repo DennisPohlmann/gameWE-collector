@@ -229,7 +229,7 @@ func (j *Jobs) Poll(ctx context.Context) error {
 	for _, job := range pending {
 		// All games, where a second one is a no-op, and erasures, which take the
 		// job lock one after the other: none of them is refused.
-		if job.Type == stats.JobInactive || job.Type == stats.JobAwards || job.Type == stats.JobDeletePlayer || job.Type == stats.JobNotifyTest {
+		if job.Type == stats.JobInactive || job.Type == stats.JobAwards || job.Type == stats.JobDeletePlayer || job.Type == stats.JobNotifyTest || job.Type == stats.JobWebhookTest {
 			if ok, err := j.Store.ClaimJob(ctx, job.ID, stats.JobPending, j.now()); err != nil || !ok {
 				continue
 			}
@@ -537,8 +537,12 @@ func InactiveResult(moved int64, days int) string {
 
 // do runs a claimed job and stores its result.
 func (j *Jobs) do(ctx context.Context, job stats.Job) {
-	if job.Type == stats.JobNotifyTest {
-		res, err := j.notifyTest(ctx, job)
+	if job.Type == stats.JobNotifyTest || job.Type == stats.JobWebhookTest {
+		test := j.notifyTest
+		if job.Type == stats.JobWebhookTest {
+			test = j.webhookTest
+		}
+		res, err := test(ctx, job)
 		if err != nil {
 			j.finish(ctx, job, stats.JobFailed, err.Error())
 			return
@@ -590,6 +594,8 @@ func (j *Jobs) do(ctx context.Context, job stats.Job) {
 		j.finish(ctx, job, stats.JobDone, text)
 		if res.Due {
 			j.notifyEvent(ctx, j.hallMessage(ctx, job.Game, res), notify.EventHall, notify.EventReset)
+			j.fireWebhooks(ctx, notify.EventHall, j.hallVars(ctx, job.Game, res))
+			j.fireWebhooks(ctx, notify.EventReset, j.resetVars(ctx, job.Game, job.RequestedBy))
 		}
 		return
 	}
@@ -625,6 +631,7 @@ func (j *Jobs) do(ctx context.Context, job stats.Job) {
 	j.Log.Info("jobs: ranking reset", "job", job.ID, "game", job.Game, "mode", job.Mode, "by", job.RequestedBy, "rows", stats.FormatCounts(res))
 	j.finish(ctx, job, stats.JobDone, stats.FormatCounts(res))
 	j.notifyEvent(ctx, j.resetMessage(ctx, job), notify.EventReset)
+	j.fireWebhooks(ctx, notify.EventReset, j.resetVars(ctx, job.Game, job.RequestedBy))
 }
 
 // decideAwards decides the awards of the day mode (YYYY-MM-DD) under the

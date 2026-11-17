@@ -263,7 +263,7 @@ func (s *Sender) client() *http.Client {
 }
 
 // publicClient reaches only public addresses and follows no redirect:
-// for the ntfy servers the admins enter.
+// for the ntfy servers the admins enter and the webhooks.
 // shortcut: it dials directly (no HTTPS_PROXY); add the proxy when a
 // collector behind one needs own servers.
 var publicClient = &http.Client{
@@ -289,7 +289,7 @@ func publicOnly(_, address string, _ syscall.RawConn) error {
 	}
 	ip = ip.Unmap()
 	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() || sharedAddressSpace.Contains(ip) {
-		return errors.New("the own ntfy server has no public address")
+		return errors.New("the server has no public address")
 	}
 	return nil
 }

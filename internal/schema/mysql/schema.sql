@@ -914,6 +914,20 @@ CREATE TABLE `hlstats_gamewe_secrets` (
   `value` varchar(255) NOT NULL DEFAULT '',
   PRIMARY KEY (`keyname`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE `hlstats_gamewe_webhooks` (
+  `id` varchar(16) NOT NULL,
+  `name` varchar(64) NOT NULL DEFAULT '',
+  `event` varchar(16) NOT NULL DEFAULT '',
+  `enabled` tinyint(1) unsigned NOT NULL DEFAULT 1,
+  `method` varchar(8) NOT NULL DEFAULT 'POST',
+  `url` varchar(2048) NOT NULL DEFAULT '',
+  `headers` varchar(4000) NOT NULL DEFAULT '',
+  `payload` varchar(4000) NOT NULL DEFAULT '',
+  `expect_status` smallint(5) unsigned NOT NULL DEFAULT 0,
+  `allow_private` tinyint(1) unsigned NOT NULL DEFAULT 0,
+  `last_status` varchar(255) NOT NULL DEFAULT '',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `hlstats_gamewe_jobs` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
   `job_type` varchar(32) NOT NULL DEFAULT 'reset',

@@ -83,6 +83,7 @@ GRANT INSERT, UPDATE, DELETE ON hlstats_Definition_Ribbons_Classes TO gamewe_web
 GRANT INSERT, UPDATE, DELETE ON hlstats_Users TO gamewe_web_admin;
 GRANT UPDATE (skill, hideranking, clan) ON hlstats_Players TO gamewe_web_admin;
 GRANT INSERT, UPDATE, DELETE ON hlstats_gamewe_secrets TO gamewe_web_admin;
+GRANT INSERT, UPDATE, DELETE ON hlstats_gamewe_webhooks TO gamewe_web_admin;
 GRANT INSERT ON hlstats_gamewe_jobs TO gamewe_web_admin;
 GRANT UPDATE (removed) ON hlstats_gamewe_hall_of_fame TO gamewe_web_admin;
 

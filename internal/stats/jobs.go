@@ -36,6 +36,9 @@ const (
 	// JobNotifyTest sends a test message (mode: the channel; game: the
 	// admin's hash for their own address, empty for the shared one).
 	JobNotifyTest = "notify-test"
+	// JobWebhookTest calls a webhook with sample values (game: the
+	// webhook's id).
+	JobWebhookTest = "webhook-test"
 )
 
 // JobBySchedule is requested_by of the jobs the collector queues itself

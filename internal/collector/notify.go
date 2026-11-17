@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -80,6 +81,104 @@ func (j *Jobs) resetMessage(ctx context.Context, job stats.Job) func(map[string]
 	}
 }
 
+// resetVars are the placeholders of the reset webhooks.
+func (j *Jobs) resetVars(ctx context.Context, game, by string) func(map[string]string) map[string]string {
+	name := j.Store.GameName(ctx, game)
+	return func(opts map[string]string) map[string]string {
+		return notify.WebhookVars(opts, notify.EventReset, game, name, notify.ResetMessage(opts, game, name, by), j.now(), "by", by)
+	}
+}
+
+// hallVars are the placeholders of the hall of fame webhooks.
+func (j *Jobs) hallVars(ctx context.Context, game string, res stats.ScheduledResult) func(map[string]string) map[string]string {
+	msg := j.hallMessage(ctx, game, res)
+	name := j.Store.GameName(ctx, game)
+	return func(opts map[string]string) map[string]string {
+		top := make([]notify.Place, len(res.Top))
+		for i, e := range res.Top {
+			top[i] = notify.Place{Place: e.Place, Name: e.Name, Points: e.Skill}
+		}
+		return notify.WebhookVars(opts, notify.EventHall, game, name, msg(opts), j.now(), notify.HallVars(res.From, res.To, top)...)
+	}
+}
+
+// updateVars are the placeholders of the update webhooks.
+func (j *Jobs) updateVars(component, version, current, url string) func(map[string]string) map[string]string {
+	return func(opts map[string]string) map[string]string {
+		m := notify.UpdateMessage(opts, component, version, current, url)
+		return notify.WebhookVars(opts, notify.EventUpdate, "", "", m, j.now(), "component", component, "version", version, "current", current, "release_url", url)
+	}
+}
+
+// fireWebhooks calls the switched-on webhooks of event with the
+// placeholders of vars (the texts in the site's language) and stores each
+// outcome. A failure is only logged.
+func (j *Jobs) fireWebhooks(ctx context.Context, event string, vars func(opts map[string]string) map[string]string) {
+	ctx = context.WithoutCancel(ctx)
+	hooks, err := j.Store.Webhooks(ctx, event)
+	if err != nil {
+		j.Log.Debug("notify: reading the webhooks failed", "err", err) // an older schema has none
+		return
+	}
+	if len(hooks) == 0 {
+		return
+	}
+	opts, err := j.Store.Options(ctx)
+	if err != nil {
+		j.Log.Warn("notify: reading the settings failed", "err", err)
+		return
+	}
+	v := vars(notify.For(opts, notify.Target{}))
+	for _, w := range hooks {
+		j.callWebhook(ctx, w, v)
+	}
+}
+
+// callWebhook calls w and writes the outcome to its last_status.
+func (j *Jobs) callWebhook(ctx context.Context, w notify.Webhook, vars map[string]string) (int, error) {
+	status, err := j.Notify.SendWebhook(ctx, w, vars)
+	if err != nil {
+		j.Log.Warn("notify: webhook failed", "webhook", w.ID, "event", w.Event, "err", err)
+	}
+	if serr := j.Store.SetWebhookStatus(ctx, w.ID, notify.WebhookStatus(j.now(), status, err)); serr != nil {
+		j.Log.Warn("notify: storing the webhook status failed", "err", serr)
+	}
+	return status, err
+}
+
+// webhookTest calls the webhook of a webhook-test job (game: its id) with
+// sample values of its event ({test} is 1).
+func (j *Jobs) webhookTest(ctx context.Context, job stats.Job) (string, error) {
+	w, err := j.Store.Webhook(ctx, strings.TrimSpace(job.Game))
+	if err != nil {
+		return "", err
+	}
+	opts, err := j.Store.Options(ctx)
+	if err != nil {
+		return "", err
+	}
+	opts = notify.For(opts, notify.Target{})
+	now := j.now()
+	var v map[string]string
+	switch w.Event {
+	case notify.EventHall:
+		from := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, -1, 0)
+		to := from.AddDate(0, 1, 0)
+		top := []notify.Place{{Place: 1, Name: "Player 1", Points: 1500}, {Place: 2, Name: "Player 2", Points: 1400}, {Place: 3, Name: "Player 3", Points: 1300}}
+		v = notify.WebhookVars(opts, w.Event, "test", "Test", notify.HallMessage(opts, "test", "Test", from, to, top), now, notify.HallVars(from, to, top)...)
+	case notify.EventUpdate:
+		v = j.updateVars("collector", j.Version, j.Version, "")(opts)
+	default:
+		v = notify.WebhookVars(opts, w.Event, "test", "Test", notify.ResetMessage(opts, "test", "Test", job.RequestedBy), now, "by", job.RequestedBy)
+	}
+	v["test"] = "1"
+	status, err := j.callWebhook(ctx, w, v)
+	if err != nil {
+		return "", err
+	}
+	return "HTTP " + strconv.Itoa(status), nil
+}
+
 // hallMessage tells about a scheduled reset that stored a hall of fame.
 func (j *Jobs) hallMessage(ctx context.Context, game string, res stats.ScheduledResult) func(map[string]string) notify.Message {
 	name := j.Store.GameName(ctx, game)
@@ -101,8 +200,13 @@ func (j *Jobs) notifyUpdates(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if strings.TrimSpace(opts["gamewe_update_check"]) == "0" || len(notify.Wanted(opts, notify.EventUpdate)) == 0 {
+	if strings.TrimSpace(opts["gamewe_update_check"]) == "0" {
 		return nil
+	}
+	if len(notify.Wanted(opts, notify.EventUpdate)) == 0 {
+		if hooks, err := j.Store.Webhooks(ctx, notify.EventUpdate); err != nil || len(hooks) == 0 {
+			return nil
+		}
 	}
 	var errs []error
 	for _, c := range []struct{ name, repo, current string }{
@@ -124,6 +228,7 @@ func (j *Jobs) notifyUpdates(ctx context.Context) error {
 			for _, t := range notify.Wanted(opts, notify.EventUpdate) {
 				j.sendTo(ctx, opts, t, notify.UpdateMessage(notify.For(opts, t), c.name, rel.Version, c.current, rel.URL))
 			}
+			j.fireWebhooks(ctx, notify.EventUpdate, j.updateVars(c.name, rel.Version, c.current, rel.URL))
 		}
 		if err := j.Store.SetOption(ctx, notify.SeenKey(c.name), rel.Version); err != nil {
 			errs = append(errs, err)

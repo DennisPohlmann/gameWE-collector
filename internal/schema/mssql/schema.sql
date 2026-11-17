@@ -913,6 +913,20 @@ CREATE TABLE hlstats_gamewe_secrets (
   value nvarchar(255) NOT NULL DEFAULT N'',
   PRIMARY KEY (keyname)
 );
+CREATE TABLE hlstats_gamewe_webhooks (
+  id nvarchar(16) NOT NULL,
+  name nvarchar(64) NOT NULL DEFAULT N'',
+  event nvarchar(16) NOT NULL DEFAULT N'',
+  enabled smallint NOT NULL DEFAULT 1,
+  method nvarchar(8) NOT NULL DEFAULT N'POST',
+  url nvarchar(2048) NOT NULL DEFAULT N'',
+  headers nvarchar(4000) NOT NULL DEFAULT N'',
+  payload nvarchar(4000) NOT NULL DEFAULT N'',
+  expect_status int NOT NULL DEFAULT 0,
+  allow_private smallint NOT NULL DEFAULT 0,
+  last_status nvarchar(255) NOT NULL DEFAULT N'',
+  PRIMARY KEY (id)
+);
 CREATE TABLE hlstats_gamewe_jobs (
   id bigint IDENTITY(1,1) NOT NULL,
   job_type nvarchar(32) NOT NULL DEFAULT N'reset',

@@ -292,6 +292,12 @@ var Migrations = []Migration{
 		Sync: true,
 		Drop: []DropIndex{{Table: "hlstats_Players", Index: "game_skill", ReplacedBy: "game_rank"}},
 	},
+	{
+		Version: 32, Name: "webhooks",
+		Desc: "table hlstats_gamewe_webhooks, which gamewe_web cannot read: the webhooks of the notifications (an address " +
+			"called with its own headers and payload when a ranking is reset, a hall of fame is stored or a release is out)",
+		Sync: true,
+	},
 }
 
 // Latest is the newest schema version this collector knows.
