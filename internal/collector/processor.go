@@ -178,6 +178,11 @@ type serverState struct {
 	// at shutdown.
 	pendingKill *heldKill
 	mapAt       time.Time // last map change
+	// loading: the map change started with "Loading map" and its "Started
+	// map" has not come yet. Nobody plays a map that is still loading, so
+	// visits that lines start meanwhile are of the old map (late lines) and
+	// end with "Started map" (playerState.unconfirmed).
+	loading bool
 	// linePositions: the server logs positions in its kill lines (CS:GO,
 	// TF2, AMX plugin); the SourceMod plugin's "located on" kill lines
 	// are then skipped.
@@ -234,6 +239,7 @@ type playerState struct {
 	missed                   int        // status polls in a row that did not list the player
 	connectType              int        // stored this visit (cl_connectmethod)
 	locatedIP                netip.Addr // the address whose location is stored this visit
+	unconfirmed              bool       // started by a line while the map loads (serverState.loading)
 
 	// Headshot actions: the plugin logs `triggered "headshot"` for every
 	// headshot kill and the kill line says (headshot) as well. Whichever
@@ -616,10 +622,48 @@ func (p *Processor) mapStarted(ctx context.Context, ev stats.Ev, e logparse.MapS
 	srv := &p.srv
 	if e.Map == srv.info.Map && (e.Map == srv.statusMap || ev.Time.Sub(srv.mapAt) < mapRepeat) {
 		srv.statusMap = "" // this change is stored already
-		return nil
+		if e.Loading || e.Match {
+			return nil
+		}
+		return p.endUnconfirmed(ctx, ev)
 	}
 	srv.statusMap = ""
-	return p.changeMap(ctx, ev, e.Map)
+	if err := p.changeMap(ctx, ev, e.Map); err != nil {
+		return err
+	}
+	srv.loading = e.Loading
+	return nil
+}
+
+// endUnconfirmed ends, at "Started map", the visits that lines started
+// while the map loaded (see serverState.loading): as an idle visit, no
+// disconnect event. Their kills and actions stay stored; players who
+// really are on the new map come back with their next line or status.
+func (p *Processor) endUnconfirmed(ctx context.Context, ev stats.Ev) error {
+	srv := &p.srv
+	if !srv.loading {
+		return nil
+	}
+	srv.loading = false
+	n := len(srv.players)
+	for key, st := range srv.players {
+		if !st.unconfirmed {
+			continue
+		}
+		delete(srv.players, key)
+		p.log.Debug("player seen only while the map loaded, visit ended", "player", st.live.Name)
+		if err := p.endStreak(ctx, ev, st); err != nil {
+			return err
+		}
+		if err := p.leave(ctx, ev, st, false); err != nil {
+			return err
+		}
+	}
+	if len(srv.players) == n {
+		return nil
+	}
+	p.counted(ev.Time)
+	return p.setActive(ctx, ev.Time)
 }
 
 // changeMap starts a new map: every visit ends (as at shutdown: connection
@@ -638,7 +682,7 @@ func (p *Processor) changeMap(ctx context.Context, ev stats.Ev, name string) err
 	if err != nil {
 		return err
 	}
-	p.srv.mapID, p.srv.info.Map, p.srv.mapAt = id, name, ev.Time
+	p.srv.mapID, p.srv.info.Map, p.srv.mapAt, p.srv.loading = id, name, ev.Time, false
 	p.srv.heldCount, p.srv.heldBots = held, heldBots
 	p.counted(ev.Time)
 	return p.setActive(ctx, ev.Time)
@@ -770,7 +814,7 @@ func (p *Processor) Status(ctx context.Context, st Status, at time.Time) error {
 			}
 			ps.ping = -1
 		}
-		ps.userID, ps.lastSeen, ps.missed = sp.UserID, at, 0
+		ps.userID, ps.lastSeen, ps.missed, ps.unconfirmed = sp.UserID, at, 0, false
 		if ps.ping != sp.Ping {
 			ps.ping = sp.Ping
 			pings[ps.live.UniqueID] = sp.Ping
@@ -1001,7 +1045,11 @@ func (p *Processor) player(ctx context.Context, ev stats.Ev, ref logparse.Player
 		// no new visit, the player is not on the server.
 		return nil, nil
 	}
-	return p.join(ctx, ev, ref, 0)
+	st, err := p.join(ctx, ev, ref, 0)
+	if st != nil {
+		st.unconfirmed = p.srv.loading
+	}
+	return st, err
 }
 
 // botIdle is the idle timeout of bots (at most gamewe_idle_timeout).

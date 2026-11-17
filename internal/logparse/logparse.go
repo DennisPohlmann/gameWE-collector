@@ -202,8 +202,12 @@ type (
 		Trigger string
 		Winner  string // set for e.g. Round_Win (winner "Red")
 	}
-	// MapStarted is `Loading map "x"` or `Started map "x" (CRC "...")`.
-	MapStarted struct{ Map string }
+	// MapStarted is `Loading map "x"` (Loading), `Started map "x" (CRC
+	// "...")` or CS:GO's `World triggered "Match_Start" on "x"` (Match).
+	MapStarted struct {
+		Map            string
+		Loading, Match bool
+	}
 	// Banned is `Banid: "P" was kicked and banned "permanently" by "Console"`
 	// (also "for 5.00 minutes").
 	Banned struct {
@@ -380,7 +384,7 @@ func ParseLine(line string) (Event, bool) {
 		return nil, false
 	case strings.HasPrefix(line, "World triggered"):
 		if m := reMatchStart.FindStringSubmatch(line); m != nil {
-			return MapStarted{Map: m[1]}, true // CS:GO match start
+			return MapStarted{Map: m[1], Match: true}, true // CS:GO match start
 		}
 		if m := reWorldTrig.FindStringSubmatch(line); m != nil {
 			return WorldTriggered{Trigger: m[1], Winner: props(m[2])["winner"]}, true
@@ -403,7 +407,7 @@ func ParseLine(line string) (Event, bool) {
 		return nil, false
 	case strings.HasPrefix(line, "Loading map") || strings.HasPrefix(line, "Started map"):
 		if m := reMap.FindStringSubmatch(line); m != nil {
-			return MapStarted{Map: m[1]}, true
+			return MapStarted{Map: m[1], Loading: strings.HasPrefix(line, "Loading")}, true
 		}
 		return nil, false
 	case strings.HasPrefix(line, "gameWE Plugin "):

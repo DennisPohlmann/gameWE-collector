@@ -82,7 +82,7 @@ func TestParseLine(t *testing.T) {
 		{`Team "CT" scored "3" with "5" players`, TeamScored{Team: "CT", Score: 3, Players: 5}},
 		{`World triggered "Round_Start"`, WorldTriggered{Trigger: "Round_Start"}},
 		{`World triggered "Round_Win" (winner "Red")`, WorldTriggered{Trigger: "Round_Win", Winner: "Red"}},
-		{`Loading map "de_dust2"`, MapStarted{Map: "de_dust2"}},
+		{`Loading map "de_dust2"`, MapStarted{Map: "de_dust2", Loading: true}},
 		{`Started map "cs_office" (CRC "-1234567")`, MapStarted{Map: "cs_office"}},
 		{`Banid: "Bob<3><STEAM_1:1:456><>" was kicked and banned "permanently" by "Console"`,
 			Banned{Player: Player{"Bob", 3, "STEAM_1:1:456", ""}, Permanent: true}},
