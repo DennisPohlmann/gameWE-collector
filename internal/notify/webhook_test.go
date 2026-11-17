@@ -28,22 +28,22 @@ func TestRender(t *testing.T) {
 }
 
 func TestCheckWebhook(t *testing.T) {
-	ok := Webhook{Event: EventHall, Method: "POST", URL: "https://example.org/hook?x=1", Headers: "Authorization: Bearer abc\nX-A: b", Expect: 201}
+	ok := Webhook{Events: []string{EventHall}, Method: "POST", URL: "https://example.org/hook?x=1", Headers: "Authorization: Bearer abc\nX-A: b", Expect: 201}
 	if err := CheckWebhook(ok); err != nil {
 		t.Fatal(err)
 	}
 	for name, w := range map[string]Webhook{
-		"event":    {Event: "x", Method: "POST", URL: ok.URL},
-		"method":   {Event: EventHall, Method: "TRACE", URL: ok.URL},
-		"scheme":   {Event: EventHall, Method: "POST", URL: "ftp://example.org/"},
-		"user":     {Event: EventHall, Method: "POST", URL: "https://u:p@example.org/"},
-		"no host":  {Event: EventHall, Method: "POST", URL: "https:///x"},
-		"space":    {Event: EventHall, Method: "POST", URL: "https://example.org/a b"},
-		"expect":   {Event: EventHall, Method: "POST", URL: ok.URL, Expect: 700},
-		"header":   {Event: EventHall, Method: "POST", URL: ok.URL, Headers: "Bad Name: x"},
-		"reserved": {Event: EventHall, Method: "POST", URL: ok.URL, Headers: "Host: evil.example"},
-		"control":  {Event: EventHall, Method: "POST", URL: ok.URL, Headers: "X-A: a\x00b"},
-		"no colon": {Event: EventHall, Method: "POST", URL: ok.URL, Headers: "X-A"},
+		"event":    {Events: []string{"x"}, Method: "POST", URL: ok.URL},
+		"method":   {Events: []string{EventHall}, Method: "TRACE", URL: ok.URL},
+		"scheme":   {Events: []string{EventHall}, Method: "POST", URL: "ftp://example.org/"},
+		"user":     {Events: []string{EventHall}, Method: "POST", URL: "https://u:p@example.org/"},
+		"no host":  {Events: []string{EventHall}, Method: "POST", URL: "https:///x"},
+		"space":    {Events: []string{EventHall}, Method: "POST", URL: "https://example.org/a b"},
+		"expect":   {Events: []string{EventHall}, Method: "POST", URL: ok.URL, Expect: 700},
+		"header":   {Events: []string{EventHall}, Method: "POST", URL: ok.URL, Headers: "Bad Name: x"},
+		"reserved": {Events: []string{EventHall}, Method: "POST", URL: ok.URL, Headers: "Host: evil.example"},
+		"control":  {Events: []string{EventHall}, Method: "POST", URL: ok.URL, Headers: "X-A: a\x00b"},
+		"no colon": {Events: []string{EventHall}, Method: "POST", URL: ok.URL, Headers: "X-A"},
 	} {
 		if err := CheckWebhook(w); err == nil {
 			t.Errorf("%s accepted", name)
@@ -74,7 +74,7 @@ func TestSendWebhook(t *testing.T) {
 	s := &Sender{HTTP: &http.Client{CheckRedirect: privateClient.CheckRedirect}}
 	vars := WebhookVars(map[string]string{"gamewe_site_url": "https://stats.example.org/"}, EventHall, "css", "Counter-Strike", Message{Title: "T"}, time.Unix(0, 0),
 		HallVars(time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), []Place{{1, `Pl"ayer`, 1500}})...)
-	w := Webhook{ID: "a", Event: EventHall, Method: "PUT", URL: srv.URL + "/created", Expect: 201,
+	w := Webhook{ID: "a", Events: []string{EventHall}, Method: "PUT", URL: srv.URL + "/created", Expect: 201,
 		Headers: "Content-Type: application/json\nAuthorization: Bearer secret-token-1", Payload: `{"who":"{place1_name}","pts":{place1_points},"url":"{url}","to":"{to}"}`}
 	status, err := s.SendWebhook(context.Background(), w, vars)
 	if err != nil || status != 201 {
@@ -109,5 +109,37 @@ func TestSendWebhook(t *testing.T) {
 	}
 	if v := WebhookStatus(time.Unix(5, 0), 201, nil); v != "5|ok|201" {
 		t.Error(v)
+	}
+}
+
+// One webhook for several events: {event} and {event_label} tell them
+// apart, the placeholders of the other events are empty, an unknown one
+// stays; every event fits the column.
+func TestWebhookSeveralEvents(t *testing.T) {
+	all := Webhook{Events: Events, Method: "POST", URL: "https://example.org/"}
+	if err := CheckWebhook(all); err != nil {
+		t.Fatal(err)
+	}
+	if got := SplitEvents(" hof, reset ,"); len(got) != 2 || got[0] != "hof" || got[1] != "reset" {
+		t.Errorf("split %q", got)
+	}
+	for _, w := range []Webhook{{Method: "POST", URL: all.URL}, {Events: []string{"hof", "x"}, Method: "POST", URL: all.URL}} {
+		if CheckWebhook(w) == nil {
+			t.Errorf("%q accepted", w.Events)
+		}
+	}
+	payload := "{event}|{event_label}|{by}|{from}|{place1_name}|{place9_points}|{version}|{nope}"
+	opts := map[string]string{"gamewe_default_lang": "de"}
+	reset := WebhookVars(opts, EventReset, "css", "CS", Message{}, time.Unix(0, 0), "by", "dennis")
+	if got := Render(payload, "", reset); got != "reset|Ranking zurückgesetzt|dennis|||||{nope}" {
+		t.Errorf("reset %q", got)
+	}
+	hof := WebhookVars(opts, EventHall, "css", "CS", Message{}, time.Unix(0, 0), HallVars(time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), []Place{{1, "A", 9}})...)
+	if got := Render(payload, "", hof); got != "hof|Ruhmeshalle erstellt||2026-10-01|A|||{nope}" {
+		t.Errorf("hof %q", got)
+	}
+	up := WebhookVars(map[string]string{}, EventUpdate, "", "", Message{}, time.Unix(0, 0), "version", "1.2.3")
+	if got := Render(payload, "", up); got != "update|New version out|||||1.2.3|{nope}" {
+		t.Errorf("update %q", got)
 	}
 }

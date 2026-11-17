@@ -19,6 +19,7 @@ var texts = map[string]map[string]string{
 		"updateTitle": "gameWE {component} {version} is out", "updateBody": "A new release of gameWE {component} is out: {version}.", "running": "Running: {current}",
 		"testTitle": "gameWE test message", "testBody": "This test message comes from the gameWE collector. Notifications by {channel} arrive like this.",
 		"web": "web", "collector": "collector", "email": "e-mail",
+		"event_reset": "Ranking reset", "event_hof": "Hall of fame stored", "event_update": "New version out",
 	},
 	"de": {
 		"resetTitle": "Ranking {ranking} zurückgesetzt", "resetBody": "Das Ranking {ranking} wurde zurückgesetzt.", "by": "Ausgelöst von: {by}",
@@ -27,6 +28,7 @@ var texts = map[string]map[string]string{
 		"updateTitle": "gameWE {component} {version} ist erschienen", "updateBody": "Eine neue Version von gameWE {component} ist erschienen: {version}.", "running": "Installiert: {current}",
 		"testTitle": "gameWE-Testnachricht", "testBody": "Diese Testnachricht kommt vom gameWE-Collector. So kommen Benachrichtigungen per {channel} an.",
 		"web": "Web", "collector": "Collector", "email": "E-Mail",
+		"event_reset": "Ranking zurückgesetzt", "event_hof": "Ruhmeshalle erstellt", "event_update": "Neue Version erschienen",
 	},
 	"ru": {
 		"resetTitle": "Рейтинг {ranking} сброшен", "resetBody": "Рейтинг {ranking} был сброшен.", "by": "Запросил: {by}",
@@ -35,6 +37,7 @@ var texts = map[string]map[string]string{
 		"updateTitle": "Вышел gameWE {component} {version}", "updateBody": "Вышла новая версия gameWE {component}: {version}.", "running": "Установлена: {current}",
 		"testTitle": "Тестовое сообщение gameWE", "testBody": "Это тестовое сообщение от коллектора gameWE. Так приходят уведомления через {channel}.",
 		"web": "веб", "collector": "коллектор", "email": "эл. почта",
+		"event_reset": "Рейтинг сброшен", "event_hof": "Зал славы создан", "event_update": "Вышла новая версия",
 	},
 	"es": {
 		"resetTitle": "Ranking {ranking} reiniciado", "resetBody": "El ranking {ranking} se ha reiniciado.", "by": "Solicitado por: {by}",
@@ -43,6 +46,7 @@ var texts = map[string]map[string]string{
 		"updateTitle": "Ya está disponible gameWE {component} {version}", "updateBody": "Hay una nueva versión de gameWE {component}: {version}.", "running": "Instalada: {current}",
 		"testTitle": "Mensaje de prueba de gameWE", "testBody": "Este mensaje de prueba viene del collector de gameWE. Así llegan las notificaciones por {channel}.",
 		"web": "web", "collector": "collector", "email": "correo",
+		"event_reset": "Ranking reiniciado", "event_hof": "Salón de la fama creado", "event_update": "Nueva versión disponible",
 	},
 	"fr": {
 		"resetTitle": "Classement {ranking} réinitialisé", "resetBody": "Le classement {ranking} a été réinitialisé.", "by": "Demandé par : {by}",
@@ -51,6 +55,7 @@ var texts = map[string]map[string]string{
 		"updateTitle": "gameWE {component} {version} est disponible", "updateBody": "Une nouvelle version de gameWE {component} est disponible : {version}.", "running": "Installée : {current}",
 		"testTitle": "Message de test gameWE", "testBody": "Ce message de test vient du collecteur gameWE. Les notifications par {channel} arrivent ainsi.",
 		"web": "web", "collector": "collecteur", "email": "e-mail",
+		"event_reset": "Classement réinitialisé", "event_hof": "Panthéon créé", "event_update": "Nouvelle version disponible",
 	},
 	"pt": {
 		"resetTitle": "Ranking {ranking} reposto", "resetBody": "O ranking {ranking} foi reposto.", "by": "Pedido por: {by}",
@@ -59,6 +64,7 @@ var texts = map[string]map[string]string{
 		"updateTitle": "Saiu o gameWE {component} {version}", "updateBody": "Saiu uma nova versão do gameWE {component}: {version}.", "running": "Instalada: {current}",
 		"testTitle": "Mensagem de teste do gameWE", "testBody": "Esta mensagem de teste vem do collector do gameWE. As notificações por {channel} chegam assim.",
 		"web": "web", "collector": "collector", "email": "e-mail",
+		"event_reset": "Ranking reposto", "event_hof": "Hall da fama criado", "event_update": "Nova versão disponível",
 	},
 	"pt-br": {
 		"resetTitle": "Ranking {ranking} zerado", "resetBody": "O ranking {ranking} foi zerado.", "by": "Solicitado por: {by}",
@@ -67,6 +73,7 @@ var texts = map[string]map[string]string{
 		"updateTitle": "Saiu o gameWE {component} {version}", "updateBody": "Saiu uma nova versão do gameWE {component}: {version}.", "running": "Instalada: {current}",
 		"testTitle": "Mensagem de teste do gameWE", "testBody": "Esta mensagem de teste vem do collector do gameWE. As notificações por {channel} chegam assim.",
 		"web": "web", "collector": "collector", "email": "e-mail",
+		"event_reset": "Ranking zerado", "event_hof": "Hall da fama criado", "event_update": "Nova versão disponível",
 	},
 	"nl": {
 		"resetTitle": "Ranglijst {ranking} gereset", "resetBody": "De ranglijst {ranking} is gereset.", "by": "Aangevraagd door: {by}",
@@ -75,6 +82,7 @@ var texts = map[string]map[string]string{
 		"updateTitle": "gameWE {component} {version} is uit", "updateBody": "Er is een nieuwe versie van gameWE {component}: {version}.", "running": "Geïnstalleerd: {current}",
 		"testTitle": "gameWE-testbericht", "testBody": "Dit testbericht komt van de gameWE-collector. Zo komen meldingen via {channel} aan.",
 		"web": "web", "collector": "collector", "email": "e-mail",
+		"event_reset": "Ranglijst gereset", "event_hof": "Hall of fame aangemaakt", "event_update": "Nieuwe versie uit",
 	},
 	"da": {
 		"resetTitle": "Rangliste {ranking} nulstillet", "resetBody": "Ranglisten {ranking} er blevet nulstillet.", "by": "Anmodet af: {by}",
@@ -83,6 +91,7 @@ var texts = map[string]map[string]string{
 		"updateTitle": "gameWE {component} {version} er udkommet", "updateBody": "En ny version af gameWE {component} er udkommet: {version}.", "running": "Installeret: {current}",
 		"testTitle": "gameWE-testbesked", "testBody": "Denne testbesked kommer fra gameWE-collectoren. Sådan ankommer notifikationer via {channel}.",
 		"web": "web", "collector": "collector", "email": "e-mail",
+		"event_reset": "Rangliste nulstillet", "event_hof": "Hall of fame oprettet", "event_update": "Ny version udkommet",
 	},
 	"pl": {
 		"resetTitle": "Ranking {ranking} zresetowany", "resetBody": "Ranking {ranking} został zresetowany.", "by": "Zlecił: {by}",
@@ -91,6 +100,7 @@ var texts = map[string]map[string]string{
 		"updateTitle": "Wyszedł gameWE {component} {version}", "updateBody": "Wyszła nowa wersja gameWE {component}: {version}.", "running": "Zainstalowana: {current}",
 		"testTitle": "Wiadomość testowa gameWE", "testBody": "Ta wiadomość testowa pochodzi z collectora gameWE. Tak docierają powiadomienia przez {channel}.",
 		"web": "web", "collector": "collector", "email": "e-mail",
+		"event_reset": "Ranking zresetowany", "event_hof": "Galeria sław utworzona", "event_update": "Nowa wersja dostępna",
 	},
 	"sr": {
 		"resetTitle": "Ранг листа {ranking} ресетована", "resetBody": "Ранг листа {ranking} је ресетована.", "by": "Затражио: {by}",
@@ -99,6 +109,7 @@ var texts = map[string]map[string]string{
 		"updateTitle": "Изашао је gameWE {component} {version}", "updateBody": "Изашла је нова верзија gameWE {component}: {version}.", "running": "Инсталирана: {current}",
 		"testTitle": "gameWE тест порука", "testBody": "Ова тест порука долази од gameWE колектора. Овако стижу обавештења преко {channel}.",
 		"web": "веб", "collector": "колектор", "email": "е-пошта",
+		"event_reset": "Ранг листа ресетована", "event_hof": "Кућа славних направљена", "event_update": "Изашла је нова верзија",
 	},
 	"zh-tw": {
 		"resetTitle": "排行榜 {ranking} 已重設", "resetBody": "排行榜 {ranking} 已重設。", "by": "要求者：{by}",
@@ -107,6 +118,7 @@ var texts = map[string]map[string]string{
 		"updateTitle": "gameWE {component} {version} 已發布", "updateBody": "gameWE {component} 有新版本：{version}。", "running": "已安裝：{current}",
 		"testTitle": "gameWE 測試訊息", "testBody": "這則測試訊息來自 gameWE 收集器。透過 {channel} 的通知會像這樣送達。",
 		"web": "網站", "collector": "收集器", "email": "電子郵件",
+		"event_reset": "排行榜已重設", "event_hof": "名人堂已建立", "event_update": "新版本已發布",
 	},
 	"zh-cn": {
 		"resetTitle": "排行榜 {ranking} 已重置", "resetBody": "排行榜 {ranking} 已重置。", "by": "请求者：{by}",
@@ -115,6 +127,7 @@ var texts = map[string]map[string]string{
 		"updateTitle": "gameWE {component} {version} 已发布", "updateBody": "gameWE {component} 有新版本：{version}。", "running": "已安装：{current}",
 		"testTitle": "gameWE 测试消息", "testBody": "这条测试消息来自 gameWE 收集器。通过 {channel} 的通知会像这样到达。",
 		"web": "网站", "collector": "收集器", "email": "电子邮件",
+		"event_reset": "排行榜已重置", "event_hof": "名人堂已创建", "event_update": "新版本已发布",
 	},
 	"ja": {
 		"resetTitle": "ランキング {ranking} をリセットしました", "resetBody": "ランキング {ranking} がリセットされました。", "by": "実行者: {by}",
@@ -123,6 +136,7 @@ var texts = map[string]map[string]string{
 		"updateTitle": "gameWE {component} {version} がリリースされました", "updateBody": "gameWE {component} の新しいバージョンが出ました: {version}。", "running": "インストール済み: {current}",
 		"testTitle": "gameWE テストメッセージ", "testBody": "このテストメッセージは gameWE コレクターから送られています。{channel} の通知はこのように届きます。",
 		"web": "Web", "collector": "コレクター", "email": "メール",
+		"event_reset": "ランキングをリセットしました", "event_hof": "殿堂を作成しました", "event_update": "新しいバージョンが公開されました",
 	},
 	"ko": {
 		"resetTitle": "랭킹 {ranking} 초기화됨", "resetBody": "랭킹 {ranking}이(가) 초기화되었습니다.", "by": "요청자: {by}",
@@ -131,6 +145,7 @@ var texts = map[string]map[string]string{
 		"updateTitle": "gameWE {component} {version} 출시", "updateBody": "gameWE {component}의 새 버전이 나왔습니다: {version}.", "running": "설치됨: {current}",
 		"testTitle": "gameWE 테스트 메시지", "testBody": "이 테스트 메시지는 gameWE 수집기에서 보냈습니다. {channel} 알림은 이렇게 도착합니다.",
 		"web": "웹", "collector": "수집기", "email": "이메일",
+		"event_reset": "랭킹 초기화됨", "event_hof": "명예의 전당 저장됨", "event_update": "새 버전 출시",
 	},
 	"ar": {
 		"resetTitle": "تمت إعادة تعيين التصنيف {ranking}", "resetBody": "تمت إعادة تعيين التصنيف {ranking}.", "by": "بطلب من: {by}",
@@ -139,6 +154,7 @@ var texts = map[string]map[string]string{
 		"updateTitle": "صدر gameWE {component} {version}", "updateBody": "صدر إصدار جديد من gameWE {component}: {version}.", "running": "المثبت: {current}",
 		"testTitle": "رسالة اختبار من gameWE", "testBody": "رسالة الاختبار هذه من مُجمِّع gameWE. هكذا تصل الإشعارات عبر {channel}.",
 		"web": "الويب", "collector": "المُجمِّع", "email": "البريد الإلكتروني",
+		"event_reset": "تمت إعادة تعيين التصنيف", "event_hof": "تم حفظ قاعة المشاهير", "event_update": "صدر إصدار جديد",
 	},
 	"tr": {
 		"resetTitle": "{ranking} sıralaması sıfırlandı", "resetBody": "{ranking} sıralaması sıfırlandı.", "by": "İsteyen: {by}",
@@ -147,6 +163,7 @@ var texts = map[string]map[string]string{
 		"updateTitle": "gameWE {component} {version} yayımlandı", "updateBody": "gameWE {component} için yeni sürüm çıktı: {version}.", "running": "Kurulu: {current}",
 		"testTitle": "gameWE test mesajı", "testBody": "Bu test mesajı gameWE toplayıcısından geliyor. {channel} bildirimleri böyle gelir.",
 		"web": "web", "collector": "toplayıcı", "email": "e-posta",
+		"event_reset": "Sıralama sıfırlandı", "event_hof": "Şöhretler Salonu kaydedildi", "event_update": "Yeni sürüm çıktı",
 	},
 	"it": {
 		"resetTitle": "Classifica {ranking} azzerata", "resetBody": "La classifica {ranking} è stata azzerata.", "by": "Richiesto da: {by}",
@@ -155,6 +172,7 @@ var texts = map[string]map[string]string{
 		"updateTitle": "È uscito gameWE {component} {version}", "updateBody": "È uscita una nuova versione di gameWE {component}: {version}.", "running": "Installata: {current}",
 		"testTitle": "Messaggio di prova di gameWE", "testBody": "Questo messaggio di prova arriva dal collector di gameWE. Le notifiche via {channel} arrivano così.",
 		"web": "web", "collector": "collector", "email": "e-mail",
+		"event_reset": "Classifica azzerata", "event_hof": "Albo d'oro salvato", "event_update": "Nuova versione disponibile",
 	},
 	"uk": {
 		"resetTitle": "Рейтинг {ranking} скинуто", "resetBody": "Рейтинг {ranking} було скинуто.", "by": "Запросив: {by}",
@@ -163,6 +181,7 @@ var texts = map[string]map[string]string{
 		"updateTitle": "Вийшов gameWE {component} {version}", "updateBody": "Вийшла нова версія gameWE {component}: {version}.", "running": "Встановлена: {current}",
 		"testTitle": "Тестове повідомлення gameWE", "testBody": "Це тестове повідомлення від колектора gameWE. Так надходять сповіщення через {channel}.",
 		"web": "веб", "collector": "колектор", "email": "ел. пошта",
+		"event_reset": "Рейтинг скинуто", "event_hof": "Зала слави збережена", "event_update": "Вийшла нова версія",
 	},
 	"cs": {
 		"resetTitle": "Žebříček {ranking} vynulován", "resetBody": "Žebříček {ranking} byl vynulován.", "by": "Vyžádal: {by}",
@@ -171,6 +190,7 @@ var texts = map[string]map[string]string{
 		"updateTitle": "Vyšel gameWE {component} {version}", "updateBody": "Vyšla nová verze gameWE {component}: {version}.", "running": "Nainstalováno: {current}",
 		"testTitle": "Testovací zpráva gameWE", "testBody": "Tato testovací zpráva přichází z collectoru gameWE. Takto přicházejí oznámení přes {channel}.",
 		"web": "web", "collector": "collector", "email": "e-mail",
+		"event_reset": "Žebříček vynulován", "event_hof": "Síň slávy uložena", "event_update": "Vyšla nová verze",
 	},
 	"sv": {
 		"resetTitle": "Rankning {ranking} nollställd", "resetBody": "Rankningen {ranking} har nollställts.", "by": "Begärd av: {by}",
@@ -179,6 +199,7 @@ var texts = map[string]map[string]string{
 		"updateTitle": "gameWE {component} {version} har släppts", "updateBody": "En ny version av gameWE {component} har släppts: {version}.", "running": "Installerad: {current}",
 		"testTitle": "gameWE-testmeddelande", "testBody": "Det här testmeddelandet kommer från gameWE-insamlaren. Så här kommer aviseringar via {channel} fram.",
 		"web": "webb", "collector": "insamlare", "email": "e-post",
+		"event_reset": "Rankning nollställd", "event_hof": "Hall of Fame sparad", "event_update": "Ny version ute",
 	},
 }
 

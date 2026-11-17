@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"slices"
 	"strings"
 
 	"gamewe-collector/internal/notify"
@@ -13,10 +14,10 @@ import (
 
 const webhookCols = `id, name, event, enabled, method, url, headers, payload, expect_status, allow_private`
 
-// Webhooks are the switched-on webhooks of event (hlstats_gamewe_webhooks),
-// by id.
+// Webhooks are the switched-on webhooks of event (hlstats_gamewe_webhooks:
+// event holds one or more, "hof,reset"), by id.
 func (s *Store) Webhooks(ctx context.Context, event string) ([]notify.Webhook, error) {
-	rows, err := s.query(ctx, `SELECT `+webhookCols+` FROM hlstats_gamewe_webhooks WHERE event = ? AND enabled = 1 ORDER BY id`, event)
+	rows, err := s.query(ctx, `SELECT `+webhookCols+` FROM hlstats_gamewe_webhooks WHERE enabled = 1 ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -27,7 +28,9 @@ func (s *Store) Webhooks(ctx context.Context, event string) ([]notify.Webhook, e
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, w)
+		if slices.Contains(w.Events, event) {
+			out = append(out, w)
+		}
 	}
 	return out, rows.Err()
 }
@@ -50,8 +53,9 @@ func (s *Store) SetWebhookStatus(ctx context.Context, id, status string) error {
 func scanWebhook(r interface{ Scan(...any) error }) (notify.Webhook, error) {
 	var w notify.Webhook
 	var enabled, private int
-	err := r.Scan(&w.ID, &w.Name, &w.Event, &enabled, &w.Method, &w.URL, &w.Headers, &w.Payload, &w.Expect, &private)
-	w.Enabled, w.AllowPrivate = enabled == 1, private == 1
+	var events string
+	err := r.Scan(&w.ID, &w.Name, &events, &enabled, &w.Method, &w.URL, &w.Headers, &w.Payload, &w.Expect, &private)
+	w.Events, w.Enabled, w.AllowPrivate = notify.SplitEvents(events), enabled == 1, private == 1
 	w.Method = strings.ToUpper(strings.TrimSpace(w.Method))
 	return w, err
 }

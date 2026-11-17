@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
@@ -22,12 +23,14 @@ import (
 // A webhook calls an address when an event happens, for the whole site
 // (Settings → Notifications → Webhooks in the web, right
 // settings.protected): its own method, headers, payload and expected
-// status. One row of hlstats_gamewe_webhooks per webhook and event; the
-// table holds the headers (tokens), so gamewe_web cannot read it.
+// status. One row of hlstats_gamewe_webhooks per webhook, for one or more
+// events; the table holds the headers (tokens), so gamewe_web cannot read it.
 type Webhook struct {
-	ID, Name, Event string
-	Enabled         bool
-	Method, URL     string
+	ID, Name string
+	// Events it is called for (the column event: "hof,reset,update").
+	Events      []string
+	Enabled     bool
+	Method, URL string
 	// Headers: one "Name: value" per line (the values are secrets).
 	Headers string
 	// Payload is the body with placeholders {name} (WebhookVars).
@@ -44,6 +47,7 @@ const (
 	MaxWebhookURL     = 2048
 	MaxWebhookText    = 4000 // headers, payload
 	MaxWebhookHeaders = 20
+	maxWebhookEvents  = 16       // the column event, varchar(16)
 	maxWebhookBody    = 64 << 10 // the payload with the values filled in
 )
 
@@ -89,8 +93,13 @@ func ParseHeaders(v string) ([]WebhookHeader, error) {
 // CheckWebhook reports what is wrong with w (the web checks the same
 // before it stores one).
 func CheckWebhook(w Webhook) error {
-	if !slices.Contains(Events, w.Event) {
-		return fmt.Errorf("unknown event %q", w.Event)
+	if len(w.Events) == 0 || len(JoinEvents(w.Events)) > maxWebhookEvents {
+		return errors.New("no or too many events")
+	}
+	for _, e := range w.Events {
+		if !slices.Contains(Events, e) {
+			return fmt.Errorf("unknown event %q", e)
+		}
 	}
 	if !slices.Contains(WebhookMethods, w.Method) {
 		return fmt.Errorf("method %q is not allowed", w.Method)
@@ -109,10 +118,32 @@ func CheckWebhook(w Webhook) error {
 	return err
 }
 
+// SplitEvents reads the column event ("hof,reset"); JoinEvents writes it.
+func SplitEvents(v string) []string {
+	var out []string
+	for _, e := range strings.Split(v, ",") {
+		if e = strings.TrimSpace(e); e != "" {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func JoinEvents(events []string) string { return strings.Join(events, ",") }
+
+// eventVars are the placeholders only some events have; a webhook of
+// several events gets them empty for the others (and placeN_name,
+// placeN_points, see Render).
+var eventVars = map[string][]string{
+	EventReset:  {"by"},
+	EventHall:   {"from", "to", "places"},
+	EventUpdate: {"component", "version", "current", "release_url"},
+}
+
 // WebhookVars are the placeholders of a payload: those of every event
-// (event, game, ranking, title, body, url, time, test) and kv of the
-// event's own (docs/CONFIG.md, Webhooks). title and body are the text of the
-// message in the site's language.
+// (event, event_label, game, ranking, title, body, url, time, test) and kv
+// of the event's own (docs/CONFIG.md, Webhooks). event_label, title and
+// body are in the site's language.
 func WebhookVars(opts map[string]string, event, game, ranking string, m Message, now time.Time, kv ...string) map[string]string {
 	link := ""
 	if base := strings.TrimRight(strings.TrimSpace(opts["gamewe_site_url"]), "/"); event != EventUpdate && (strings.HasPrefix(base, "https://") || strings.HasPrefix(base, "http://")) {
@@ -121,7 +152,13 @@ func WebhookVars(opts map[string]string, event, game, ranking string, m Message,
 			link += "/hall-of-fame"
 		}
 	}
-	out := map[string]string{"event": event, "game": game, "ranking": ranking, "title": m.Title, "body": m.Body, "url": link, "time": now.UTC().Format(time.RFC3339), "test": "0"}
+	out := map[string]string{}
+	for _, vs := range eventVars {
+		for _, v := range vs {
+			out[v] = ""
+		}
+	}
+	maps.Copy(out, map[string]string{"event": event, "event_label": t(Lang(opts), "event_"+event), "game": game, "ranking": ranking, "title": m.Title, "body": m.Body, "url": link, "time": now.UTC().Format(time.RFC3339), "test": "0"})
 	for i := 0; i+1 < len(kv); i += 2 {
 		out[kv[i]] = kv[i+1]
 	}
@@ -140,12 +177,16 @@ func HallVars(from, to time.Time, top []Place) []string {
 	return append(kv, "places", strings.Join(lines, "\n"))
 }
 
-var placeholder = regexp.MustCompile(`\{([a-z0-9_]{1,32})\}`)
+var (
+	placeholder = regexp.MustCompile(`\{([a-z0-9_]{1,32})\}`)
+	placeVar    = regexp.MustCompile(`^\{place[0-9]+_(name|points)\}$`)
+)
 
 // Render fills the placeholders of payload with vars, escaped for the
 // body's Content-Type: inside a JSON string (application/json, …+json),
 // form-encoded (application/x-www-form-urlencoded) or as they are. An
-// unknown placeholder stays as it is.
+// unknown placeholder stays as it is; a place not stored
+// ({place9_name}, or any place outside a hall of fame) is empty.
 func Render(payload, contentType string, vars map[string]string) string {
 	ct := strings.ToLower(contentType)
 	esc := func(v string) string { return v }
@@ -164,6 +205,9 @@ func Render(payload, contentType string, vars map[string]string) string {
 	}
 	return placeholder.ReplaceAllStringFunc(payload, func(p string) string {
 		v, ok := vars[p[1:len(p)-1]]
+		if !ok && placeVar.MatchString(p) {
+			return ""
+		}
 		if !ok {
 			return p
 		}

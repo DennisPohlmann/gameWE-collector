@@ -434,12 +434,12 @@ Besides the admins' own channels there are webhooks for the whole site
 `settings.protected`): an address the collector calls when an event happens,
 for example to post a new hall of fame through another service. One row of
 `hlstats_gamewe_webhooks` (schema version 32, which `gamewe_web` cannot read)
-is one webhook for one event (`reset`, `hof` or `update`):
+is one webhook for one or more events (`reset`, `hof`, `update`):
 
 | Column | Meaning |
 |---|---|
 | `id`, `name` | its id (up to 16 characters, chosen by the web) and a name for the admin |
-| `event`, `enabled` | the event it is called for; `enabled` 0: only its test |
+| `event`, `enabled` | the events it is called for, comma-separated (`hof`, `hof,reset`, `reset,hof,update`; up to 16 characters); `enabled` 0: only its test |
 | `method`, `url` | `POST`, `PUT`, `PATCH`, `GET` (no body) or `DELETE`; an `http` or `https` address without user or fragment (up to 2048 characters) |
 | `headers` | one `Name: value` per line (up to 20, e.g. `Authorization: Bearer …`, `Content-Type: application/json`); never logged or written to a status. `Host`, `Content-Length`, `Connection` and the like are set by the collector |
 | `payload` | the body with placeholders (up to 4000 characters) |
@@ -447,7 +447,9 @@ is one webhook for one event (`reset`, `hof` or `update`):
 | `allow_private` | 1: also loopback and private addresses (a service on the collector's machine or network); else only public addresses |
 | `last_status` | **written by the collector**: `<unix>|ok|<HTTP status>` or `<unix>|error|<text>` |
 
-Placeholders: `{event}`, `{game}` (the ranking's code), `{ranking}` (its
+Placeholders: `{event}` (the event that happened: `reset`, `hof` or `update`),
+`{event_label}` (its name in the site's language, e.g. `Hall of fame stored`),
+`{game}` (the ranking's code), `{ranking}` (its
 name), `{title}` and `{body}` (the text of the message in the site's language),
 `{url}` (the ranking's page or its hall of fame, with `gamewe_site_url`),
 `{time}` (RFC 3339, UTC) and `{test}` (1 in a test) for every event; a reset
@@ -455,15 +457,21 @@ also `{by}` (the admin, `cli`, `api` or `schedule`); a hall of fame `{from}`,
 `{to}` (the period's first and last day), `{places}` (one line per place) and
 `{placeN_name}`, `{placeN_points}` for each stored place N; an update
 `{component}` (`collector` or `web`), `{version}`, `{current}` (the running
-one, may be empty) and `{release_url}`. The values are escaped for the
+one, may be empty) and `{release_url}`. One payload serves all events of a
+webhook: the placeholders of another event are empty (a `hof` call has no
+`{by}`, a `reset` call no `{from}` or `{place1_name}`; `{game}`, `{ranking}`
+and `{url}` are empty for `update`), as is `{placeN_…}` of a place not
+stored. The values are escaped for the
 `Content-Type` header: inside a JSON string for `…json`, form-encoded for
 `application/x-www-form-urlencoded`, else as they are (then `text/plain`
-unless a `Content-Type` is given). An unknown placeholder stays as it is.
+unless a `Content-Type` is given). Any other unknown placeholder stays as it
+is.
 
 A scheduled reset that stores a hall of fame calls the `hof` webhooks and the
 `reset` ones. The collector follows no redirect (a 3xx is the answer), waits
 at most 20 seconds, sends at most 64 KiB and reads at most 64 KiB of the
 answer. Public addresses are checked after the name lookup and reached
 without a proxy, as for the ntfy servers. The job `webhook-test` (`game` the
-webhook's id) calls one with sample values of its event and stores `HTTP
-<status>` as its result.
+webhook's id) calls one with sample values, once for each of its events, and
+stores `HTTP <status>` as its result (`hof: HTTP 200, reset: HTTP 200` for
+several; it stops at the first failure).

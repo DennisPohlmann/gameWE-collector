@@ -41,7 +41,8 @@ func TestIntegrationWebhooks(t *testing.T) {
 			('h1', 'Hall', 'hof', 1, 'POST', '` + srv.URL + `/hof', 'Authorization: Bearer tok_1234
 Content-Type: application/json', '{"r":"{ranking}","p1":"{place1_name}","to":"{to}","test":{test}}', 0, 1),
 			('r1', 'Reset', 'reset', 1, 'PUT', '` + srv.URL + `/reset', '', '{ranking} by {by}', 202, 1),
-			('off', 'Off', 'reset', 0, 'POST', '` + srv.URL + `/off', '', 'x', 0, 1)`,
+			('off', 'Off', 'reset', 0, 'POST', '` + srv.URL + `/off', '', 'x', 0, 1),
+			('m1', 'Many', 'hof,reset', 1, 'POST', '` + srv.URL + `/many', '', '{event} {event_label} {by}{place1_name}', 0, 1)`,
 		`INSERT INTO hlstats_Options (keyname, value) VALUES ('` + stats.ScheduleKey("css") + `', 'month')`,
 	} {
 		if _, err := db.Exec(q); err != nil {
@@ -58,7 +59,8 @@ Content-Type: application/json', '{"r":"{ranking}","p1":"{place1_name}","to":"{t
 	if err := jobs.Poll(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if len(calls) != 2 || calls[0] != `/hof Bearer tok_1234 {"r":"Counter-Strike: Source","p1":"A","to":"2026-10-31","test":0}` || calls[1] != "/reset  Counter-Strike: Source by schedule" {
+	if len(calls) != 4 || calls[0] != `/hof Bearer tok_1234 {"r":"Counter-Strike: Source","p1":"A","to":"2026-10-31","test":0}` || calls[1] != "/many  hof Hall of fame stored A" ||
+		calls[2] != "/many  reset Ranking reset schedule" || calls[3] != "/reset  Counter-Strike: Source by schedule" {
 		t.Fatalf("scheduled: %q", calls)
 	}
 	calls = nil
@@ -68,7 +70,7 @@ Content-Type: application/json', '{"r":"{ranking}","p1":"{place1_name}","to":"{t
 	if err := jobs.Poll(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if len(calls) != 1 || calls[0] != "/reset  Team Fortress 2 by dennis" {
+	if len(calls) != 2 || calls[0] != "/many  reset Ranking reset dennis" || calls[1] != "/reset  Team Fortress 2 by dennis" {
 		t.Fatalf("reset: %q", calls)
 	}
 	var last string
@@ -78,7 +80,7 @@ Content-Type: application/json', '{"r":"{ranking}","p1":"{place1_name}","to":"{t
 
 	// The test: sample values; the reset one answers 200 instead of 202.
 	calls = nil
-	for _, id := range []string{"h1", "r1", "gone"} {
+	for _, id := range []string{"h1", "r1", "gone", "m1"} {
 		if _, err := store.AddJob(ctx, stats.JobWebhookTest, id, "webhook", "dennis", stats.JobOrigin{Feature: stats.OriginAdmin}, now); err != nil {
 			t.Fatal(err)
 		}
@@ -90,16 +92,19 @@ Content-Type: application/json', '{"r":"{ranking}","p1":"{place1_name}","to":"{t
 	if err := jobs.Poll(ctx); err != nil {
 		t.Fatal(err)
 	}
-	recent, err := store.RecentJobs(ctx, 3)
-	if err != nil || len(recent) != 3 {
+	recent, err := store.RecentJobs(ctx, 4)
+	if err != nil || len(recent) != 4 {
 		t.Fatalf("jobs %+v %v", recent, err)
 	}
-	if recent[0].Status != stats.JobFailed || !strings.Contains(recent[0].Result, "no such webhook") ||
-		recent[1].Status != stats.JobFailed || !strings.Contains(recent[1].Result, "HTTP 200, expected 202") ||
-		recent[2].Status != stats.JobDone || recent[2].Result != "HTTP 200" {
+	if recent[0].Status != stats.JobDone || recent[0].Result != "hof: HTTP 200, reset: HTTP 200" ||
+		recent[1].Status != stats.JobFailed || !strings.Contains(recent[1].Result, "no such webhook") ||
+		recent[2].Status != stats.JobFailed || !strings.Contains(recent[2].Result, "HTTP 200, expected 202") ||
+		recent[3].Status != stats.JobDone || recent[3].Result != "HTTP 200" {
 		t.Errorf("test jobs %+v", recent)
 	}
-	if len(calls) != 2 || !strings.Contains(calls[0], `"p1":"Player 1"`) || !strings.Contains(calls[0], `"test":1`) {
+	// The test of a webhook of two events calls it once for each.
+	if len(calls) != 4 || !strings.Contains(calls[0], `"p1":"Player 1"`) || !strings.Contains(calls[0], `"test":1`) ||
+		calls[2] != "/many hof Hall of fame stored Player 1" || calls[3] != "/many reset Ranking reset dennis" {
 		t.Errorf("test calls %q", calls)
 	}
 	if err := db.QueryRow(`SELECT last_status FROM hlstats_gamewe_webhooks WHERE id = 'r1'`).Scan(&last); err != nil || !strings.Contains(last, "|error|webhook: HTTP 200, expected 202") {
