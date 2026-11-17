@@ -241,7 +241,7 @@ var WebKeys = []string{
 	"gamewe_vent_host", "gamewe_vent_port", "gamewe_vent_name", "gamewe_update_check",
 	"gamewe_default_lang", "gamewe_steam_profiles", "gamewe_steam_api_key",
 	"gamewe_privacy_name", "gamewe_privacy_address", "gamewe_privacy_email",
-	"gamewe_admin_auto_logout", "gamewe_admin_logout_minutes", "gamewe_api_enabled",
+	"gamewe_admin_auto_logout", "gamewe_admin_logout_minutes", "gamewe_api_enabled", "gamewe_mcp_enabled",
 	"gamewe_fastdl", "gamewe_fastdl_url", "gamewe_fastdl_agent", "gamewe_fastdl_referer", "gamewe_fastdl_user",
 	"gamewe_fastdl_password", "gamewe_fastdl_token", "gamewe_fastdl_header",
 }
