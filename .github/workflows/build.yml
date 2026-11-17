@@ -59,14 +59,22 @@ jobs:
       - name: go test
         run: go test ./...
       # The web's gamewe_* option keys must be known to the collector
-      # (settings.WebKeys), or gamewe check reports them as typos.
+      # (settings.WebKeys), or gamewe check reports them as typos. The web
+      # adds keys on its own main, so on a push a gap is only a warning (it
+      # is no fault of the pushed collector commit); a release fails on it.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: DennisPohlmann/gameWE-web
           path: gamewe-web
           persist-credentials: false
       - name: web keys in step
-        run: GAMEWE_WEB_SRC="$GITHUB_WORKSPACE/gamewe-web" go test -count=1 -run TestWebSourceKeys ./internal/settings
+        env:
+          RELEASE: ${{ inputs.release }}
+        run: |
+          if ! GAMEWE_WEB_SRC="$GITHUB_WORKSPACE/gamewe-web" go test -count=1 -run TestWebSourceKeys ./internal/settings; then
+            echo "::warning title=web keys::gameWE-web main uses gamewe_* keys the collector does not know (log above): add them to settings.WebKeys before the next release"
+            [ "$RELEASE" != true ]
+          fi
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
       - name: actionlint

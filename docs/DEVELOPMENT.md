@@ -181,7 +181,9 @@ Example, a new column `hlstats_Servers.log_secret`:
    `src/lib/collector-status.ts` to the new version, so its admin area warns
    while a database is older. A new `gamewe_*` key the website stores in
    `hlstats_Options` goes into `WebKeys` (`internal/settings/settings.go`) in
-   the same push pair; `TestWebSourceKeys` in CI reads gameWE-web's `main`.
+   the same push pair; `TestWebSourceKeys` in CI reads gameWE-web's `main`
+   (a missing key warns on a push and stops a release; locally it only runs
+   with `GAMEWE_WEB_SRC` set to the absolute path of a gameWE-web checkout).
 
 ## Releases
 

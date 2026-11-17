@@ -391,9 +391,9 @@ it report the job plan the collector writes itself (`gamewe_next_awards`,
 the in-game browser commands (`!statsme`, `!status`, ...); it must be a plain
 `http://` or `https://` address, otherwise those commands answer that the web
 address is not configured. The list is `WebKeys` in `internal/settings/settings.go`;
-a new web setting needs an entry there. CI checks out gameWE-web and fails
-(`TestWebSourceKeys`) when the web uses a `gamewe_*` key the collector does
-not know.
+a new web setting needs an entry there. CI checks out gameWE-web's `main`
+(`TestWebSourceKeys`): a `gamewe_*` key the web uses and the collector does
+not know is a warning on a push and stops a release.
 
 ### Notifications
 
