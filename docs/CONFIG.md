@@ -379,7 +379,7 @@ seed only adds missing keys and never changes values that are already set.
 
 The other `gamewe_*` keys the web admin writes are settings of the web frontend
 (`gamewe_page_size`, site, header, SEO, map (including the satellite view
-and the CARTO and Esri keys), voice and TeamSpeak settings, the operator's
+and the CARTO and Esri keys), voice, TeamSpeak and Ventrilo settings, the operator's
 details of the privacy page `gamewe_privacy_*`, the header links
 `gamewe_link_<n>`, the switch that shows the TeamSpeak password
 `gamewe_ts_password_reveal`, the admins' TOTP secrets `gamewe_totp_<hash>`,
