@@ -27,7 +27,7 @@ Go version go1.27.3; modules as `go version -m gamewe` lists them.
 | `github.com/jackc/pgpassfile` | v1.0.0 | MIT | https://github.com/jackc/pgpassfile | used by pgx (.pgpass files) | [`LICENSE`](licenses/github.com_jackc_pgpassfile/LICENSE) |
 | `github.com/jackc/pgservicefile` | v0.0.0-20240606120523-5a60cdf6a761 | MIT | https://github.com/jackc/pgservicefile | used by pgx (service files) | [`LICENSE`](licenses/github.com_jackc_pgservicefile/LICENSE) |
 | `github.com/jackc/pgx/v5` | v5.13.0 | MIT | https://github.com/jackc/pgx | PostgreSQL database driver | [`LICENSE`](licenses/github.com_jackc_pgx_v5/LICENSE) |
-| `github.com/jackc/puddle/v2` | v2.2.3 | MIT | https://github.com/jackc/puddle | connection pool of pgx | [`LICENSE`](licenses/github.com_jackc_puddle_v2/LICENSE) |
+| `github.com/jackc/puddle/v2` | v2.2.4 | MIT | https://github.com/jackc/puddle | connection pool of pgx | [`LICENSE`](licenses/github.com_jackc_puddle_v2/LICENSE) |
 | `github.com/microsoft/go-mssqldb` | v1.11.2 | BSD-3-Clause | https://github.com/microsoft/go-mssqldb | Microsoft SQL Server database driver | [`LICENSE.txt`](licenses/github.com_microsoft_go-mssqldb/LICENSE.txt) |
 | `github.com/oschwald/maxminddb-golang` | v1.13.1 | ISC | https://github.com/oschwald/maxminddb-golang | reads the GeoIP city database (.mmdb) | [`LICENSE`](licenses/github.com_oschwald_maxminddb-golang/LICENSE) |
 | `github.com/shopspring/decimal` | v1.6.0 | MIT | https://github.com/shopspring/decimal | decimal numbers of the SQL Server driver | [`LICENSE`](licenses/github.com_shopspring_decimal/LICENSE) |
@@ -70,5 +70,5 @@ credit DB-IP, e.g. "IP Geolocation by DB-IP" linking to https://db-ip.com
 | Name | Version | License (SPDX) | URL | Use in gameWE | License text |
 |---|---|---|---|---|---|
 | `github.com/maxmind/mmdbwriter` | v1.2.0 | Apache-2.0 OR MIT | https://github.com/maxmind/mmdbwriter | tests only: writes small test GeoIP databases | [`LICENSE-APACHE`](licenses/github.com_maxmind_mmdbwriter/LICENSE-APACHE), [`LICENSE-MIT`](licenses/github.com_maxmind_mmdbwriter/LICENSE-MIT) |
-| `github.com/oschwald/maxminddb-golang/v2` | v2.9.0 | ISC | https://github.com/oschwald/maxminddb-golang | tests only: used by mmdbwriter | [`LICENSE`](licenses/github.com_oschwald_maxminddb-golang_v2/LICENSE) |
+| `github.com/oschwald/maxminddb-golang/v2` | v2.9.1 | ISC | https://github.com/oschwald/maxminddb-golang | tests only: used by mmdbwriter | [`LICENSE`](licenses/github.com_oschwald_maxminddb-golang_v2/LICENSE) |
 | `go4.org/netipx` | v0.0.0-20260823151212-3075585bcbeb | BSD-3-Clause | https://github.com/go4org/netipx | tests only: used by mmdbwriter | [`LICENSE`](licenses/go4.org_netipx/LICENSE) |
