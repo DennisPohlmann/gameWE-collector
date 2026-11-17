@@ -236,7 +236,7 @@ func (c Commands) stats(ctx context.Context, srv *serverState, st *playerState, 
 		}
 		st.lastAll = now
 	}
-	if c.set.Get().RawMessages && srv.info.Engine != games.GoldSrc { // the AMX plugin has no raw messages
+	if c.set.Get().RawMessages && srv.info.Engine == games.Source { // only the SourceMod plugin has them: AMX none, CS2 only 1000/1001
 		// A message plugin shows the answer (its forwards onGameWEStats...).
 		switch name {
 		case "rank":

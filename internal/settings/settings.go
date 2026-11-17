@@ -188,7 +188,7 @@ func Keys() []Key {
 		{"gamewe_idle_timeout", strconv.Itoa(d.IdleTimeout), "seconds without any log line of a player after which the visit ends (lost disconnect); 0 = never"},
 		{"gamewe_command_display", d.CommandDisplay, "how !rank, !statsme, !session, !status and !next are answered: panel (menu on the left, as gameME), chat, or both"},
 		{"gamewe_command_prefix", d.CommandPrefix, "prefix of the plugin's server commands: gamewe, or gameme for servers with the original gameME plugin"},
-		{"gamewe_raw_messages", b(d.RawMessages), "1 = answer !rank, !session, !top10 and !next with gamewe_raw_message for a message plugin instead of chat text"},
+		{"gamewe_raw_messages", b(d.RawMessages), "1 = answer !rank, !session, !top10 and !next with gamewe_raw_message for a message plugin instead of chat text (Source servers only)"},
 		{"gamewe_store_locations", b(d.StoreLocations), "1 = store kill and death positions (plugin location lines) in hlstats_Events_Locations"},
 		{"gamewe_server_load", b(d.ServerLoad), "1 = write hlstats_server_load every 10 minutes per server"},
 		{"gamewe_sourcebans_url", d.SourceBansURL, "address of the public SourceBans ban list (set in the web admin under Settings → Bans); with features.sourcebans the collector looks up players kicked as banned there"},

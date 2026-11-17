@@ -588,7 +588,8 @@ func TestSource2NoReplies(t *testing.T) {
 
 // CS2 with the gameWE CounterStrikeSharp plugin: after its start line (or
 // a weaponstats line) the in-game commands are answered with the plugin's
-// gamewe_* commands, as on the SourceMod plugin.
+// gamewe_* commands, as on the SourceMod plugin, also with
+// gamewe_raw_messages on.
 func TestSource2PluginReplies(t *testing.T) {
 	for name, first := range map[string]string{
 		"start line":  `gameWE Plugin 0.2.0 (CounterStrikeSharp)`,
@@ -598,6 +599,9 @@ func TestSource2PluginReplies(t *testing.T) {
 			st := newMemStore()
 			rec := &recorder{}
 			hub := newTestHub(st, rec, []string{"192.0.2.20:27015"}, map[string]string{"192.0.2.20:27015": "cs2"})
+			s := settings.Defaults()
+			s.RawMessages = true // the CS2 plugin shows no raw messages for !rank: chat text anyway
+			hub.set.Set(s)
 			src := netip.MustParseAddrPort("192.0.2.20:27015")
 			p := `"Pat<2><[U:1:42]><%s>"`
 			for _, l := range []string{
@@ -620,6 +624,9 @@ func TestSource2PluginReplies(t *testing.T) {
 				}
 				if strings.HasPrefix(c, "gamewe_amx") {
 					t.Errorf("GoldSrc prefix on CS2: %q", c)
+				}
+				if strings.HasPrefix(c, "gamewe_raw_message") {
+					t.Errorf("raw message on CS2: %q", c)
 				}
 			}
 			if !found {

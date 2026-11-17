@@ -197,7 +197,9 @@ percent, all with two decimals. Names are shortened so that a command stays
 below the engine's 512-character limit. With `gamewe_raw_messages` = 1 the
 chat commands are answered the same way with the types 1 (`!rank`), 4
 (`!session`), 5 (`!top10`) and 6 (`!next`) and query id 0, for a plugin that
-shows them itself (the forwards `onGameWEStatsRank`, ...).
+shows them itself (the forwards `onGameWEStatsRank`, ...). Only Source servers
+get them: GoldSrc (AMX Mod X has no raw messages) and CS2 (the plugin only
+knows the types 1000 and 1001) keep getting chat text.
 
 The RCON connection to each server is kept open and reopened after errors.
 Replies are sent in the background, so a game server that is down never delays
