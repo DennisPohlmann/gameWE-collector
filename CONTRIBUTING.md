@@ -43,8 +43,7 @@ we can agree on the approach before you spend time on it.
 ## Development
 
 Building, testing and the release process are described in
-[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md); the code layout and the rules for
-changes are in [CLAUDE.md](CLAUDE.md). Before you propose a change, run:
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Before you propose a change, run:
 
 ```bash
 make test vet

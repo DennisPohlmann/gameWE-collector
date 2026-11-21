@@ -1,7 +1,6 @@
 # gameWE - collector: development
 
-Building, testing and releasing the collector. The code layout and the rules
-for changes are in [CLAUDE.md](../CLAUDE.md).
+Building, testing and releasing the collector.
 
 ## Build and test
 
@@ -192,7 +191,7 @@ Releases are made by [semantic-release](https://semantic-release.gitbook.io/)
 `main` does not release: a release is started by hand on `main`, in GitHub
 under Actions → build → Run workflow with `release` ticked, or with
 `gh workflow run build.yml --ref main -f release=true`. Run the `release-security-gate` skill
-first (see `CLAUDE.md`). The run builds and tests everything again; only
+first. The run builds and tests everything again; only
 when that passed does semantic-release read the
 [Conventional Commits](https://www.conventionalcommits.org/) since the last
 tag and decide the next version:
