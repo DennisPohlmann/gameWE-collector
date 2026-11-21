@@ -28,7 +28,7 @@ Go version go1.27.3; modules as `go version -m gamewe` lists them.
 | `github.com/jackc/pgservicefile` | v0.0.0-20240606120523-5a60cdf6a761 | MIT | https://github.com/jackc/pgservicefile | used by pgx (service files) | [`LICENSE`](licenses/github.com_jackc_pgservicefile/LICENSE) |
 | `github.com/jackc/pgx/v5` | v5.13.0 | MIT | https://github.com/jackc/pgx | PostgreSQL database driver | [`LICENSE`](licenses/github.com_jackc_pgx_v5/LICENSE) |
 | `github.com/jackc/puddle/v2` | v2.2.4 | MIT | https://github.com/jackc/puddle | connection pool of pgx | [`LICENSE`](licenses/github.com_jackc_puddle_v2/LICENSE) |
-| `github.com/microsoft/go-mssqldb` | v1.11.2 | BSD-3-Clause | https://github.com/microsoft/go-mssqldb | Microsoft SQL Server database driver | [`LICENSE.txt`](licenses/github.com_microsoft_go-mssqldb/LICENSE.txt) |
+| `github.com/microsoft/go-mssqldb` | v1.12.0 | BSD-3-Clause | https://github.com/microsoft/go-mssqldb | Microsoft SQL Server database driver | [`LICENSE.txt`](licenses/github.com_microsoft_go-mssqldb/LICENSE.txt) |
 | `github.com/oschwald/maxminddb-golang` | v1.13.1 | ISC | https://github.com/oschwald/maxminddb-golang | reads the GeoIP city database (.mmdb) | [`LICENSE`](licenses/github.com_oschwald_maxminddb-golang/LICENSE) |
 | `github.com/shopspring/decimal` | v1.6.0 | MIT | https://github.com/shopspring/decimal | decimal numbers of the SQL Server driver | [`LICENSE`](licenses/github.com_shopspring_decimal/LICENSE) |
 | `go.yaml.in/yaml/v3` | v3.0.6 | MIT AND Apache-2.0 | https://github.com/yaml/go-yaml | reads config.yaml | [`LICENSE`](licenses/go.yaml.in_yaml_v3/LICENSE), [`NOTICE`](licenses/go.yaml.in_yaml_v3/NOTICE) |
