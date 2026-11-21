@@ -420,6 +420,9 @@ func (p *Processor) Handle(ctx context.Context, line string, now time.Time) erro
 		}
 		return p.store.ChangeTeam(ctx, ev, st.live, e.Team)
 	case logparse.NameChange:
+		if e.Player.IsBot() {
+			return p.renameBot(ctx, ev, e)
+		}
 		st, err := p.player(ctx, ev, e.Player)
 		if st == nil || err != nil {
 			return err
@@ -1197,6 +1200,31 @@ func (p *Processor) absent(ctx context.Context, ev stats.Ev, ref logparse.Player
 		return nil, err
 	}
 	return &stats.Live{ID: id, UniqueID: uid, Name: ref.Name, Team: ref.Team, Skill: skill}, nil
+}
+
+// renameBot handles a bot's name change (plugins that name the bots after
+// they join, often at every map start). A bot's identity is its name
+// (BOT:<name>), so it is another player now: the visit under the old name
+// ends (no disconnect event) and one under the new name starts. Renaming
+// the old row kept a second live row next to the one RCON status starts
+// for the new name.
+func (p *Processor) renameBot(ctx context.Context, ev stats.Ev, e logparse.NameChange) error {
+	if st := p.srv.players[e.Player.Key()]; st != nil {
+		delete(p.srv.players, e.Player.Key())
+		if err := p.endStreak(ctx, ev, st); err != nil {
+			return err
+		}
+		if err := p.leave(ctx, ev, st, false); err != nil {
+			return err
+		}
+		p.counted(ev.Time)
+	}
+	ref := e.Player
+	ref.Name = e.NewName
+	if _, err := p.player(ctx, ev, ref); err != nil {
+		return err
+	}
+	return p.setActive(ctx, ev.Time)
 }
 
 func (p *Processor) disconnect(ctx context.Context, ev stats.Ev, ref logparse.Player) error {

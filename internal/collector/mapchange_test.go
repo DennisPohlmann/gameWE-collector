@@ -145,3 +145,45 @@ func TestSlotsAfterMapChange(t *testing.T) {
 		t.Errorf("%d live rows, want 4", len(st.live))
 	}
 }
+
+// A plugin that names the bots after they join (GunGame servers, at every
+// map start): the bot under its new name is another player (BOT:<name>), so
+// the old visit ends and RCON status, which lists the new name, finds the
+// same visit. Renaming the old row left two live rows per bot.
+func TestBotRenameIsNewPlayer(t *testing.T) {
+	p, st := newTestProcessor(t)
+	now := time.Now()
+	handleAll(t, p, now, `Started map "gg_italy" (CRC "1")`)
+	// Later than mapRepeat: status ends an unlisted player only at its second miss.
+	now = now.Add(5 * time.Minute)
+	handleAll(t, p, now, `"Brett<3><BOT><>" entered the game`,
+		`"Brett<3><BOT><Unassigned>" joined team "CT"`,
+		`"Brett<3><BOT><CT>" changed name to "Rakeri"`,
+		`"Joe<4><BOT><>" entered the game`, // a bot nobody renames
+		`"Joe<4><BOT><Unassigned>" joined team "TERRORIST"`)
+	status := "hostname: Test\nmap     : gg_italy at: 0 x, 0 y, 0 z\nplayers : 0 humans, 2 bots (24 max)\n# userid name uniqueid connected ping loss state adr\n" +
+		"#  3 \"Rakeri\" BOT active\n#  4 \"Joe\" BOT active\n"
+	if err := p.Status(t.Context(), statusOf(t, status), now.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if got := keys(p.srv.players); len(got) != 2 || p.srv.players["BOT:Rakeri"] == nil || p.srv.players["BOT:Joe"] == nil {
+		t.Fatalf("players %v, want BOT:Joe and BOT:Rakeri", got)
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	live := 0
+	for k := range st.live {
+		if k[1] == p.srv.info.ID {
+			live++
+		}
+	}
+	if live != 2 || len(st.joins) != 3 {
+		t.Errorf("%d live rows, %d joins, want 2 and 3 (Brett, Rakeri, Joe)", live, len(st.joins))
+	}
+	if ps := p.srv.players["BOT:Joe"]; ps.live.Team != "TERRORIST" {
+		t.Errorf("Joe's team %q, want TERRORIST", ps.live.Team)
+	}
+	if ps := p.srv.players["BOT:Rakeri"]; ps.live.Team != "CT" {
+		t.Errorf("team %q, want CT (from the rename line)", ps.live.Team)
+	}
+}
