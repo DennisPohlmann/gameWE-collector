@@ -61,6 +61,7 @@ type SourceBan struct {
 type BanPlayer struct {
 	PlayerID int64
 	Game     string
+	UniqueID string // as in hlstats_PlayerUniqueIds
 }
 
 // BanAccounts returns the Steam IDs of all players, active and inactive, of

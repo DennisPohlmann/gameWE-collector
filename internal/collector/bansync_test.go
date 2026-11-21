@@ -31,6 +31,7 @@ type fakeSyncStore struct {
 	ended    []int64
 	options  map[string]string
 	saves    int
+	recorded []string // game|unique id|reason of RecordBan
 }
 
 func newFakeSyncStore() *fakeSyncStore {
@@ -114,6 +115,11 @@ func (f *fakeSyncStore) RunningBans(context.Context, string) ([]stats.PlayerBan,
 func (f *fakeSyncStore) EndBan(_ context.Context, b stats.PlayerBan, _ time.Time) (bool, error) {
 	f.ended = append(f.ended, b.ID)
 	return b.Hid, nil
+}
+
+func (f *fakeSyncStore) RecordBan(_ context.Context, game, uid string, b stats.Ban, _ time.Time) (int, error) {
+	f.recorded = append(f.recorded, game+"|"+uid+"|"+b.Reason)
+	return 1, nil
 }
 
 func (f *fakeSyncStore) SetOption(_ context.Context, k, v string) error {
@@ -436,6 +442,40 @@ func TestBanSyncSourceBans(t *testing.T) {
 	if err := json.Unmarshal([]byte(store.options[BansPlanKey]), &plan); err != nil || !plan.SourceBans.Enabled || plan.SourceBans.Bans != 1 ||
 		plan.SourceBans.Last != clock.t.Unix() || plan.SourceBans.Error != "" || plan.Steam.Enabled {
 		t.Errorf("plan %+v %v", plan, err)
+	}
+}
+
+// A running ban of the list is recorded for every player of the account,
+// in every ranking, so the player leaves the ranking also when the kick
+// named no ban list (an anti-cheat kick); the list is read after the first
+// scan of the players. Accounts without players and lifted bans record
+// nothing.
+func TestBanSyncSourceBansLeaveRanking(t *testing.T) {
+	store := newFakeSyncStore()
+	id7, uid7 := account(7)
+	_, uid8 := account(8)
+	store.accounts = []stats.BanAccount{
+		{PlayerID: 20, Game: "css", UniqueID: uid7},
+		{PlayerID: 21, Game: "cs2", UniqueID: uid7},
+		{PlayerID: 22, Game: "css", UniqueID: uid8}, // not banned
+	}
+	clock := &syncClock{t: time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC)}
+	w := banSync(store, clock, "", "bans.example.org")
+	w.List = func(context.Context, string, time.Duration) ([]sourcebans.Ban, error) {
+		return []sourcebans.Ban{
+			{Steam: "STEAM_0:" + uid7, Reason: "SMAC: Aimbot Detected", Length: "Permanent", Date: "21.11.2026, 11:00", State: sourcebans.Permanent},
+			{Steam: "STEAM_0:1:999", Reason: "never played here", Length: "Permanent", Date: "21.11.2026, 11:00", State: sourcebans.Permanent},
+			{Steam: "STEAM_0:" + uid8, Reason: "lifted", Length: "Permanent", Date: "20.11.2026, 10:00", State: sourcebans.Unbanned},
+		}, nil
+	}
+	w.Step(context.Background())
+	slices.Sort(store.recorded)
+	want := []string{"cs2|" + uid7 + "|SMAC: Aimbot Detected", "css|" + uid7 + "|SMAC: Aimbot Detected"}
+	if !slices.Equal(store.recorded, want) {
+		t.Errorf("recorded %v, want %v", store.recorded, want)
+	}
+	if _, ok := store.sb[id7]; !ok {
+		t.Errorf("rows %+v: want the ban of %s", store.sb, uid7)
 	}
 }
 

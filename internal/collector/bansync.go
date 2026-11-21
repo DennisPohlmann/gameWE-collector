@@ -30,6 +30,7 @@ type BanSyncStore interface {
 	BanCounts(ctx context.Context) (checked, steamBanned, sourceBans int, err error)
 	RunningBans(ctx context.Context, banType string) ([]stats.PlayerBan, error)
 	EndBan(ctx context.Context, b stats.PlayerBan, now time.Time) (bool, error)
+	RecordBan(ctx context.Context, game, uniqueID string, b stats.Ban, now time.Time) (int, error)
 	SetOption(ctx context.Context, key, value string) error
 }
 
@@ -83,7 +84,9 @@ const (
 //     asked.
 //   - SourceBans: every SourceBansEvery the whole public list
 //     (hlstats_Options gamewe_sourcebans_url); the running bans are stored,
-//     the rows of bans the list no longer shows as running are deleted.
+//     the rows of bans the list no longer shows as running are deleted,
+//     and each running ban is recorded for the players of the account
+//     (hlstats_Players_Bans), which takes them out of the ranking.
 //     Independently of the list, every BanSyncTick, bans whose end has
 //     passed are deleted. When a player's last running SourceBans record
 //     (hlstats_Players_Bans) ends this way, the player is back in the
@@ -194,6 +197,12 @@ func (w *BanSync) Step(ctx context.Context) {
 	rescan := now.Sub(w.lastScan) >= BanSyncScan
 	if w.sourceBansOn() && now.Sub(w.lastSB) >= w.Config.SourceBansEvery {
 		w.lastSB = now
+		if w.lastScan.IsZero() {
+			// The list's bans take known players out of the ranking: know them first.
+			if err := w.Scan(ctx); err != nil && ctx.Err() == nil {
+				w.Log.Error("bans-sync: reading the players' Steam IDs failed", "err", err)
+			}
+		}
 		if err := w.SyncSourceBans(ctx); err != nil && ctx.Err() == nil {
 			w.Log.Warn("bans-sync: SourceBans list not read, bans unchanged", "err", err)
 		}
@@ -328,8 +337,38 @@ func (w *BanSync) SyncSourceBans(ctx context.Context) error {
 		running[b.SteamID64] = true
 	}
 	w.endRecords(ctx, now, running)
-	w.Log.Info("bans-sync: SourceBans list read", "listed", len(list), "running", len(bans), "deleted", removed)
+	hidden := w.recordSourceBans(ctx, bans, now)
+	w.Log.Info("bans-sync: SourceBans list read", "listed", len(list), "running", len(bans), "deleted", removed,
+		"taken_out_of_ranking", hidden)
 	return nil
+}
+
+// recordSourceBans records the running bans of the list for the players of
+// the banned accounts (hlstats_Players_Bans, as the ban watcher does for a
+// kick with a ban reason): a player still in a ranking is taken out of it
+// (hideranking 2), and endRecords puts the player back once the list no
+// longer shows the ban. Without it a ban whose kick named no ban list (an
+// anti-cheat kick, a ban made while the player was away) was shown on the
+// profile, but the player stayed in the ranking. Players of the last scan.
+func (w *BanSync) recordSourceBans(ctx context.Context, bans []stats.SourceBan, now time.Time) int {
+	w.mu.Lock()
+	players := w.players
+	w.mu.Unlock()
+	hidden := 0
+	for _, b := range bans {
+		ban := stats.Ban{Type: stats.BanTypeSourceBans, Reason: b.Reason, LengthMinutes: b.LengthMinutes, BannedAt: b.Created, EndsAt: b.Ends}
+		for _, p := range players[b.SteamID64] {
+			n, err := w.Store.RecordBan(ctx, p.Game, p.UniqueID, ban, now)
+			if err != nil {
+				if ctx.Err() == nil {
+					w.Log.Error("bans-sync: recording a SourceBans ban failed", "game", p.Game, "err", err)
+				}
+				return hidden
+			}
+			hidden += n
+		}
+	}
+	return hidden
 }
 
 // RunningSourceBans picks the running bans of a list (permanent or active
@@ -403,7 +442,7 @@ func (w *BanSync) scan(ctx context.Context, write bool) error {
 		if !ok {
 			continue
 		}
-		p := stats.BanPlayer{PlayerID: a.PlayerID, Game: a.Game}
+		p := stats.BanPlayer{PlayerID: a.PlayerID, Game: a.Game, UniqueID: a.UniqueID}
 		if !slices.Contains(players[id], p) {
 			players[id] = append(players[id], p)
 		}
